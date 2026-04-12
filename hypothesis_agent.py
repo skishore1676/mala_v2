@@ -639,6 +639,7 @@ def main() -> None:
     stages_run: list[str] = []
     notes:      list[str] = []
     decision = ""
+    m5_df: pl.DataFrame = pl.DataFrame()  # populated when M5 runs; read by finish()
 
     STAGES = ["M1", "M2", "M3", "M4", "M5"]
     active_stages = STAGES[STAGES.index(start_stage):STAGES.index(max_stage) + 1]
@@ -661,21 +662,21 @@ def main() -> None:
         if d == "promote":
             creds = args.google_credentials or settings.google_api_credentials_path
             sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
-            if creds and sheet_id and not top_m1.is_empty():
-                best = (
-                    top_m1.sort("m1_score", descending=True).row(0, named=True)
-                    if "m1_score" in top_m1.columns
-                    else top_m1.row(0, named=True)
-                )
+            if creds and sheet_id and not m5_df.is_empty():
+                # Pick best M5 row: prefer debit_spread_default, rank by mc_prob_positive_exp
+                ranked = m5_df
+                if "execution_profile" in m5_df.columns:
+                    primary = m5_df.filter(pl.col("execution_profile") == "debit_spread_default")
+                    ranked = primary if not primary.is_empty() else m5_df
+                if "mc_prob_positive_exp" in ranked.columns:
+                    ranked = ranked.sort("mc_prob_positive_exp", descending=True)
+                m5_best = ranked.row(0, named=True)
                 try:
                     upsert_strategy_catalog(
                         catalog_key=h.id,
-                        symbol=", ".join(tickers),
+                        symbol=str(m5_best.get("ticker", ", ".join(tickers))),
                         strategy=strategy,
-                        direction=str(best.get("direction", "combined")),
-                        m1_best=best,
-                        artifact_path=str(out_dir),
-                        notes="; ".join(notes),
+                        m5_best=m5_best,
                         spreadsheet_id=sheet_id,
                         credentials_path=creds,
                         sheet_name=settings.strategy_catalog_sheet_name,
