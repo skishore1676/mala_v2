@@ -13,9 +13,9 @@ MarketRegime has three categorical fields:
     spy_trend_20d : "up"  / "flat" / "down"
     session_type  : "normal" / "opex"
 
-SPY closes are computed from the local Parquet 1-min cache (no extra
-Polygon call needed). VIX is optional — if the Polygon subscription does
-not include indices, vix_band defaults to "mid".
+SPY closes are computed from the local Parquet 1-min cache. VIX is read
+from a local cache, refreshed from Cboe first, and falls back to FRED; if
+VIX is unavailable, vix_band defaults to "mid".
 
 **Purpose in v2**: regime is observational, not a gate. It enriches
 detail CSVs so post-hoc analysis can answer: "did this pass only in
@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Literal, Optional
 
 import polars as pl
@@ -125,50 +126,128 @@ def _spy_daily_closes_from_local(
     return {row["_d"]: float(row["close"]) for row in daily.iter_rows(named=True)}
 
 
-def _vix_closes_from_polygon(
-    start: date, end: date
-) -> dict[date, float]:
-    """Fetch VIX daily closes from Polygon. Returns {} on any failure."""
-    import requests
-    key = settings.polygon_api_key
-    if not key:
+VIX_CACHE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "_vix_daily.parquet"
+
+
+def _load_vix_cache() -> dict[date, float]:
+    """Read locally cached VIX daily closes. Returns {} if no cache."""
+    if not VIX_CACHE_PATH.exists():
         return {}
-    url = (
-        f"https://api.polygon.io/v2/aggs/ticker/I:VIX"
-        f"/range/1/day/{start.isoformat()}/{end.isoformat()}"
-    )
     try:
-        resp = requests.get(
-            url,
-            params={"adjusted": "true", "sort": "asc", "limit": 50_000, "apiKey": key},
-            timeout=20.0,
-        )
+        df = pl.read_parquet(VIX_CACHE_PATH)
+        return {
+            row["date"]: float(row["close"])
+            for row in df.iter_rows(named=True)
+        }
+    except Exception:
+        return {}
+
+
+def _save_vix_cache(data: dict[date, float]) -> None:
+    """Merge new VIX data into the local Parquet cache."""
+    existing = _load_vix_cache()
+    existing.update(data)
+    if not existing:
+        return
+    rows = [{"date": d, "close": c} for d, c in sorted(existing.items())]
+    df = pl.DataFrame(rows).with_columns(pl.col("date").cast(pl.Date))
+    VIX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(VIX_CACHE_PATH)
+    logger.debug("VIX cache updated: %d days → %s", len(rows), VIX_CACHE_PATH)
+
+
+def _vix_from_cboe_csv() -> dict[date, float]:
+    """Download full VIX history from CBOE. Returns {} on failure."""
+    import csv
+    import io
+    import requests
+
+    url = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
+    try:
+        resp = requests.get(url, timeout=30.0)
         resp.raise_for_status()
-        bars = resp.json().get("results") or []
-    except requests.HTTPError as exc:
-        status_code = exc.response.status_code if exc.response is not None else "unknown"
-        logger.warning(
-            "VIX fetch failed with HTTP status %s, defaulting to 'mid'",
-            status_code,
-        )
-        return {}
-    except requests.RequestException as exc:
-        logger.warning(
-            "VIX fetch failed (%s), defaulting to 'mid'",
-            exc.__class__.__name__,
-        )
-        return {}
     except Exception as exc:
-        logger.warning(
-            "VIX fetch failed (%s), defaulting to 'mid'",
-            exc.__class__.__name__,
-        )
+        logger.debug("CBOE VIX fetch failed: %s", exc.__class__.__name__)
         return {}
+
     out: dict[date, float] = {}
-    for bar in bars:
-        d = datetime.utcfromtimestamp(bar["t"] / 1000).date()
-        out[d] = float(bar["c"])
+    reader = csv.DictReader(io.StringIO(resp.text))
+    for row in reader:
+        try:
+            d = datetime.strptime(row["DATE"].strip(), "%m/%d/%Y").date()
+            out[d] = float(row["CLOSE"])
+        except (KeyError, ValueError):
+            continue
     return out
+
+
+def _vix_from_fred_csv() -> dict[date, float]:
+    """Download VIX from FRED (no API key needed for CSV). Returns {} on failure."""
+    import csv
+    import io
+    import requests
+
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS"
+    try:
+        resp = requests.get(url, timeout=30.0)
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.debug("FRED VIX fetch failed: %s", exc.__class__.__name__)
+        return {}
+
+    out: dict[date, float] = {}
+    reader = csv.DictReader(io.StringIO(resp.text))
+    for row in reader:
+        try:
+            d = date.fromisoformat(row["DATE"].strip())
+            val = row["VIXCLS"].strip()
+            if val == "." or not val:
+                continue
+            out[d] = float(val)
+        except (KeyError, ValueError):
+            continue
+    return out
+
+
+def _fetch_vix_closes(start: date, end: date) -> dict[date, float]:
+    """Fetch VIX daily closes using a fallback chain: cache → CBOE → FRED.
+
+    Newly downloaded data is merged into the local Parquet cache.
+    Returns {} if all sources fail (caller defaults to vix_band='mid').
+    """
+    # 1. Check cache first
+    cached = _load_vix_cache()
+    if cached:
+        in_range = {d: v for d, v in cached.items() if start <= d <= end}
+        # If cache covers most of the range, use it
+        if len(in_range) > 0:
+            # Check if cache is reasonably fresh (has data within 7 days of end)
+            latest_cached = max(cached.keys())
+            if latest_cached >= end - timedelta(days=7):
+                logger.debug("VIX from cache: %d days in range", len(in_range))
+                return in_range
+
+    # 2. Try CBOE (full history CSV, free, no key needed)
+    fresh = _vix_from_cboe_csv()
+    if not fresh:
+        # 3. Try FRED (CSV endpoint, free, no key needed)
+        fresh = _vix_from_fred_csv()
+
+    if fresh:
+        _save_vix_cache(fresh)
+        in_range = {d: v for d, v in fresh.items() if start <= d <= end}
+        logger.debug("VIX fetched: %d total, %d in range", len(fresh), len(in_range))
+        return in_range
+
+    # 4. Fall back to stale cache if we have anything
+    if cached:
+        in_range = {d: v for d, v in cached.items() if start <= d <= end}
+        if in_range:
+            logger.debug("VIX from stale cache: %d days in range", len(in_range))
+            return in_range
+
+    logger.warning("VIX unavailable from all sources, defaulting to 'mid'")
+    return {}
 
 
 # ── Core classifier ───────────────────────────────────────────────────────────
@@ -181,8 +260,8 @@ def classify_range(
 ) -> dict[date, MarketRegime]:
     """Classify every trading day in [start, end].
 
-    One call — computes SPY closes from local Parquet cache, VIX from
-    Polygon (optional, falls back to 'mid' if unavailable).
+    One call — computes SPY closes from local Parquet cache and VIX from
+    local/Cboe/FRED sources, falling back to 'mid' if unavailable.
     """
     window_start = start - timedelta(days=lookback_buffer_days)
 
@@ -191,7 +270,7 @@ def classify_range(
         logger.warning("No local SPY data found for regime classification")
         return {}
 
-    vix_closes_map = _vix_closes_from_polygon(window_start, end)
+    vix_closes_map = _fetch_vix_closes(window_start, end)
     if not vix_closes_map:
         logger.debug("VIX unavailable, using vix_band='mid' for all days")
 

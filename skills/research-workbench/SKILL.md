@@ -17,7 +17,7 @@ Do:
 - write or update one hypothesis markdown file
 - interpret artifacts under `data/results/hypothesis_runs/`
 - use market-regime tags as observational evidence, not as gates
-- treat `m5_exit_optimization.json` as the Bhiksha-facing exit research artifact
+- treat `m5_exit_optimizations.json` plus the per-candidate `m5_exit_optimization_<ticker>_<direction>_<hash>.json` files as the Bhiksha-facing exit research artifacts
 - allow the optional `Strategy_Catalog` write only after M5 `promote`
 
 Do not:
@@ -64,7 +64,7 @@ The agent owns the stage protocol; the human should not need to remember it.
 - stop at the first failed gate and update the hypothesis state/report
 - continue to M2-M5 only for survivors promoted by the prior gate
 - do not treat a v1 result as validated in v2 until it passes this workbench
-- after M5 promote, expect exit optimization to evaluate the promoted candidate and write `m5_exit_optimization.json`
+- after M5 promote, expect exit optimization to evaluate each promoted catalog candidate and write `m5_exit_optimizations.json`
 - inspect `market_regime_key`, `vix_band`, `spy_trend_20d`, and `session_type` when interpreting detail artifacts
 - write to Strategy_Catalog only after M5 `promote`
 

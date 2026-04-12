@@ -46,7 +46,7 @@ python -m pytest tests/ -v
 | `src/strategy/factory.py` | Strategy registry (`_NAMED_BUILDERS`, `build_strategy`) |
 | `src/research/search_space.py` | Bounded discovery/retune configs from each strategy's search surface |
 | `src/research/market_regime.py` | Market regime classifier (vix_band / spy_trend_20d / session_type) |
-| `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes `m5_exit_optimization.json` |
+| `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes per-candidate exit optimization artifacts |
 | `src/research/catalog.py` | Strategy_Catalog upsert (called on M5 promote, includes exit fields) |
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
 | `src/newton/engine.py` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
@@ -98,7 +98,7 @@ Use `skills/research-workbench/SKILL.md` when onboarding an agent into hypothesi
 3. Run `--dry-run` first to confirm config count and data availability
 4. Run M1 first — gate: ≥50 OOS signals, ≥3 windows, ≥60% positive, exp_r>0
 5. Continue gate-by-gate. M1→M2 proves cost-stability. M3 proves OOS walk-forward. M4 proves holdout. M5 proves execution robustness.
-6. After M5: exit optimizer runs automatically — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimization.json` to the run dir
+6. After M5: exit optimizer runs automatically — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
 8. On M5 promote: Strategy_Catalog row is written with all 20 columns filled from M5 data + exit optimization results. `bionic_ready=false` until bhiksha review.
 

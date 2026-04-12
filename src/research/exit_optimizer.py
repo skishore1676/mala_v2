@@ -2,8 +2,8 @@
 
 Called after M5 execution mapping for candidates that pass. Evaluates a
 small policy grid (fixed reward-risk and VMA trailing where applicable),
-selects the best by expectancy, and writes m5_exit_optimization.json to
-the run directory.
+selects the best by expectancy, and writes per-candidate exit optimization
+artifacts to the run directory.
 
 Output fields fed into Strategy_Catalog's playbook_summary_json:
     thesis_exit_policy     e.g. "fixed_rr_underlying"

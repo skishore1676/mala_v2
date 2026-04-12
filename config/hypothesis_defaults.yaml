@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hypothesis Agent — Central Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# All tunables for hypothesis_agent.py live here.
+# Override per-run via CLI flags or per-hypothesis via the .md file.
+
+# ── Date Windows ─────────────────────────────────────────────────────────────
+dates:
+  start:          "2024-01-02"
+  calibration_end: "2025-11-30"
+  holdout_start:  "2025-12-01"
+  holdout_end:    "2026-02-28"
+
+# ── Walk-Forward ─────────────────────────────────────────────────────────────
+walk_forward:
+  train_months: 6
+  test_months:  3
+  min_signals:  15          # minimum signals per walk-forward window
+  ratios: [1.0, 1.25, 1.5, 2.0]
+
+# ── M1 — Discovery ──────────────────────────────────────────────────────────
+m1:
+  cost_bps:         8.0     # single cost level for initial sweep
+  top_per_ticker:   4       # how many candidates per ticker survive M1
+
+# ── M1 Gate ──────────────────────────────────────────────────────────────────
+m1_gate:
+  min_oos_windows:  3
+  min_oos_signals:  50
+  min_pct_positive: 0.60
+  min_exp_r:        0.0
+
+# ── M2 — Cost Stability ─────────────────────────────────────────────────────
+m2:
+  cost_grid_bps: [5.0, 8.0, 12.0]
+
+# ── M4 — Holdout ────────────────────────────────────────────────────────────
+m4:
+  min_calibration_signals: 40
+  min_holdout_signals:     15
+
+# ── M5 — Execution Mapping ──────────────────────────────────────────────────
+m5:
+  base_cost_r:      0.08
+  bootstrap_iters:  4000
+
+# ── Catalog — Strategy_Catalog Write ─────────────────────────────────────────
+catalog:
+  min_mc_prob_for_catalog: 0.70   # minimum mc_prob_positive_exp to write to sheet
+  execution_profile_priority:     # Bhiksha-facing preference order for catalog/run summary
+    - single_option
+    - debit_spread_tight
+    - debit_spread_default
+    - stock_like
