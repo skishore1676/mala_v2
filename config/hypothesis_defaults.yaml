@@ -47,6 +47,9 @@ m5:
 # ── Catalog — Strategy_Catalog Write ─────────────────────────────────────────
 catalog:
   min_mc_prob_for_catalog: 0.70   # minimum mc_prob_positive_exp to write to sheet
+  min_mc_prob_for_promote: 0.95   # report tier only; sheet rows still enter as candidate
+  min_holdout_trades_for_promote: 80
+  min_exit_trades_for_bhiksha_ready: 40
   execution_profile_priority:     # Bhiksha-facing preference order for catalog/run summary
     - single_option
     - debit_spread_tight

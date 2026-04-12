@@ -30,6 +30,7 @@ Hypothesis file: research/hypotheses/market-impulse-all-basket-discovery.md
    - M1_detail.csv — regime breakdown (vix_band, spy_trend_20d, session_type columns)
    - M4_holdout.csv — per-trade holdout results with regime tags
    - M5_execution.csv — execution mapping results
+   - CATALOG_SELECTED.csv — one selected Bhiksha-facing row per ticker-direction, including recommendation_tier and exit_reliability
    - m5_exit_optimizations.json — index of selected exit policies per promoted catalog candidate
    - m5_exit_optimization_<ticker>_<direction>_<hash>.json — selected exit policy and candidate grid for each promoted catalog candidate
 7. Write `FINDINGS_REPORT.md` in the run directory. It must cover:

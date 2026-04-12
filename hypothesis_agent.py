@@ -124,6 +124,9 @@ BOOTSTRAP_ITERS         = _m5.get("bootstrap_iters", 4000)
 
 _cat = _CFG.get("catalog", {})
 MIN_MC_PROB_FOR_CATALOG = _cat.get("min_mc_prob_for_catalog", 0.70)
+MIN_MC_PROB_FOR_PROMOTE = _cat.get("min_mc_prob_for_promote", 0.95)
+MIN_HOLDOUT_TRADES_FOR_PROMOTE = _cat.get("min_holdout_trades_for_promote", 80)
+MIN_EXIT_TRADES_FOR_BHIKSHA_READY = _cat.get("min_exit_trades_for_bhiksha_ready", 40)
 EXECUTION_PROFILE_PRIORITY = [
     str(profile)
     for profile in _cat.get(
@@ -668,6 +671,79 @@ def _catalog_candidate_rows(
         ):
             rows.append(row)
     return rows
+
+
+def _exit_trade_count(exit_opt: ExitOptimizationResult | None) -> int | None:
+    if exit_opt is None:
+        return None
+    count = exit_opt.selected_metrics.get("trade_count")
+    return int(count) if count is not None else None
+
+
+def _exit_reliability(exit_opt: ExitOptimizationResult | None) -> str:
+    count = _exit_trade_count(exit_opt)
+    if count is None:
+        return "none"
+    if count < MIN_EXIT_TRADES_FOR_BHIKSHA_READY:
+        return "thin"
+    return "usable"
+
+
+def _catalog_recommendation_tier(
+    row: dict[str, Any],
+    exit_opt: ExitOptimizationResult | None,
+) -> str:
+    mc_prob = float(row.get("mc_prob_positive_exp", 0) or 0)
+    holdout_trades = int(row.get("holdout_trades", 0) or 0)
+    if (
+        mc_prob >= MIN_MC_PROB_FOR_PROMOTE
+        and holdout_trades >= MIN_HOLDOUT_TRADES_FOR_PROMOTE
+    ):
+        return "promote"
+    if mc_prob >= MIN_MC_PROB_FOR_CATALOG:
+        return "shadow"
+    return "watch_only"
+
+
+def _write_catalog_selected(
+    *,
+    out_dir: Path,
+    hypothesis_id: str,
+    m5_df: pl.DataFrame,
+    param_keys: list[str],
+    exit_opts: dict[tuple[tuple[str, str], ...], ExitOptimizationResult],
+) -> Path | None:
+    rows: list[dict[str, Any]] = []
+    for row in _catalog_candidate_rows(m5_df):
+        ticker = str(row["ticker"])
+        direction = str(row["direction"])
+        exit_opt = exit_opts.get(_candidate_key(row, param_keys))
+        selected: dict[str, Any] = {
+            "catalog_key": f"{hypothesis_id}__{ticker.lower()}_{direction}",
+            "ticker": ticker,
+            "direction": direction,
+            "strategy": row.get("strategy"),
+            "execution_profile": row.get("execution_profile"),
+            "recommendation_tier": _catalog_recommendation_tier(row, exit_opt),
+            "exit_reliability": _exit_reliability(exit_opt),
+            "exit_trade_count": _exit_trade_count(exit_opt),
+            "selected_exit_policy": exit_opt.selected_policy_name if exit_opt else "",
+            "mc_prob_positive_exp": row.get("mc_prob_positive_exp"),
+            "mc_exp_r_p50": row.get("mc_exp_r_p50"),
+            "base_exp_r": row.get("base_exp_r"),
+            "holdout_trades": row.get("holdout_trades"),
+            "holdout_win_rate": row.get("holdout_win_rate"),
+        }
+        for key in param_keys:
+            if key in row:
+                selected[key] = row[key]
+        rows.append(selected)
+
+    if not rows:
+        return None
+    path = out_dir / "CATALOG_SELECTED.csv"
+    _csv_safe(pl.DataFrame(rows)).write_csv(path)
+    return path
 
 
 def _matching_promoted_candidate(
@@ -1241,6 +1317,16 @@ def main() -> None:
             "retune":       "retune",
         }
         new_state = decision_to_state.get(d, "running")
+        if d == "promote" and not m5_df.is_empty():
+            selected_path = _write_catalog_selected(
+                out_dir=out_dir,
+                hypothesis_id=h.id,
+                m5_df=m5_df,
+                param_keys=param_keys,
+                exit_opts=m5_exit_opts,
+            )
+            if selected_path:
+                log(f"CATALOG_SELECTED  {selected_path}")
         summary_path = write_run_summary(
             out_dir=out_dir,
             hypothesis=h,

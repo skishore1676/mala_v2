@@ -6,6 +6,7 @@ from hypothesis_agent import (
     HypothesisState,
     _best_m5_row,
     _catalog_candidate_rows,
+    _write_catalog_selected,
     _matching_promoted_candidate,
     parse_hypothesis,
     run_m1,
@@ -120,6 +121,52 @@ def test_catalog_candidate_rows_pick_one_target_profile_per_ticker_direction() -
         ("QQQ", "single_option"),
     ]
     assert [r["ticker"] for r in _catalog_candidate_rows(m5, min_mc_prob=0.78)] == ["QQQ"]
+
+
+def test_write_catalog_selected_emits_tiers(tmp_path) -> None:
+    m5 = pl.DataFrame(
+        [
+            {
+                "ticker": "AMD",
+                "strategy": "Market Impulse",
+                "direction": "short",
+                "entry_window_minutes": 90,
+                "execution_profile": "single_option",
+                "mc_prob_positive_exp": 0.97,
+                "mc_exp_r_p50": 0.4,
+                "base_exp_r": 0.5,
+                "holdout_trades": 120,
+                "holdout_win_rate": 0.55,
+            },
+            {
+                "ticker": "SPY",
+                "strategy": "Market Impulse",
+                "direction": "short",
+                "entry_window_minutes": 45,
+                "execution_profile": "single_option",
+                "mc_prob_positive_exp": 0.82,
+                "mc_exp_r_p50": 0.2,
+                "base_exp_r": 0.3,
+                "holdout_trades": 70,
+                "holdout_win_rate": 0.50,
+            },
+        ]
+    )
+
+    path = _write_catalog_selected(
+        out_dir=tmp_path,
+        hypothesis_id="idea",
+        m5_df=m5,
+        param_keys=["entry_window_minutes"],
+        exit_opts={},
+    )
+
+    assert path is not None
+    rows = pl.read_csv(path).sort("ticker").to_dicts()
+    assert rows[0]["catalog_key"] == "idea__amd_short"
+    assert rows[0]["recommendation_tier"] == "promote"
+    assert rows[1]["catalog_key"] == "idea__spy_short"
+    assert rows[1]["recommendation_tier"] == "shadow"
 
 
 def test_run_summary_preserves_market_impulse_params(tmp_path) -> None:

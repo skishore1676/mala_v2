@@ -17,6 +17,7 @@ Do:
 - write or update one hypothesis markdown file
 - interpret artifacts under `data/results/hypothesis_runs/`
 - use market-regime tags as observational evidence, not as gates
+- use `CATALOG_SELECTED.csv` as the concise selected-candidate readout
 - treat `m5_exit_optimizations.json` plus the per-candidate `m5_exit_optimization_<ticker>_<direction>_<hash>.json` files as the Bhiksha-facing exit research artifacts
 - allow the optional `Strategy_Catalog` write only after M5 `promote`
 
