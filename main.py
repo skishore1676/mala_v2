@@ -76,10 +76,15 @@ def main() -> None:
             continue
 
         df = physics.enrich(raw)
-        signals = strategy.generate_signals(df)
-        signal_df = df.filter(signals)
+        df = strategy.generate_signals(df)          # adds 'signal' boolean column
+        df = metrics.add_forward_metrics(df)        # adds MFE/MAE columns
 
-        result = metrics.summarise_signals(signal_df)
+        summary_df = metrics.summarise_signals(df)  # returns DataFrame
+        if summary_df.is_empty():
+            print("  no signals in this period")
+            continue
+        result = summary_df.row(0, named=True)
+
         print(f"  signals={result.get('total_signals', 0)}")
         print(f"  confidence={result.get('confidence_score', 0):.1%}")
         print(f"  avg_mfe={result.get('avg_mfe', 0):+.4f}")
