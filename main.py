@@ -23,6 +23,7 @@ from src.chronos.storage import LocalStorage
 from src.config import DATA_DIR, settings
 from src.newton.engine import PhysicsEngine
 from src.oracle.metrics import MetricsCalculator
+from src.strategy.base import required_feature_union
 from src.strategy.factory import available_strategy_names, build_strategy_by_name
 
 
@@ -75,7 +76,7 @@ def main() -> None:
             print(f"  No data — run with --fetch to download from Polygon")
             continue
 
-        df = physics.enrich(raw)
+        df = physics.enrich_for_features(raw, required_feature_union([strategy]))
         df = strategy.generate_signals(df)          # adds 'signal' boolean column
         df = metrics.add_forward_metrics(df)        # adds MFE/MAE columns
 

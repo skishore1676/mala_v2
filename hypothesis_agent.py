@@ -42,9 +42,11 @@ REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.chronos.storage import LocalStorage
+from src.config import settings
 from src.newton.engine import PhysicsEngine
 from src.oracle.metrics import MetricsCalculator
 from src.oracle.monte_carlo import ExecutionStressConfig
+from src.research.catalog import upsert_strategy_catalog
 from src.research.stages import (
     aggregate_walk_forward,
     build_gate_report,
@@ -559,6 +561,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-per-ticker",  type=int, default=2)
     parser.add_argument("--out-dir",         default="data/results/hypothesis_runs")
     parser.add_argument("--dry-run",         action="store_true")
+    parser.add_argument("--google-credentials", default=None,
+                        help="Path to Google service-account JSON (enables Strategy_Catalog write on promote)")
+    parser.add_argument("--catalog-sheet-id", default=None,
+                        help="Override spreadsheet ID for Strategy_Catalog")
     return parser.parse_args()
 
 
@@ -599,11 +605,6 @@ def main() -> None:
         log(f"DRY_RUN  mode={mode}  configs={len(configs)}  start_from={start_stage}")
         return
 
-    out_dir = REPO_ROOT / args.out_dir / h.id / datetime.now().strftime("%Y-%m-%dT%H%M%S")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    run_ts = out_dir.name
-    log(f"ARTIFACTS  {out_dir}")
-
     # Load previous artifacts for resumption
     prev_dir = _latest_run_dir(REPO_ROOT / args.out_dir, h.id) if start_stage != "M1" else None
     top_m1      = _load_csv(prev_dir, "M1_top.csv")
@@ -615,6 +616,11 @@ def main() -> None:
     elif start_stage == "M2" and top_m1.is_empty():
         log("WARN  M1_top.csv not found in previous run, restarting from M1")
         start_stage = "M1"
+
+    out_dir = REPO_ROOT / args.out_dir / h.id / datetime.now().strftime("%Y-%m-%dT%H%M%S")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    run_ts = out_dir.name
+    log(f"ARTIFACTS  {out_dir}")
 
     # Build strategies for data loading (needed for Newton feature planning)
     all_strategies = [build_strategy(strategy, c) for c in (configs if configs[0] else [{}])]
@@ -651,6 +657,34 @@ def main() -> None:
             stages_run=stages_run, decision=d, notes=notes, artifact_dir=str(out_dir),
         )
         update_hypothesis(hyp_path, new_state=new_state, new_decision=d, report=report)
+
+        if d == "promote":
+            creds = args.google_credentials or settings.google_api_credentials_path
+            sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
+            if creds and sheet_id and not top_m1.is_empty():
+                best = (
+                    top_m1.sort("m1_score", descending=True).row(0, named=True)
+                    if "m1_score" in top_m1.columns
+                    else top_m1.row(0, named=True)
+                )
+                try:
+                    upsert_strategy_catalog(
+                        catalog_key=h.id,
+                        symbol=", ".join(tickers),
+                        strategy=strategy,
+                        direction=str(best.get("direction", "combined")),
+                        m1_best=best,
+                        artifact_path=str(out_dir),
+                        notes="; ".join(notes),
+                        spreadsheet_id=sheet_id,
+                        credentials_path=creds,
+                        sheet_name=settings.strategy_catalog_sheet_name,
+                    )
+                    log(f"CATALOG  upserted  catalog_key={h.id}")
+                except Exception as exc:
+                    log(f"CATALOG_WARN  Strategy_Catalog write failed: {exc}")
+            else:
+                log("CATALOG_SKIP  no google credentials configured — skipping Strategy_Catalog write")
 
     # ── M1 ────────────────────────────────────────────────────────────────────
     if "M1" in active_stages:

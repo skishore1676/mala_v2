@@ -104,6 +104,20 @@ class Settings(BaseSettings):
         description="Bars to look ahead for MFE / MAE (15 × 1-min = 15 min).",
     )
 
+    # ── Google Sheets (Strategy_Catalog) ────────────────────────────────
+    google_api_credentials_path: str = Field(
+        default="",
+        description="Path to service-account JSON for Google Sheets access.",
+    )
+    strategy_catalog_sheet_id: str = Field(
+        default="",
+        description="Spreadsheet ID for the Strategy_Catalog Google Sheet (set via STRATEGY_CATALOG_SHEET_ID in .env).",
+    )
+    strategy_catalog_sheet_name: str = Field(
+        default="Strategy_Catalog",
+        description="Tab name for the strategy catalog.",
+    )
+
 
 # Singleton – importable everywhere as `from src.config import settings`
 settings = Settings()
