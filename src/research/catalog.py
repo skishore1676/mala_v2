@@ -4,29 +4,54 @@ Strategy_Catalog writer.
 Upserts a single row into the Strategy_Catalog Google Sheet tab.
 Only called when a hypothesis reaches `promote` (M5 pass).
 The row lands with lifecycle_status=candidate; a human flips it to approved.
+
+Column schema matches the existing sheet (mala_v1 PlaybookRecord layout):
+    catalog_key, playbook_id, symbol, bias_template, strategy_key,
+    strategy_family, direction, lifecycle_status, operator_status_override,
+    operator_notes, bionic_ready, first_validated_date, last_validated_date,
+    validation_count, expectancy, confidence, signal_count,
+    execution_robustness, thesis_exit_policy, playbook_summary_json
 """
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from src.research.google_sheets import GoogleSheetTableClient
 
+# Must match the column order in the live Google Sheet exactly.
 STRATEGY_CATALOG_HEADERS = [
     "catalog_key",
+    "playbook_id",
     "symbol",
-    "strategy",
+    "bias_template",
+    "strategy_key",
+    "strategy_family",
     "direction",
     "lifecycle_status",
+    "operator_status_override",
+    "operator_notes",
+    "bionic_ready",
     "first_validated_date",
-    "m1_exp_r",
-    "m1_pct_positive",
-    "m1_signals",
-    "artifact_path",
-    "notes",
+    "last_validated_date",
+    "validation_count",
+    "expectancy",
+    "confidence",
+    "signal_count",
+    "execution_robustness",
+    "thesis_exit_policy",
+    "playbook_summary_json",
 ]
+
+
+def _to_strategy_key(strategy_display_name: str) -> str:
+    """'Opening Drive Classifier' → 'opening_drive_classifier'"""
+    s = strategy_display_name.lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    return s.strip("_")
 
 
 def upsert_strategy_catalog(
@@ -54,18 +79,31 @@ def upsert_strategy_catalog(
     )
     client.ensure_sheet_exists()
 
+    today = date.today().isoformat()
+    strategy_key = _to_strategy_key(strategy)
+    operator_notes = f"{notes} | artifact: {artifact_path}"[:300]
+
     row: dict[str, Any] = {
-        "catalog_key":          catalog_key,
-        "symbol":               symbol,
-        "strategy":             strategy,
-        "direction":            direction,
-        "lifecycle_status":     "candidate",
-        "first_validated_date": date.today().isoformat(),
-        "m1_exp_r":             round(float(m1_best.get("avg_test_exp_r") or 0), 4),
-        "m1_pct_positive":      round(float(m1_best.get("pct_positive_oos_windows") or 0), 4),
-        "m1_signals":           int(m1_best.get("oos_signals") or 0),
-        "artifact_path":        artifact_path,
-        "notes":                notes[:300],
+        "catalog_key":              catalog_key,
+        "playbook_id":              catalog_key,
+        "symbol":                   symbol,
+        "bias_template":            "",
+        "strategy_key":             strategy_key,
+        "strategy_family":          strategy_key,
+        "direction":                direction,
+        "lifecycle_status":         "candidate",
+        "operator_status_override": "",
+        "operator_notes":           operator_notes,
+        "bionic_ready":             "false",
+        "first_validated_date":     today,
+        "last_validated_date":      today,
+        "validation_count":         1,
+        "expectancy":               round(float(m1_best.get("avg_test_exp_r") or 0), 4),
+        "confidence":               round(float(m1_best.get("pct_positive_oos_windows") or 0), 4),
+        "signal_count":             int(m1_best.get("oos_signals") or 0),
+        "execution_robustness":     "",
+        "thesis_exit_policy":       "",
+        "playbook_summary_json":    "",
     }
 
     existing = client.read_rows()
