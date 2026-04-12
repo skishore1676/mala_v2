@@ -45,6 +45,7 @@ For a new idea:
    ```bash
    ./.venv/bin/python hypothesis_agent.py --hypothesis research/hypotheses/<id>.md --dry-run
    ```
+   If intentionally replaying a completed or killed hypothesis, add `--force-rerun`.
 5. Run the smallest honest stage sequence:
    ```bash
    ./.venv/bin/python hypothesis_agent.py --hypothesis research/hypotheses/<id>.md --max-stage M1

@@ -1086,6 +1086,8 @@ def parse_args() -> argparse.Namespace:
                         help="Override hypothesis max_configs search cap")
     parser.add_argument("--out-dir",         default="data/results/hypothesis_runs")
     parser.add_argument("--dry-run",         action="store_true")
+    parser.add_argument("--force-rerun",     action="store_true",
+                        help="Run from M1 even when the hypothesis state is completed or kill")
     parser.add_argument("--google-credentials", default=None,
                         help="Path to Google service-account JSON (enables Strategy_Catalog write on promote)")
     parser.add_argument("--catalog-sheet-id", default=None,
@@ -1115,7 +1117,7 @@ def main() -> None:
     if h.directions:
         log(f"DIRECTIONS  {h.directions}")
 
-    if h.state in ("completed", "kill"):
+    if h.state in ("completed", "kill") and not args.force_rerun:
         log(f"SKIP  state is '{h.state}'")
         return
 
