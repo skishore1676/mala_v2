@@ -1,6 +1,6 @@
 # mala_v2 — Agent Onboarding
 
-You are working in a research-only backtesting engine. No deployment, no Google Sheets, no live execution. All output is local CSVs.
+You are working in a research-only backtesting engine. No deployment plumbing and no live execution. Output is local CSVs, with an optional final Strategy_Catalog Google Sheet upsert only after an M5 promote.
 
 ---
 
@@ -42,12 +42,16 @@ python -m pytest tests/ -v
 
 | File | Purpose |
 |---|---|
-| `hypothesis_agent.py` | The main runner — reads `.md`, runs gates, writes CSVs |
+| `hypothesis_agent.py` | The main runner — reads `.md`, runs M1→M5, writes CSVs |
 | `src/strategy/factory.py` | Strategy registry (`_NAMED_BUILDERS`, `build_strategy`) |
+| `src/research/search_space.py` | Bounded discovery/retune configs from each strategy's search surface |
+| `src/research/market_regime.py` | Market regime classifier (vix_band / spy_trend_20d / session_type) |
+| `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes `m5_exit_optimization.json` |
+| `src/research/catalog.py` | Strategy_Catalog upsert (called on M5 promote, includes exit fields) |
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
 | `src/newton/engine.py` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
 | `research/hypotheses/` | Hypothesis state machine files |
-| `data/results/hypothesis_runs/` | All output CSVs |
+| `data/results/hypothesis_runs/` | All output artifacts per run |
 
 ---
 
@@ -86,11 +90,23 @@ from src.strategy.factory import available_strategy_names
 
 ## How to start a workbench session
 
+Use `skills/research-workbench/SKILL.md` when onboarding an agent into hypothesis work.
+
 **If the user has a new hypothesis:**
 1. Create `research/hypotheses/{slug}.md` from `TEMPLATE.md`
 2. Fill in `strategy`, `symbol_scope`, `max_stage`
 3. Run `--dry-run` first to confirm config count and data availability
-4. Run for real, observe M1 gate result
+4. Run M1 first — gate: ≥50 OOS signals, ≥3 windows, ≥60% positive, exp_r>0
+5. Continue gate-by-gate. M1→M2 proves cost-stability. M3 proves OOS walk-forward. M4 proves holdout. M5 proves execution robustness.
+6. After M5: exit optimizer runs automatically — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimization.json` to the run dir
+7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
+8. On M5 promote: Strategy_Catalog row is written with all 20 columns filled from M5 data + exit optimization results. `bionic_ready=false` until bhiksha review.
+
+**Reading regime slices post-run:**
+Look at `M4_holdout.csv` columns `vix_band`, `spy_trend_20d`, `session_type`, `market_regime_key` to answer:
+- Did the strategy only work in a specific VIX band?
+- Was performance regime-dependent in a way that affects live deployment?
+Regime is evidence, not an excuse. Do not use it to explain away a bad M4 result.
 
 **Feasibility tags (decide before writing code):**
 - `config-only` — existing strategy + parameter changes, no code needed
@@ -99,11 +115,19 @@ from src.strategy.factory import available_strategy_names
 
 **Rule:** do not write any code until the feasibility tag is agreed and the scope is approved.
 
+For v1 replay work, create normal v2 hypothesis files. Do not import old v1 results as proof; use them only as leads for which families, symbols, and parameter areas to retest.
+
 ---
 
 ## Parameter spaces
 
-`hypothesis_agent.py` has a `PARAMETER_SPACES` dict at the top with discovery and retune grids for each strategy. Add a new strategy entry there to make it sweepable. The discovery grid is sampled down to 32 configs by default.
+`hypothesis_agent.py` does not own strategy-specific grids.
+
+Search configs come from `src/research/search_space.py`, which asks the selected strategy for:
+- `search_spec` first, including gating and ordering constraints
+- `parameter_space` as a fallback
+
+To make a strategy sweepable, add or improve the strategy class's `search_spec` / `parameter_space`. Do not add hard-coded grids back into `hypothesis_agent.py`.
 
 ---
 

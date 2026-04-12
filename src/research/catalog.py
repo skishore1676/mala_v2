@@ -91,9 +91,30 @@ _BIAS_TEMPLATE_MAP: dict[tuple[str, str], str] = {
     ("regime_router",                   "short"): "bearish_trend_intraday",
 }
 
+_DISPLAY_STRATEGY_KEYS: dict[str, str] = {
+    "Elastic Band Reversion": "elastic_band_reversion",
+    "Market Impulse (Cross & Reclaim)": "market_impulse",
+    "Opening Drive Classifier": "opening_drive_classifier",
+    "Opening Drive v2 (Short Continue)": "opening_drive_classifier",
+    "Jerk-Pivot Momentum (tight)": "jerk_pivot_momentum",
+    "Kinematic Ladder": "kinematic_ladder",
+    "Compression Expansion Breakout": "compression_expansion_breakout",
+    "Regime Router (Kinematic + Compression)": "regime_router",
+}
+
 
 def _to_strategy_key(strategy_display_name: str) -> str:
-    """'Opening Drive Classifier' → 'opening_drive_classifier'"""
+    """Map display/parametric strategy names to catalog strategy keys."""
+    if strategy_display_name in _DISPLAY_STRATEGY_KEYS:
+        return _DISPLAY_STRATEGY_KEYS[strategy_display_name]
+    if strategy_display_name.startswith("Market Impulse"):
+        return "market_impulse"
+    if strategy_display_name.startswith("Jerk-Pivot Momentum"):
+        return "jerk_pivot_momentum"
+    if strategy_display_name.startswith("Elastic Band"):
+        return "elastic_band_reversion"
+    if strategy_display_name.startswith("Opening Drive"):
+        return "opening_drive_classifier"
     s = strategy_display_name.lower()
     s = re.sub(r"[^a-z0-9]+", "_", s)
     return s.strip("_")
@@ -106,8 +127,11 @@ def _bias_template(strategy_key: str, direction: str) -> str:
     )
 
 
-def _build_playbook_summary(m5_best: dict[str, Any]) -> str:
-    """Build the playbook_summary_json blob from M5 best row."""
+def _build_playbook_summary(
+    m5_best: dict[str, Any],
+    exit_opt: dict[str, Any] | None = None,
+) -> str:
+    """Build the playbook_summary_json blob from M5 best row + optional exit optimization."""
     entry_params = {
         k: v for k, v in m5_best.items()
         if k not in _M5_NON_PARAM_COLS and v not in (None, "")
@@ -128,9 +152,10 @@ def _build_playbook_summary(m5_best: dict[str, Any]) -> str:
         )
     }
 
-    blob = {
+    blob: dict[str, Any] = {
         "bhiksha_compatibility": {
             "bionic_ready": False,
+            "has_optimized_thesis_exit": exit_opt is not None,
             "supported": False,
             "note": "mala_v2 candidate — pending bhiksha config review",
         },
@@ -138,6 +163,12 @@ def _build_playbook_summary(m5_best: dict[str, Any]) -> str:
         "vehicle_mapping": vehicle_mapping,
         "mc_metrics": mc_metrics,
     }
+
+    if exit_opt:
+        blob["thesis_exit_params"]      = exit_opt.get("thesis_exit_params", {})
+        blob["catastrophe_exit_params"] = exit_opt.get("catastrophe_exit_params", {})
+        blob["exit_candidate_policies"] = exit_opt.get("candidate_policies", [])
+
     return json.dumps(blob, default=str)
 
 
@@ -150,6 +181,7 @@ def upsert_strategy_catalog(
     spreadsheet_id: str,
     credentials_path: str | Path,
     sheet_name: str = "Strategy_Catalog",
+    exit_opt: dict[str, Any] | None = None,
 ) -> None:
     """Write or update one row in Strategy_Catalog from M5 results.
 
@@ -186,8 +218,11 @@ def upsert_strategy_catalog(
         "confidence":               round(float(m5_best.get("holdout_win_rate") or 0), 4),
         "signal_count":             int(m5_best.get("holdout_trades") or 0),
         "execution_robustness":     round(float(m5_best.get("mc_prob_positive_exp") or 0), 5),
-        "thesis_exit_policy":       str(m5_best.get("execution_profile", "")),
-        "playbook_summary_json":    _build_playbook_summary(m5_best),
+        "thesis_exit_policy":       (
+            exit_opt.get("thesis_exit_policy") if exit_opt
+            else str(m5_best.get("execution_profile", ""))
+        ),
+        "playbook_summary_json":    _build_playbook_summary(m5_best, exit_opt),
     }
 
     existing = client.read_rows()

@@ -32,9 +32,8 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from itertools import product
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import polars as pl
 
@@ -47,6 +46,14 @@ from src.newton.engine import PhysicsEngine
 from src.oracle.metrics import MetricsCalculator
 from src.oracle.monte_carlo import ExecutionStressConfig
 from src.research.catalog import upsert_strategy_catalog
+from src.research.exit_optimizer import (
+    DEFAULT_CATASTROPHE_EXIT,
+    ExitOptimizationResult,
+    optimize_underlying_exit,
+    write_exit_optimization_result,
+)
+from src.research.market_regime import MarketRegime, classify_range as _classify_regime_range
+from src.research.search_space import build_search_configs, search_param_keys
 from src.research.stages import (
     aggregate_walk_forward,
     build_gate_report,
@@ -93,95 +100,6 @@ DECISION_TO_STAGE: dict[str, str] = {
     "promote_to_m3": "M3",
     "promote_to_m4": "M4",
     "promote_to_m5": "M5",
-}
-
-
-# ── Per-strategy parameter spaces ─────────────────────────────────────────────
-# Each entry has "discovery" (broad sweep) and "retune" (tight follow-up).
-# Add a new strategy here to make it sweepable.
-
-PARAMETER_SPACES: dict[str, dict[str, dict[str, list[Any]]]] = {
-    "Opening Drive Classifier": {
-        "discovery": {
-            "opening_window_minutes":     [5, 10, 15, 20, 30],
-            "entry_start_offset_minutes": [15, 20, 25, 30, 45],
-            "entry_end_offset_minutes":   [60, 90, 120, 180],
-            "min_drive_return_pct":       [0.001, 0.0015, 0.002, 0.003],
-            "breakout_buffer_pct":        [0.0, 0.0005],
-            "kinematic_periods_back":     [1, 3],
-            "use_volume_filter":          [True, False],
-            "volume_multiplier":          [1.2, 1.4],
-            "use_directional_mass":       [True, False],
-            "use_jerk_confirmation":      [True, False],
-            "use_regime_filter":          [True, False],
-            "regime_timeframe":           ["5m"],
-        },
-        "retune": {
-            "opening_window_minutes":     [15, 20],
-            "entry_start_offset_minutes": [20, 25, 30],
-            "entry_end_offset_minutes":   [90, 120],
-            "min_drive_return_pct":       [0.0015, 0.002],
-            "breakout_buffer_pct":        [0.0, 0.0005],
-            "kinematic_periods_back":     [1, 3],
-            "use_volume_filter":          [True],
-            "volume_multiplier":          [1.2, 1.4],
-            "use_directional_mass":       [True],
-            "use_jerk_confirmation":      [True, False],
-            "use_regime_filter":          [True],
-            "regime_timeframe":           ["5m"],
-        },
-    },
-    "Market Impulse (Cross & Reclaim)": {
-        "discovery": {
-            "entry_buffer_minutes": [3, 5, 10],
-            "entry_window_minutes": [30, 60, 90],
-            "regime_timeframe":     ["5m", "1m"],
-        },
-        "retune": {
-            "entry_buffer_minutes": [3, 5],
-            "entry_window_minutes": [45, 60],
-            "regime_timeframe":     ["5m"],
-        },
-    },
-    "Elastic Band Reversion": {
-        "discovery": {
-            "z_score_threshold":    [1.5, 2.0, 2.5],
-            "z_score_window":       [120, 240, 360],
-            "use_directional_mass": [True, False],
-            "use_jerk_confirmation":[True, False],
-            "kinematic_periods_back":[1, 3],
-        },
-        "retune": {
-            "z_score_threshold":    [1.75, 2.0, 2.25],
-            "z_score_window":       [200, 240, 280],
-            "use_directional_mass": [True],
-            "use_jerk_confirmation":[True, False],
-            "kinematic_periods_back":[1],
-        },
-    },
-    "Jerk-Pivot Momentum (tight)": {
-        "discovery": {
-            "vpoc_proximity_pct": [0.001, 0.002, 0.005],
-            "jerk_lookback":      [5, 10, 20],
-            "volume_multiplier":  [1.0, 1.2, 1.5],
-            "use_volume_filter":  [True, False],
-        },
-        "retune": {
-            "vpoc_proximity_pct": [0.002, 0.003],
-            "jerk_lookback":      [10, 15],
-            "volume_multiplier":  [1.2, 1.3],
-            "use_volume_filter":  [True],
-        },
-    },
-}
-
-# Per-strategy config validators (return False to discard a config from the grid)
-STRATEGY_VALIDATORS: dict[str, Callable[[dict[str, Any]], bool]] = {
-    "Opening Drive Classifier": lambda c: (
-        int(c.get("opening_window_minutes", 0))
-        < int(c.get("entry_start_offset_minutes", 0))
-        < int(c.get("entry_end_offset_minutes", 0))
-    ),
 }
 
 
@@ -243,39 +161,6 @@ def update_hypothesis(
 
     path.write_text(text)
     log(f"UPDATED  {path.name}  state={new_state}  decision={new_decision}")
-
-
-# ── Parameter grid ────────────────────────────────────────────────────────────
-
-def _bounded_grid(space: dict[str, list[Any]], max_configs: int = 32) -> list[dict[str, Any]]:
-    keys = sorted(space)
-    all_cfg = [dict(zip(keys, combo, strict=True)) for combo in product(*[space[k] for k in keys])]
-    seen: set[str] = set()
-    unique = [c for c in all_cfg if (k := str(sorted(c.items()))) not in seen and not seen.add(k)]  # type: ignore[func-returns-value]
-    if len(unique) <= max_configs:
-        return unique
-    indices = sorted({round(i * (len(unique) - 1) / (max_configs - 1)) for i in range(max_configs)})
-    return [unique[i] for i in indices]
-
-
-def build_configs(strategy: str, mode: str, max_configs: int = 32) -> list[dict[str, Any]]:
-    """Return a bounded list of parameter dicts for the strategy."""
-    spaces = PARAMETER_SPACES.get(strategy)
-    if not spaces:
-        log(f"PARAM_SPACE  no space defined for '{strategy}', using factory default")
-        return [{}]  # single run with factory defaults
-
-    space = spaces.get(mode, spaces["discovery"])
-    validator = STRATEGY_VALIDATORS.get(strategy, lambda _: True)
-    all_cfg = _bounded_grid(space, max_configs=max_configs * 4)
-    valid = [c for c in all_cfg if validator(c)]
-
-    if len(valid) <= max_configs:
-        return valid
-    indices = sorted({round(i * (len(valid) - 1) / (max_configs - 1)) for i in range(max_configs)})
-    sampled = [valid[i] for i in indices]
-    log(f"PARAM_SPACE  strategy='{strategy}'  mode={mode}  valid={len(valid)}  sampled={len(sampled)}")
-    return sampled
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -513,6 +398,51 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+# ── Regime tagging ────────────────────────────────────────────────────────────
+
+def _tag_regime_cols(
+    df: pl.DataFrame,
+    regime_map: dict[date, MarketRegime],
+    date_col: str,
+) -> pl.DataFrame:
+    """Left-join market regime columns onto df using date_col as the key.
+
+    Adds: market_regime_key, vix_band, spy_trend_20d, session_type.
+    date_col must contain ISO date strings or polars Date values.
+    """
+    if df.is_empty() or not regime_map or date_col not in df.columns:
+        return df
+
+    regime_rows = [
+        {
+            "_rdate": r.trading_date.isoformat(),
+            "market_regime_key": r.regime_key,
+            "vix_band":          r.vix_band,
+            "spy_trend_20d":     r.spy_trend_20d,
+            "session_type":      r.session_type,
+        }
+        for r in regime_map.values()
+    ]
+    regime_df = pl.DataFrame(regime_rows)
+
+    # Coerce date_col to string for the join
+    col_type = df.schema.get(date_col)
+    if col_type == pl.Date:
+        df = df.with_columns(pl.col(date_col).cast(pl.Utf8).alias("_join_date"))
+        join_col = "_join_date"
+    else:
+        join_col = date_col
+
+    result = df.join(
+        regime_df.rename({"_rdate": join_col}),
+        on=join_col,
+        how="left",
+    )
+    if join_col == "_join_date":
+        result = result.drop("_join_date")
+    return result
+
+
 # ── Agent report ──────────────────────────────────────────────────────────────
 
 def build_report(
@@ -593,8 +523,8 @@ def main() -> None:
         return
 
     mode = "retune" if h.state == "retune" else "discovery"
-    configs = build_configs(strategy, mode)
-    param_keys = sorted(configs[0].keys()) if configs and configs[0] else []
+    configs = build_search_configs(strategy, mode=mode)
+    param_keys = search_param_keys(strategy)
 
     # Determine which stage to start from (resumption)
     start_stage = "M1"
@@ -636,10 +566,19 @@ def main() -> None:
     windows = build_windows(args.start, args.calibration_end, TRAIN_MONTHS, TEST_MONTHS)
     log(f"WINDOWS  {len(windows)}  (train={TRAIN_MONTHS}m / test={TEST_MONTHS}m)")
 
+    # Regime map — computed once, used to tag all detail artifacts (observational)
+    regime_map: dict[date, MarketRegime] = {}
+    try:
+        regime_map = _classify_regime_range(args.start, args.end)
+        log(f"REGIME  classified {len(regime_map)} days")
+    except Exception as exc:
+        log(f"REGIME_WARN  {exc}")
+
     stages_run: list[str] = []
     notes:      list[str] = []
     decision = ""
-    m5_df: pl.DataFrame = pl.DataFrame()  # populated when M5 runs; read by finish()
+    m5_df: pl.DataFrame = pl.DataFrame()              # populated by M5 stage
+    m5_exit_opt: ExitOptimizationResult | None = None  # populated by exit optimizer
 
     STAGES = ["M1", "M2", "M3", "M4", "M5"]
     active_stages = STAGES[STAGES.index(start_stage):STAGES.index(max_stage) + 1]
@@ -680,6 +619,7 @@ def main() -> None:
                         spreadsheet_id=sheet_id,
                         credentials_path=creds,
                         sheet_name=settings.strategy_catalog_sheet_name,
+                        exit_opt=m5_exit_opt.model_dump(mode="json") if m5_exit_opt else None,
                     )
                     log(f"CATALOG  upserted  catalog_key={h.id}")
                 except Exception as exc:
@@ -696,7 +636,8 @@ def main() -> None:
             configs=configs, metrics=metrics, top_per_ticker=args.top_per_ticker,
         )
         stages_run.append("M1")
-        if not detail_m1.is_empty(): detail_m1.write_csv(out_dir / "M1_detail.csv")
+        if not detail_m1.is_empty():
+            _tag_regime_cols(detail_m1, regime_map, "test_start").write_csv(out_dir / "M1_detail.csv")
         if not agg_m1.is_empty():    agg_m1.write_csv(out_dir / "M1_aggregate.csv")
         if not top_m1.is_empty():    top_m1.write_csv(out_dir / "M1_top.csv")
 
@@ -759,7 +700,8 @@ def main() -> None:
         holdout_start=args.holdout_start, holdout_end=args.holdout_end,
     )
     stages_run.append("M4")
-    if not m4_detail.is_empty():   m4_detail.write_csv(out_dir / "M4_holdout.csv")
+    if not m4_detail.is_empty():
+        _tag_regime_cols(m4_detail, regime_map, "trade_date").write_csv(out_dir / "M4_holdout.csv")
     if not m4_promoted.is_empty(): m4_promoted.write_csv(out_dir / "M4_promoted.csv")
 
     notes.append(f"M4: {m4_promoted.height} promoted")
@@ -781,6 +723,37 @@ def main() -> None:
     stages_run.append("M5")
     if not m5_df.is_empty(): m5_df.write_csv(out_dir / "M5_execution.csv")
     notes.append(f"M5: {m5_df.height} execution mappings")
+
+    # ── Exit optimization (M5-plus) ───────────────────────────────────────────
+    if not m5_df.is_empty() and not m4_promoted.is_empty():
+        best_cand = m4_promoted.row(0, named=True)
+        _ticker    = str(best_cand.get("ticker", tickers[0] if tickers else "SPY"))
+        _direction = str(best_cand.get("direction", "long"))
+        _config    = {k: best_cand[k] for k in param_keys if k in best_cand}
+        _skey      = re.sub(r"[^a-z0-9]+", "_", strategy.lower()).strip("_")
+        if _ticker in frames_full:
+            try:
+                m5_exit_opt = optimize_underlying_exit(
+                    strategy_key=_skey,
+                    symbol=_ticker,
+                    direction=_direction,
+                    strategy=build_strategy(strategy, _config),
+                    enriched_frame=frames_full[_ticker],
+                    holdout_start=args.holdout_start,
+                    holdout_end=args.holdout_end,
+                    catastrophe_exit_params=DEFAULT_CATASTROPHE_EXIT,
+                )
+                if m5_exit_opt:
+                    write_exit_optimization_result(
+                        m5_exit_opt, path=out_dir / "m5_exit_optimization.json"
+                    )
+                    notes.append(f"exit_opt: {m5_exit_opt.selected_policy_name}")
+                    log(
+                        f"EXIT_OPT  {m5_exit_opt.selected_policy_name}"
+                        f"  expectancy={m5_exit_opt.selected_metrics.get('expectancy', 0):+.4f}"
+                    )
+            except Exception as exc:
+                log(f"EXIT_OPT_WARN  {exc}")
 
     finish("promote" if not m5_df.is_empty() else "kill")
 
