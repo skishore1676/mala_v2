@@ -1,0 +1,322 @@
+"""
+Newton Physics Engine
+
+Compatibility facade over a composable feature pipeline.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Sequence
+
+import polars as pl
+from loguru import logger
+
+from src.config import settings
+from src.newton.transforms import (
+    AccelerationTransform,
+    DirectionalMassTransform,
+    EmaStackTransform,
+    FeatureTransform,
+    JerkTransform,
+    MarketImpulseTransform,
+    VelocityTransform,
+    VolumeMaTransform,
+    VpocTransform,
+    transform_names,
+)
+
+
+class PhysicsEngine:
+    """Apply Newton feature transforms to raw market data."""
+
+    def __init__(
+        self,
+        vpoc_lookback: int = settings.vpoc_lookback_bars,
+        ema_periods: Sequence[int] | None = None,
+        volume_ma_period: int = settings.volume_ma_period,
+        transforms: Sequence[FeatureTransform | str] | None = None,
+    ) -> None:
+        self.vpoc_lookback = vpoc_lookback
+        self.ema_periods = tuple(ema_periods or settings.ema_periods)
+        self.volume_ma_period = volume_ma_period
+        self._registry = self._build_registry()
+        selected = transforms or self._default_transforms()
+        self.transforms = self._resolve_transforms(selected)
+
+    @property
+    def available_transforms(self) -> list[str]:
+        return [
+            *self._registry,
+            "velocity[:periods_back]",
+            "acceleration[:periods_back]",
+            "jerk[:periods_back]",
+            "market_impulse[:timeframe]",
+            "market_impulse_vwma_<short>_<medium>_<long>",
+        ]
+
+    def enrich(self, df: pl.DataFrame) -> pl.DataFrame:
+        required = {"open", "high", "low", "close", "volume"}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(f"DataFrame is missing required columns: {missing}")
+        return self._apply_transforms(df, self.transforms)
+
+    def enrich_for_features(self, df: pl.DataFrame, required_features: set[str]) -> pl.DataFrame:
+        transforms = self.transforms_for_features(required_features)
+        return self._apply_transforms(df, transforms)
+
+    def transforms_for_features(self, required_features: set[str]) -> list[FeatureTransform]:
+        candidates: list[FeatureTransform | str] = [
+            transform
+            for transform in self._registry.values()
+            if transform.name in required_features or set(required_features) & transform.output_columns
+        ]
+        candidates.extend(self._kinematic_transforms_for_features(required_features))
+        candidates.extend(self._market_impulse_transforms_for_features(required_features))
+        return self._resolve_transforms(candidates)
+
+    def _kinematic_transforms_for_features(
+        self,
+        required_features: set[str],
+    ) -> list[FeatureTransform]:
+        transforms: list[FeatureTransform] = []
+        for feature in sorted(required_features):
+            spec_match = _KINEMATIC_SPEC_RE.fullmatch(feature)
+            if spec_match:
+                periods_back = int(spec_match.group("periods_back") or "1")
+                if periods_back > 1:
+                    transforms.append(
+                        self._build_kinematic_transform(
+                            spec_match.group("kind"),
+                            periods_back,
+                        )
+                    )
+                continue
+
+            column_match = _KINEMATIC_COLUMN_RE.fullmatch(feature)
+            if not column_match:
+                continue
+            periods_back = int(column_match.group("periods_back"))
+            if periods_back <= 1:
+                continue
+            transforms.append(
+                self._build_kinematic_transform(
+                    _KINEMATIC_COLUMN_KIND[column_match.group("kind")],
+                    periods_back,
+                )
+            )
+        return transforms
+
+    def _market_impulse_transforms_for_features(
+        self,
+        required_features: set[str],
+    ) -> list[FeatureTransform]:
+        requests: dict[str, set[int]] = {}
+        base_requested = False
+        base_lengths: set[int] = set()
+        requested_vwma_periods: set[tuple[int, int, int]] = set()
+
+        def add_request(timeframe: str = "5m", vma_length: int | None = None) -> None:
+            lengths = requests.setdefault(timeframe, set())
+            if vma_length is not None:
+                lengths.add(vma_length)
+
+        for feature in required_features:
+            spec_match = _MARKET_IMPULSE_SPEC_RE.fullmatch(feature)
+            if spec_match:
+                add_request(spec_match.group("timeframe") or "5m")
+                continue
+
+            vwma_spec_match = _MARKET_IMPULSE_VWMA_SPEC_RE.fullmatch(feature)
+            if vwma_spec_match:
+                requested_vwma_periods.add(
+                    (
+                        int(vwma_spec_match.group("short")),
+                        int(vwma_spec_match.group("medium")),
+                        int(vwma_spec_match.group("long")),
+                    )
+                )
+                continue
+
+            impulse_match = _MARKET_IMPULSE_COLUMN_RE.fullmatch(feature)
+            if impulse_match:
+                timeframe = impulse_match.group("timeframe")
+                if timeframe:
+                    add_request(timeframe)
+                else:
+                    base_requested = True
+                continue
+
+            vma_match = _MARKET_IMPULSE_VMA_RE.fullmatch(feature)
+            if vma_match:
+                timeframe = vma_match.group("timeframe")
+                vma_length = int(vma_match.group("vma_length"))
+                if timeframe:
+                    add_request(timeframe, vma_length)
+                else:
+                    base_requested = True
+                    base_lengths.add(vma_length)
+
+        if not requests and (base_requested or base_lengths):
+            add_request("5m")
+
+        if len(base_lengths) > 1:
+            raise ValueError(
+                "Market Impulse feature request mixes multiple base VMA lengths: "
+                f"{sorted(base_lengths)}"
+            )
+        if base_lengths:
+            base_length = next(iter(base_lengths))
+            for timeframe, lengths in requests.items():
+                if not lengths:
+                    lengths.add(base_length)
+                    continue
+                if lengths != {base_length}:
+                    raise ValueError(
+                        "Market Impulse feature request mixes incompatible VMA lengths "
+                        f"for timeframe {timeframe}: base={base_length}, tagged={sorted(lengths)}"
+                    )
+
+        transforms: list[FeatureTransform] = []
+        if len(requested_vwma_periods) > 1:
+            raise ValueError(
+                "Market Impulse feature request mixes multiple VWMA period stacks: "
+                f"{sorted(requested_vwma_periods)}"
+            )
+        resolved_vwma_periods = (
+            next(iter(requested_vwma_periods))
+            if requested_vwma_periods
+            else tuple(settings.vwma_periods)
+        )
+        for timeframe, lengths in sorted(requests.items()):
+            if len(lengths) > 1:
+                raise ValueError(
+                    "Market Impulse feature request mixes multiple VMA lengths "
+                    f"for timeframe {timeframe}: {sorted(lengths)}"
+                )
+            transforms.append(
+                MarketImpulseTransform(
+                    vma_length=next(iter(lengths), settings.vma_length),
+                    vwma_periods=resolved_vwma_periods,
+                    timeframe=timeframe,
+                )
+            )
+        return transforms
+
+    def _build_registry(self) -> dict[str, FeatureTransform]:
+        transforms: list[FeatureTransform] = [
+            VelocityTransform(),
+            AccelerationTransform(),
+            JerkTransform(),
+            EmaStackTransform(periods=self.ema_periods),
+            VolumeMaTransform(period=self.volume_ma_period),
+            DirectionalMassTransform(volume_ma_period=self.volume_ma_period),
+            VpocTransform(lookback=self.vpoc_lookback),
+        ]
+        return {transform.name: transform for transform in transforms}
+
+    @staticmethod
+    def _build_kinematic_transform(kind: str, periods_back: int) -> FeatureTransform:
+        if kind == "velocity":
+            return VelocityTransform(periods_back=periods_back)
+        if kind == "acceleration":
+            return AccelerationTransform(periods_back=periods_back)
+        if kind == "jerk":
+            return JerkTransform(periods_back=periods_back)
+        raise KeyError(f"Unknown kinematic transform {kind!r}")
+
+    def _default_transforms(self) -> tuple[FeatureTransform, ...]:
+        return (
+            self._registry["velocity"],
+            self._registry["acceleration"],
+            self._registry["jerk"],
+            self._registry["ema_stack"],
+            self._registry["volume_ma"],
+            self._registry["directional_mass"],
+            self._registry["vpoc"],
+        )
+
+    def _resolve_transforms(
+        self,
+        transforms: Sequence[FeatureTransform | str],
+    ) -> list[FeatureTransform]:
+        resolved: list[FeatureTransform] = []
+        seen: set[str] = set()
+
+        def add_transform(item: FeatureTransform | str) -> None:
+            transform = self._coerce_transform(item)
+            if transform.spec in seen:
+                return
+            for dependency_name in transform.depends_on:
+                add_transform(dependency_name)
+            resolved.append(transform)
+            seen.add(transform.spec)
+
+        for item in transforms:
+            add_transform(item)
+        return resolved
+
+    def _coerce_transform(self, item: FeatureTransform | str) -> FeatureTransform:
+        if isinstance(item, str):
+            kinematic_match = _KINEMATIC_SPEC_RE.fullmatch(item)
+            if kinematic_match:
+                return self._build_kinematic_transform(
+                    kinematic_match.group("kind"),
+                    int(kinematic_match.group("periods_back") or "1"),
+                )
+            spec_match = _MARKET_IMPULSE_SPEC_RE.fullmatch(item)
+            if spec_match:
+                return MarketImpulseTransform(
+                    vma_length=settings.vma_length,
+                    vwma_periods=tuple(settings.vwma_periods),
+                    timeframe=spec_match.group("timeframe") or "5m",
+                )
+            try:
+                return self._registry[item]
+            except KeyError as exc:
+                raise KeyError(f"Unknown transform {item!r}") from exc
+        return item
+
+    def _apply_transforms(
+        self,
+        df: pl.DataFrame,
+        transforms: Sequence[FeatureTransform],
+    ) -> pl.DataFrame:
+        logger.info(
+            "Applying Newton transforms: {}",
+            ", ".join(transform_names(transforms)) or "(none)",
+        )
+        result = df
+        for transform in transforms:
+            missing = set(transform.required_input_columns) - set(result.columns)
+            if missing:
+                raise ValueError(
+                    f"Transform '{transform.name}' requires columns: {sorted(missing)}"
+                )
+            result = transform.apply(result)
+        logger.info("Physics enrichment complete - {} columns total", len(result.columns))
+        return result
+
+
+_MARKET_IMPULSE_SPEC_RE = re.compile(r"^market_impulse(?::(?P<timeframe>[^:]+))?$")
+_MARKET_IMPULSE_COLUMN_RE = re.compile(
+    r"^impulse_(?:regime|stage)(?:_(?P<timeframe>[0-9]+[A-Za-z]+))?$"
+)
+_MARKET_IMPULSE_VMA_RE = re.compile(
+    r"^vma_(?P<vma_length>\d+)(?:_(?P<timeframe>[0-9]+[A-Za-z]+))?$"
+)
+_MARKET_IMPULSE_VWMA_SPEC_RE = re.compile(
+    r"^market_impulse_vwma_(?P<short>\d+)_(?P<medium>\d+)_(?P<long>\d+)$"
+)
+_KINEMATIC_SPEC_RE = re.compile(
+    r"^(?P<kind>velocity|acceleration|jerk)(?::(?P<periods_back>\d+))?$"
+)
+_KINEMATIC_COLUMN_RE = re.compile(
+    r"^(?P<kind>velocity|accel|jerk)_(?P<periods_back>\d+)$"
+)
+_KINEMATIC_COLUMN_KIND = {
+    "velocity": "velocity",
+    "accel": "acceleration",
+    "jerk": "jerk",
+}
