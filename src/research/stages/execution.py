@@ -105,7 +105,10 @@ def execution_profiles_for(strategy: str, direction: str) -> list[dict[str, str]
 
 
 def promoted_candidates_from_holdout(holdout_summary: pl.DataFrame) -> pl.DataFrame:
-    return holdout_summary.filter(pl.col("decision") == "promote_to_execution_mapping").select(
+    return holdout_summary.filter(
+        (pl.col("decision") == "promote_to_execution_mapping")
+        & (pl.col("direction").cast(pl.Utf8).str.to_lowercase() != "combined")
+    ).select(
         candidate_identity_columns(holdout_summary)
     )
 

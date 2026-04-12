@@ -28,6 +28,7 @@ from src.oracle.trade_simulator import (
     TradeSimulator,
     VmaTrailingExitPolicy,
 )
+from src.research.strategy_keys import to_strategy_key
 from src.strategy.base import BaseStrategy
 
 
@@ -109,18 +110,24 @@ def optimize_underlying_exit(
     """Evaluate exit policies on the holdout window. Returns the best."""
     if enriched_frame.is_empty():
         return None
+    canonical_strategy_key = to_strategy_key(strategy_key)
+    if direction.lower() not in {"long", "short"}:
+        return None
 
     signal_frame = strategy.generate_signals(enriched_frame.clone())
     filtered = _holdout_signal_frame(signal_frame, direction, holdout_start, holdout_end)
     if filtered.is_empty():
         return None
 
-    candidates = _policy_candidates(strategy_key=strategy_key, strategy=strategy)
+    candidates = _policy_candidates(strategy_key=canonical_strategy_key, strategy=strategy)
     evaluations: list[ExitPolicyEvaluation] = []
     best: ExitPolicyEvaluation | None = None
 
     for candidate in candidates:
-        result = candidate.simulator.simulate(filtered)
+        try:
+            result = candidate.simulator.simulate(filtered)
+        except ValueError:
+            continue
         metrics = {
             "trade_count":    int(result.total_trades),
             "win_rate":       float(result.win_rate),
@@ -145,11 +152,11 @@ def optimize_underlying_exit(
     if best is None:
         return None
 
-    cat_params = catastrophe_exit_params or DEFAULT_CATASTROPHE_EXIT
+    cat_params = dict(catastrophe_exit_params or DEFAULT_CATASTROPHE_EXIT)
 
     return ExitOptimizationResult(
         generated_at=datetime.now(UTC).isoformat(),
-        strategy_key=strategy_key,
+        strategy_key=canonical_strategy_key,
         symbol=symbol.upper(),
         direction=direction,
         selection_slice={
@@ -248,8 +255,15 @@ def _policy_candidates(
 def _sort_key(e: ExitPolicyEvaluation) -> tuple[float, float, float, float]:
     m = e.metrics
     return (
-        float(m.get("expectancy") or float("-inf")),
-        float(m.get("profit_factor") or float("-inf")),
-        float(m.get("win_rate") or float("-inf")),
-        float(m.get("trade_count") or 0.0),
+        _metric(m, "expectancy"),
+        _metric(m, "profit_factor"),
+        _metric(m, "win_rate"),
+        _metric(m, "trade_count", default=0.0),
     )
+
+
+def _metric(metrics: dict[str, Any], key: str, *, default: float = float("-inf")) -> float:
+    value = metrics.get(key)
+    if value is None:
+        return default
+    return float(value)

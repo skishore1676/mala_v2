@@ -25,12 +25,12 @@ Source for each field (from M5 run):
 from __future__ import annotations
 
 import json
-import re
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.strategy_keys import to_strategy_key
 
 # Must match the column order in the live Google Sheet exactly.
 STRATEGY_CATALOG_HEADERS = [
@@ -91,33 +91,9 @@ _BIAS_TEMPLATE_MAP: dict[tuple[str, str], str] = {
     ("regime_router",                   "short"): "bearish_trend_intraday",
 }
 
-_DISPLAY_STRATEGY_KEYS: dict[str, str] = {
-    "Elastic Band Reversion": "elastic_band_reversion",
-    "Market Impulse (Cross & Reclaim)": "market_impulse",
-    "Opening Drive Classifier": "opening_drive_classifier",
-    "Opening Drive v2 (Short Continue)": "opening_drive_classifier",
-    "Jerk-Pivot Momentum (tight)": "jerk_pivot_momentum",
-    "Kinematic Ladder": "kinematic_ladder",
-    "Compression Expansion Breakout": "compression_expansion_breakout",
-    "Regime Router (Kinematic + Compression)": "regime_router",
-}
-
-
 def _to_strategy_key(strategy_display_name: str) -> str:
-    """Map display/parametric strategy names to catalog strategy keys."""
-    if strategy_display_name in _DISPLAY_STRATEGY_KEYS:
-        return _DISPLAY_STRATEGY_KEYS[strategy_display_name]
-    if strategy_display_name.startswith("Market Impulse"):
-        return "market_impulse"
-    if strategy_display_name.startswith("Jerk-Pivot Momentum"):
-        return "jerk_pivot_momentum"
-    if strategy_display_name.startswith("Elastic Band"):
-        return "elastic_band_reversion"
-    if strategy_display_name.startswith("Opening Drive"):
-        return "opening_drive_classifier"
-    s = strategy_display_name.lower()
-    s = re.sub(r"[^a-z0-9]+", "_", s)
-    return s.strip("_")
+    """Backward-compatible wrapper for older catalog tests/callers."""
+    return to_strategy_key(strategy_display_name)
 
 
 def _bias_template(strategy_key: str, direction: str) -> str:

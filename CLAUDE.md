@@ -1,7 +1,8 @@
 # Mala v2 — Research Workbench
 
-Clean hypothesis-to-M5 research engine. No deployment plumbing, no external sinks.
-All results stay local as CSVs.
+Clean hypothesis-to-M5 research engine. No deployment plumbing. Results stay
+local as CSVs, with an optional final Strategy_Catalog Google Sheet write only
+when a hypothesis reaches M5 promote.
 
 ---
 
@@ -15,9 +16,16 @@ uv run python main.py --tickers SPY --start 2024-01-01 --end 2024-12-31
 uv run pytest tests/ -v
 ```
 
-`.env` needs only:
+Minimum `.env`:
 ```
 POLYGON_API_KEY=...
+```
+
+Optional Strategy_Catalog publish on M5 promote:
+```
+GOOGLE_API_CREDENTIALS_PATH=/path/to/google-credentials.json
+STRATEGY_CATALOG_SHEET_ID=...
+STRATEGY_CATALOG_SHEET_NAME=Strategy_Catalog
 ```
 
 Data is cached as Parquet under `data/` — never re-downloads what's there.
@@ -45,6 +53,9 @@ Polygon.io API → Chronos (Parquet cache)
 | `src/newton/` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
 | `src/strategy/` | Strategy classes + factory registry |
 | `src/oracle/` | MFE/MAE metrics, Monte Carlo stress, trade simulator |
+| `src/research/catalog.py` | Optional Strategy_Catalog row writer for M5 promotes |
+| `src/research/market_regime.py` | Observational regime tags for detail artifacts |
+| `src/research/exit_optimizer.py` | M5-plus thesis exit optimization artifact |
 | `src/research/stages/` | M1-M5 gate logic |
 | `hypothesis_agent.py` | The main entry point — reads `.md`, runs gates, writes CSVs |
 | `research/hypotheses/` | Hypothesis state machine files |
@@ -126,7 +137,7 @@ On any run it writes a `## Agent Report` section back into the `.md` file.
 ### On promote (M5 pass)
 - `state` is set to `completed` automatically.
 - Results are in `data/results/hypothesis_runs/{id}/{run_ts}/M5_execution.csv`.
-- Manually promote to trade_lab's Google Sheet if desired.
+- If Google Sheet settings are configured, `hypothesis_agent.py` upserts one `candidate` row into `Strategy_Catalog`.
 
 ---
 

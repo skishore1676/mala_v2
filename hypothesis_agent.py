@@ -17,6 +17,9 @@ Hypothesis file schema (fields read by this script):
     - symbol_scope: `IWM` or `SPY, QQQ`
     - strategy:     `Opening Drive Classifier`  (must match factory registry)
     - max_stage:    `M5`
+    - search_mode:  `discovery | fixed`  (optional; fixed replays one configured strategy)
+    - direction_scope: `long`  (optional comma-separated long/short/combined filter)
+    - max_configs:  `32`  (optional search cap; raise for full family replay)
 
 State machine:
     pending   → full discovery sweep from M1
@@ -66,8 +69,9 @@ from src.research.stages import (
     summarize_holdout,
 )
 from src.research.stages.candidates import build_candidate_strategy
+from src.research.strategy_keys import to_strategy_key
 from src.strategy.base import required_feature_union
-from src.strategy.factory import build_strategy
+from src.strategy.factory import build_strategy, build_strategy_by_name
 
 
 # ── Gate defaults ─────────────────────────────────────────────────────────────
@@ -114,6 +118,9 @@ class HypothesisState:
     tickers: list[str]
     strategy: str
     max_stage: str
+    search_mode: str
+    directions: list[str]
+    max_configs: int
 
 
 def parse_hypothesis(path: Path) -> HypothesisState:
@@ -129,11 +136,22 @@ def parse_hypothesis(path: Path) -> HypothesisState:
     scope    = _field("symbol_scope", "SPY")
     strategy = _field("strategy", "Opening Drive Classifier")
     max_st   = _field("max_stage", "M5")
+    search_mode = _field("search_mode", "")
+    direction_scope = _field("direction_scope", "")
+    max_configs_raw = _field("max_configs", "32")
+    try:
+        max_configs = max(1, int(max_configs_raw))
+    except ValueError:
+        max_configs = 32
 
     tickers = [t.strip() for t in scope.split(",") if t.strip()]
+    directions = [d.strip() for d in direction_scope.split(",") if d.strip()]
     return HypothesisState(
         path=path, id=hyp_id, state=state, decision=decision,
         tickers=tickers, strategy=strategy, max_stage=max_st,
+        search_mode=search_mode,
+        directions=directions,
+        max_configs=max_configs,
     )
 
 
@@ -195,12 +213,13 @@ def run_m1(
     configs: list[dict[str, Any]],
     metrics: MetricsCalculator,
     top_per_ticker: int = 2,
+    directions: list[str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     detail_rows: list[dict] = []
     aggregate_rows: list[dict] = []
 
     for idx, config in enumerate(configs, 1):
-        s = build_strategy(strategy_name, config)
+        s = _build_configured_strategy(strategy_name, config)
         log(f"M1  {idx}/{len(configs)}  {config}")
         for ticker, frame in frames.items():
             rows = run_walk_forward_for_strategies(
@@ -220,9 +239,10 @@ def run_m1(
     if aggregate_df.is_empty():
         return detail_df, aggregate_df, pl.DataFrame()
 
+    direction_filter = directions or ["long", "short", "combined"]
     ranked = (
         aggregate_df
-        .filter(pl.col("direction").is_in(["long", "short", "combined"]))
+        .filter(pl.col("direction").is_in(direction_filter))
         .filter(pl.col("avg_test_exp_r").is_not_null() & (pl.col("avg_test_exp_r") > 0))
         .filter(pl.col("pct_positive_oos_windows").is_not_null())
         .with_columns([
@@ -271,7 +291,7 @@ def run_m2(
         log(f"M2  cost_bps={cost}")
         for candidate in top_m1.iter_rows(named=True):
             config = {k: candidate[k] for k in param_keys if k in candidate}
-            s = build_strategy(strategy_name, config)
+            s = _build_configured_strategy(strategy_name, config)
             ticker = str(candidate["ticker"])
             if ticker not in frames:
                 continue
@@ -318,7 +338,7 @@ def run_m3(
             s = build_candidate_strategy(candidate)
         except Exception:
             config = {k: candidate[k] for k in param_keys if k in candidate}
-            s = build_strategy(strategy_name, config)
+            s = _build_configured_strategy(strategy_name, config)
         ticker = str(candidate["ticker"])
         if ticker not in frames:
             continue
@@ -385,11 +405,76 @@ def _latest_run_dir(out_dir: Path, hypothesis_id: str) -> Path | None:
     return dirs[0] if dirs else None
 
 
+def _latest_run_dir_with_file(out_dir: Path, hypothesis_id: str, filename: str) -> Path | None:
+    base = out_dir / hypothesis_id
+    if not base.exists():
+        return None
+    dirs = sorted((d for d in base.iterdir() if d.is_dir()), key=lambda d: d.name, reverse=True)
+    for run_dir in dirs:
+        if (run_dir / filename).exists():
+            return run_dir
+    return None
+
+
 def _load_csv(run_dir: Path | None, filename: str) -> pl.DataFrame:
     if run_dir is None:
         return pl.DataFrame()
     p = run_dir / filename
     return pl.read_csv(p) if p.exists() else pl.DataFrame()
+
+
+def _strategy_family_name(strategy_name: str) -> str:
+    if strategy_name.startswith("Elastic Band z="):
+        return "Elastic Band Reversion"
+    if strategy_name.startswith("Kinematic Ladder rw="):
+        return "Kinematic Ladder"
+    return strategy_name
+
+
+def _build_configured_strategy(strategy_name: str, config: dict[str, Any]):
+    return build_strategy(_strategy_family_name(strategy_name), config)
+
+
+def _best_m5_row(m5_df: pl.DataFrame) -> dict[str, Any] | None:
+    """Pick the row that will represent the promoted candidate."""
+    if m5_df.is_empty():
+        return None
+    ranked = m5_df
+    if "execution_profile" in m5_df.columns:
+        primary = m5_df.filter(pl.col("execution_profile") == "debit_spread_default")
+        ranked = primary if not primary.is_empty() else m5_df
+    if "mc_prob_positive_exp" in ranked.columns:
+        ranked = ranked.sort("mc_prob_positive_exp", descending=True)
+    return ranked.row(0, named=True)
+
+
+def _matching_promoted_candidate(
+    promoted: pl.DataFrame,
+    m5_best: dict[str, Any],
+    param_keys: list[str],
+) -> dict[str, Any] | None:
+    if promoted.is_empty():
+        return None
+    keys = ["ticker", "strategy", "direction", *param_keys]
+    for candidate in promoted.iter_rows(named=True):
+        if all(
+            _values_match(candidate.get(key), m5_best.get(key))
+            for key in keys
+            if key in candidate and key in m5_best
+        ):
+            return candidate
+    return promoted.row(0, named=True)
+
+
+def _values_match(left: Any, right: Any) -> bool:
+    if left == right:
+        return True
+    if left is None or right is None:
+        return False
+    try:
+        return float(left) == float(right)
+    except (TypeError, ValueError):
+        return str(left) == str(right)
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -473,6 +558,153 @@ def build_report(
 """
 
 
+def _format_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _markdown_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
+    if not rows:
+        return "_No rows._"
+    header = "| " + " | ".join(columns) + " |"
+    divider = "| " + " | ".join("---" for _ in columns) + " |"
+    body = [
+        "| " + " | ".join(_format_value(row.get(column)) for column in columns) + " |"
+        for row in rows
+    ]
+    return "\n".join([header, divider, *body])
+
+
+def _read_artifact(out_dir: Path, filename: str) -> pl.DataFrame:
+    path = out_dir / filename
+    return pl.read_csv(path) if path.exists() else pl.DataFrame()
+
+
+def _candidate_columns(df: pl.DataFrame) -> list[str]:
+    return [
+        column for column in [
+            "ticker",
+            "direction",
+            "strategy",
+            "z_score_threshold",
+            "z_score_window",
+            "use_directional_mass",
+            "use_jerk_confirmation",
+            "kinematic_periods_back",
+        ]
+        if column in df.columns
+    ]
+
+
+def write_run_summary(
+    *,
+    out_dir: Path,
+    hypothesis: HypothesisState,
+    stages_run: list[str],
+    decision: str,
+    notes: list[str],
+) -> Path:
+    sections: list[str] = [
+        f"# Run Summary: {hypothesis.id}",
+        "",
+        f"- strategy: `{hypothesis.strategy}`",
+        f"- symbols: `{', '.join(hypothesis.tickers)}`",
+        f"- directions: `{', '.join(hypothesis.directions) if hypothesis.directions else 'long, short, combined'}`",
+        f"- stages: `{' -> '.join(stages_run) if stages_run else 'none'}`",
+        f"- decision: `{decision}`",
+        "",
+        "## Notes",
+        *(f"- {note}" for note in notes),
+    ]
+
+    m1_top = _read_artifact(out_dir, "M1_top.csv")
+    if not m1_top.is_empty():
+        columns = [
+            column for column in [
+                "ticker",
+                "direction",
+                "strategy",
+                "avg_test_exp_r",
+                "pct_positive_oos_windows",
+                "oos_signals",
+            ]
+            if column in m1_top.columns
+        ]
+        rows = m1_top.select(columns).sort(
+            [column for column in ["avg_test_exp_r", "oos_signals"] if column in columns],
+            descending=True,
+        ).head(12).to_dicts()
+        sections.extend(["", "## M1 Top Candidates", _markdown_table(rows, columns)])
+
+    m2_promoted = _read_artifact(out_dir, "M2_promoted.csv")
+    if not m2_promoted.is_empty():
+        columns = _candidate_columns(m2_promoted)
+        sections.extend([
+            "",
+            f"## M2 Promoted ({m2_promoted.height})",
+            _markdown_table(m2_promoted.select(columns).head(20).to_dicts(), columns),
+        ])
+
+    m4_holdout = _read_artifact(out_dir, "M4_holdout.csv")
+    if not m4_holdout.is_empty():
+        group_cols = _candidate_columns(m4_holdout)
+        summary = (
+            m4_holdout.group_by(group_cols)
+            .agg([
+                pl.len().alias("cost_points"),
+                pl.col("holdout_signals").min().alias("min_signals"),
+                pl.col("holdout_exp_r").min().alias("min_exp_r"),
+                pl.col("holdout_exp_r").mean().alias("mean_exp_r"),
+                pl.col("passes_cost_gate").sum().alias("passed_cost_points"),
+                pl.col("passes_cost_gate").all().alias("passed_all_costs"),
+            ])
+            .sort(["passed_all_costs", "mean_exp_r"], descending=[True, True])
+        )
+        columns = [
+            *group_cols,
+            "cost_points",
+            "min_signals",
+            "min_exp_r",
+            "mean_exp_r",
+            "passed_cost_points",
+            "passed_all_costs",
+        ]
+        sections.extend([
+            "",
+            "## M4 Holdout Read",
+            _markdown_table(summary.select(columns).head(15).to_dicts(), columns),
+        ])
+
+    m5 = _read_artifact(out_dir, "M5_execution.csv")
+    if not m5.is_empty():
+        columns = [
+            column for column in [
+                "ticker",
+                "direction",
+                "strategy",
+                "execution_profile",
+                "selected_ratio",
+                "base_exp_r",
+                "mc_exp_r_p50",
+                "mc_prob_positive_exp",
+                "mc_max_dd_p50",
+            ]
+            if column in m5.columns
+        ]
+        rows = m5.select(columns).sort(
+            [column for column in ["mc_prob_positive_exp", "base_exp_r"] if column in columns],
+            descending=True,
+        ).head(12).to_dicts()
+        sections.extend(["", "## M5 Execution Read", _markdown_table(rows, columns)])
+
+    path = out_dir / "RUN_SUMMARY.md"
+    path.write_text("\n".join(sections).rstrip() + "\n")
+    return path
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
@@ -489,6 +721,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--holdout-end",     type=date.fromisoformat, default=DEFAULT_HOLDOUT_END)
     parser.add_argument("--end",             type=date.fromisoformat, default=DEFAULT_END)
     parser.add_argument("--top-per-ticker",  type=int, default=2)
+    parser.add_argument("--max-configs",     type=int, default=None,
+                        help="Override hypothesis max_configs search cap")
     parser.add_argument("--out-dir",         default="data/results/hypothesis_runs")
     parser.add_argument("--dry-run",         action="store_true")
     parser.add_argument("--google-credentials", default=None,
@@ -517,13 +751,16 @@ def main() -> None:
 
     log(f"HYPOTHESIS  id={h.id}  state={h.state}  strategy={strategy}")
     log(f"TICKERS  {tickers}  max_stage={max_stage}")
+    if h.directions:
+        log(f"DIRECTIONS  {h.directions}")
 
     if h.state in ("completed", "kill"):
         log(f"SKIP  state is '{h.state}'")
         return
 
-    mode = "retune" if h.state == "retune" else "discovery"
-    configs = build_search_configs(strategy, mode=mode)
+    mode = h.search_mode or ("retune" if h.state == "retune" else "discovery")
+    max_configs = args.max_configs or h.max_configs
+    configs = build_search_configs(strategy, mode=mode, max_configs=max_configs)
     param_keys = search_param_keys(strategy)
 
     # Determine which stage to start from (resumption)
@@ -532,17 +769,35 @@ def main() -> None:
         start_stage = DECISION_TO_STAGE[h.decision]
 
     if args.dry_run:
-        log(f"DRY_RUN  mode={mode}  configs={len(configs)}  start_from={start_stage}")
+        log(f"DRY_RUN  mode={mode}  configs={len(configs)}  max_configs={max_configs}  start_from={start_stage}")
         return
 
-    # Load previous artifacts for resumption
-    prev_dir = _latest_run_dir(REPO_ROOT / args.out_dir, h.id) if start_stage != "M1" else None
-    top_m1      = _load_csv(prev_dir, "M1_top.csv")
-    promoted_m2 = _load_csv(prev_dir, "M2_promoted.csv")
+    # Load previous artifacts for resumption. Pick the newest run containing
+    # each required artifact so a partial later run does not hide valid state.
+    previous_root = REPO_ROOT / args.out_dir
+    top_m1 = _load_csv(
+        _latest_run_dir_with_file(previous_root, h.id, "M1_top.csv") if start_stage != "M1" else None,
+        "M1_top.csv",
+    )
+    promoted_m2 = _load_csv(
+        _latest_run_dir_with_file(previous_root, h.id, "M2_promoted.csv") if start_stage != "M1" else None,
+        "M2_promoted.csv",
+    )
+    m4_detail = _load_csv(
+        _latest_run_dir_with_file(previous_root, h.id, "M4_holdout.csv") if start_stage == "M5" else None,
+        "M4_holdout.csv",
+    )
+    m4_promoted = _load_csv(
+        _latest_run_dir_with_file(previous_root, h.id, "M4_promoted.csv") if start_stage == "M5" else None,
+        "M4_promoted.csv",
+    )
 
     if start_stage in ("M3", "M4", "M5") and promoted_m2.is_empty():
         log("WARN  M2_promoted.csv not found in previous run, restarting from M1")
         start_stage = "M1"
+    elif start_stage == "M5" and m4_promoted.is_empty():
+        log("WARN  M4_promoted.csv not found in previous run, restarting from M4")
+        start_stage = "M4"
     elif start_stage == "M2" and top_m1.is_empty():
         log("WARN  M1_top.csv not found in previous run, restarting from M1")
         start_stage = "M1"
@@ -553,7 +808,10 @@ def main() -> None:
     log(f"ARTIFACTS  {out_dir}")
 
     # Build strategies for data loading (needed for Newton feature planning)
-    all_strategies = [build_strategy(strategy, c) for c in (configs if configs[0] else [{}])]
+    if mode == "fixed":
+        all_strategies = [build_strategy_by_name(strategy)]
+    else:
+        all_strategies = [_build_configured_strategy(strategy, c) for c in (configs if configs[0] else [{}])]
 
     frames_cal  = load_frames(tickers, args.start, args.calibration_end, all_strategies)
     frames_full = load_frames(tickers, args.start, args.end, all_strategies)
@@ -592,6 +850,14 @@ def main() -> None:
             "retune":       "retune",
         }
         new_state = decision_to_state.get(d, "running")
+        summary_path = write_run_summary(
+            out_dir=out_dir,
+            hypothesis=h,
+            stages_run=stages_run,
+            decision=d,
+            notes=notes,
+        )
+        log(f"SUMMARY  {summary_path}")
         report = build_report(
             run_ts=run_ts, hypothesis_id=h.id, strategy=strategy,
             stages_run=stages_run, decision=d, notes=notes, artifact_dir=str(out_dir),
@@ -602,14 +868,10 @@ def main() -> None:
             creds = args.google_credentials or settings.google_api_credentials_path
             sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
             if creds and sheet_id and not m5_df.is_empty():
-                # Pick best M5 row: prefer debit_spread_default, rank by mc_prob_positive_exp
-                ranked = m5_df
-                if "execution_profile" in m5_df.columns:
-                    primary = m5_df.filter(pl.col("execution_profile") == "debit_spread_default")
-                    ranked = primary if not primary.is_empty() else m5_df
-                if "mc_prob_positive_exp" in ranked.columns:
-                    ranked = ranked.sort("mc_prob_positive_exp", descending=True)
-                m5_best = ranked.row(0, named=True)
+                m5_best = _best_m5_row(m5_df)
+                if m5_best is None:
+                    log("CATALOG_SKIP  no M5 row available for Strategy_Catalog write")
+                    return
                 try:
                     upsert_strategy_catalog(
                         catalog_key=h.id,
@@ -634,6 +896,7 @@ def main() -> None:
         detail_m1, agg_m1, top_m1 = run_m1(
             strategy_name=strategy, frames=frames_cal, windows=windows,
             configs=configs, metrics=metrics, top_per_ticker=args.top_per_ticker,
+            directions=h.directions,
         )
         stages_run.append("M1")
         if not detail_m1.is_empty():
@@ -651,67 +914,70 @@ def main() -> None:
             finish("retune" if any_pos else "kill")
             return
 
-    if "M2" not in active_stages:
-        finish("promote_to_m2")
-        return
+        if "M2" not in active_stages:
+            finish("promote_to_m2")
+            return
 
     # ── M2 ────────────────────────────────────────────────────────────────────
-    log("─" * 56)
-    log("STAGE M2  convergence grid")
-    combined_m2, gate_m2, promoted_m2 = run_m2(
-        strategy_name=strategy, frames=frames_cal, windows=windows,
-        metrics=metrics, top_m1=top_m1, param_keys=param_keys,
-    )
-    stages_run.append("M2")
-    if not combined_m2.is_empty():  combined_m2.write_csv(out_dir / "M2_convergence.csv")
-    if not gate_m2.is_empty():      gate_m2.write_csv(out_dir / "M2_gate_report.csv")
-    if not promoted_m2.is_empty():  promoted_m2.write_csv(out_dir / "M2_promoted.csv")
+    if "M2" in active_stages:
+        log("─" * 56)
+        log("STAGE M2  convergence grid")
+        combined_m2, gate_m2, promoted_m2 = run_m2(
+            strategy_name=strategy, frames=frames_cal, windows=windows,
+            metrics=metrics, top_m1=top_m1, param_keys=param_keys,
+        )
+        stages_run.append("M2")
+        if not combined_m2.is_empty():  combined_m2.write_csv(out_dir / "M2_convergence.csv")
+        if not gate_m2.is_empty():      gate_m2.write_csv(out_dir / "M2_gate_report.csv")
+        if not promoted_m2.is_empty():  promoted_m2.write_csv(out_dir / "M2_promoted.csv")
 
-    notes.append(f"M2: {promoted_m2.height} candidates promoted")
-    if promoted_m2.is_empty():
-        finish("retune")
-        return
+        notes.append(f"M2: {promoted_m2.height} candidates promoted")
+        if promoted_m2.is_empty():
+            finish("retune")
+            return
 
-    if "M3" not in active_stages:
-        finish("promote_to_m3")
-        return
+        if "M3" not in active_stages:
+            finish("promote_to_m3")
+            return
 
     # ── M3 ────────────────────────────────────────────────────────────────────
-    log("─" * 56)
-    log("STAGE M3  walk-forward OOS")
-    m3_df = run_m3(
-        strategy_name=strategy, frames=frames_cal, windows=windows,
-        metrics=metrics, promoted_m2=promoted_m2, param_keys=param_keys,
-    )
-    stages_run.append("M3")
-    if not m3_df.is_empty(): m3_df.write_csv(out_dir / "M3_walk_forward.csv")
-    notes.append(f"M3: {m3_df.height} detail rows")
+    if "M3" in active_stages:
+        log("─" * 56)
+        log("STAGE M3  walk-forward OOS")
+        m3_df = run_m3(
+            strategy_name=strategy, frames=frames_cal, windows=windows,
+            metrics=metrics, promoted_m2=promoted_m2, param_keys=param_keys,
+        )
+        stages_run.append("M3")
+        if not m3_df.is_empty(): m3_df.write_csv(out_dir / "M3_walk_forward.csv")
+        notes.append(f"M3: {m3_df.height} detail rows")
 
-    if "M4" not in active_stages:
-        finish("promote_to_m4")
-        return
+        if "M4" not in active_stages:
+            finish("promote_to_m4")
+            return
 
     # ── M4 ────────────────────────────────────────────────────────────────────
-    log("─" * 56)
-    log("STAGE M4  holdout validation")
-    m4_detail, m4_promoted = run_m4(
-        frames=frames_full, metrics=metrics, promoted_m2=promoted_m2,
-        start=args.start, calibration_end=args.calibration_end,
-        holdout_start=args.holdout_start, holdout_end=args.holdout_end,
-    )
-    stages_run.append("M4")
-    if not m4_detail.is_empty():
-        _tag_regime_cols(m4_detail, regime_map, "trade_date").write_csv(out_dir / "M4_holdout.csv")
-    if not m4_promoted.is_empty(): m4_promoted.write_csv(out_dir / "M4_promoted.csv")
+    if "M4" in active_stages:
+        log("─" * 56)
+        log("STAGE M4  holdout validation")
+        m4_detail, m4_promoted = run_m4(
+            frames=frames_full, metrics=metrics, promoted_m2=promoted_m2,
+            start=args.start, calibration_end=args.calibration_end,
+            holdout_start=args.holdout_start, holdout_end=args.holdout_end,
+        )
+        stages_run.append("M4")
+        if not m4_detail.is_empty():
+            _tag_regime_cols(m4_detail, regime_map, "trade_date").write_csv(out_dir / "M4_holdout.csv")
+        if not m4_promoted.is_empty(): m4_promoted.write_csv(out_dir / "M4_promoted.csv")
 
-    notes.append(f"M4: {m4_promoted.height} promoted")
-    if m4_promoted.is_empty():
-        finish("kill")
-        return
+        notes.append(f"M4: {m4_promoted.height} promoted")
+        if m4_promoted.is_empty():
+            finish("kill")
+            return
 
-    if "M5" not in active_stages:
-        finish("promote_to_m5")
-        return
+        if "M5" not in active_stages:
+            finish("promote_to_m5")
+            return
 
     # ── M5 ────────────────────────────────────────────────────────────────────
     log("─" * 56)
@@ -726,18 +992,25 @@ def main() -> None:
 
     # ── Exit optimization (M5-plus) ───────────────────────────────────────────
     if not m5_df.is_empty() and not m4_promoted.is_empty():
-        best_cand = m4_promoted.row(0, named=True)
-        _ticker    = str(best_cand.get("ticker", tickers[0] if tickers else "SPY"))
-        _direction = str(best_cand.get("direction", "long"))
-        _config    = {k: best_cand[k] for k in param_keys if k in best_cand}
-        _skey      = re.sub(r"[^a-z0-9]+", "_", strategy.lower()).strip("_")
-        if _ticker in frames_full:
+        m5_best = _best_m5_row(m5_df)
+        best_cand = _matching_promoted_candidate(m4_promoted, m5_best or {}, param_keys)
+        if m5_best and best_cand:
+            _ticker    = str(m5_best.get("ticker", best_cand.get("ticker", tickers[0] if tickers else "SPY")))
+            _direction = str(m5_best.get("direction", best_cand.get("direction", "long")))
+            _config    = {k: best_cand[k] for k in param_keys if k in best_cand}
+            _skey      = to_strategy_key(str(m5_best.get("strategy", strategy)))
+        else:
+            _ticker = ""
+            _direction = ""
+            _config = {}
+            _skey = to_strategy_key(strategy)
+        if _ticker in frames_full and _direction in {"long", "short"}:
             try:
                 m5_exit_opt = optimize_underlying_exit(
                     strategy_key=_skey,
                     symbol=_ticker,
                     direction=_direction,
-                    strategy=build_strategy(strategy, _config),
+                    strategy=_build_configured_strategy(strategy, _config),
                     enriched_frame=frames_full[_ticker],
                     holdout_start=args.holdout_start,
                     holdout_end=args.holdout_end,

@@ -145,8 +145,24 @@ def _vix_closes_from_polygon(
         )
         resp.raise_for_status()
         bars = resp.json().get("results") or []
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else "unknown"
+        logger.warning(
+            "VIX fetch failed with HTTP status %s, defaulting to 'mid'",
+            status_code,
+        )
+        return {}
+    except requests.RequestException as exc:
+        logger.warning(
+            "VIX fetch failed (%s), defaulting to 'mid'",
+            exc.__class__.__name__,
+        )
+        return {}
     except Exception as exc:
-        logger.warning("VIX fetch failed, defaulting to 'mid': %s", exc)
+        logger.warning(
+            "VIX fetch failed (%s), defaulting to 'mid'",
+            exc.__class__.__name__,
+        )
         return {}
     out: dict[date, float] = {}
     for bar in bars:

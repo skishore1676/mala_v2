@@ -413,10 +413,24 @@ def test_holdout_summary_preserves_candidate_config_columns() -> None:
 
 def test_execution_stage_helpers() -> None:
     holdout_summary = pl.DataFrame(
-        [{"ticker": "SPY", "strategy": "Elastic Band z=1.25/w=360+dm", "direction": "short", "decision": "promote_to_execution_mapping"}]
+        [
+            {
+                "ticker": "SPY",
+                "strategy": "Elastic Band z=1.25/w=360+dm",
+                "direction": "short",
+                "decision": "promote_to_execution_mapping",
+            },
+            {
+                "ticker": "AMD",
+                "strategy": "Elastic Band z=3.0/w=360+jk",
+                "direction": "combined",
+                "decision": "promote_to_execution_mapping",
+            },
+        ]
     )
     promoted = promoted_candidates_from_holdout(holdout_summary)
     assert promoted.height == 1
+    assert promoted.row(0, named=True)["direction"] == "short"
 
     holdout_detail = pl.DataFrame(
         [
