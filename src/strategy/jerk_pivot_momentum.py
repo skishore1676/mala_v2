@@ -295,10 +295,11 @@ class JerkPivotMomentumStrategy(BaseStrategy):
         longs = df.filter(pl.col("signal_direction") == "long").height
         shorts = df.filter(pl.col("signal_direction") == "short").height
 
+        vm_str = f"{self.volume_multiplier:.2f}" if self.volume_multiplier is not None else "n/a"
         logger.info(
             "Strategy '{}' generated {} signals ({} long, {} short) out of {} bars "
             "[vol_filter={}, vpoc_prox={:.3f}, jerk_lookback={}, kinematic_periods_back={}, "
-            "volume_multiplier={:.2f}]",
+            "volume_multiplier={}]",
             self.name,
             total,
             longs,
@@ -308,6 +309,6 @@ class JerkPivotMomentumStrategy(BaseStrategy):
             self.vpoc_proximity_pct,
             self.jerk_lookback,
             self.kinematic_periods_back,
-            self.volume_multiplier,
+            vm_str,
         )
         return df
