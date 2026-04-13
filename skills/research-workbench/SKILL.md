@@ -19,6 +19,7 @@ Do:
 - use market-regime tags as observational evidence, not as gates
 - use `CATALOG_SELECTED.csv` as the concise selected-candidate readout
 - treat `m5_exit_optimizations.json` plus the per-candidate `m5_exit_optimization_<ticker>_<direction>_<hash>.json` files as the Bhiksha-facing exit research artifacts
+- remember that 1-minute runs apply execution guardrails from `config/hypothesis_defaults.yaml`
 - allow the optional `Strategy_Catalog` write only after M5 `promote`
 
 Do not:

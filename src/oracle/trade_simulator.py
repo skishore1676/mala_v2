@@ -273,9 +273,15 @@ class TradeSimulator:
         vma_5m_col: str = "vma_10_5m",
         market_close: dt_time = dt_time(15, 59),
         exit_policy: ExitPolicy | None = None,
+        entry_delay_bars: int = 0,
+        min_hold_bars: int = 0,
+        cooldown_bars_after_signal: int = 0,
     ) -> None:
         self.market_close = market_close
         self.exit_policy = exit_policy or VmaTrailingExitPolicy(vma_col=vma_5m_col)
+        self.entry_delay_bars = max(0, int(entry_delay_bars))
+        self.min_hold_bars = max(0, int(min_hold_bars))
+        self.cooldown_bars_after_signal = max(0, int(cooldown_bars_after_signal))
         self.vma_5m_col = (
             self.exit_policy.vma_col
             if isinstance(self.exit_policy, VmaTrailingExitPolicy)
@@ -346,16 +352,19 @@ class TradeSimulator:
                 i += 1
                 continue
 
-            entry_bar = bar_snapshot(i)
+            entry_idx = i + self.entry_delay_bars
+            if entry_idx >= n or dates[entry_idx] != dates[i]:
+                i += 1
+                continue
+            entry_bar = bar_snapshot(entry_idx)
             if not self.exit_policy.entry_is_valid(entry_bar, str(direction[i])):
                 i += 1
                 continue
 
-            entry_idx = i
-            entry_time = timestamps[i]
-            entry_price = close[i]
+            entry_time = timestamps[entry_idx]
+            entry_price = close[entry_idx]
             entry_direction = direction[i]
-            entry_date = dates[i]
+            entry_date = dates[entry_idx]
             open_trade = OpenTrade(
                 entry_idx=entry_idx,
                 entry_time=entry_time,
@@ -366,7 +375,7 @@ class TradeSimulator:
             )
 
             # Walk forward to find exit
-            j = i + 1
+            j = entry_idx + max(1, self.min_hold_bars)
             exit_reason = "eod"
             exit_price_override: float | None = None
 
@@ -415,7 +424,7 @@ class TradeSimulator:
             ))
 
             # Move past the exit bar to avoid overlapping trades
-            i = exit_idx + 1
+            i = exit_idx + 1 + self.cooldown_bars_after_signal
 
         result = SimulationResult(trades=trades)
         logger.info(

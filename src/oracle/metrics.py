@@ -30,9 +30,17 @@ class MetricsCalculator:
         self,
         forward_window: int = settings.forward_window_bars,
         win_condition: RewardRiskWinCondition | None = None,
+        entry_delay_bars: int = 0,
+        min_hold_bars: int = 0,
+        exit_evaluation_start_bar: int = 1,
+        cooldown_bars_after_signal: int = 0,
     ) -> None:
         self.forward_window = forward_window
         self.win_condition = win_condition or RewardRiskWinCondition()
+        self.entry_delay_bars = max(0, int(entry_delay_bars))
+        self.min_hold_bars = max(0, int(min_hold_bars))
+        self.exit_evaluation_start_bar = max(1, int(exit_evaluation_start_bar))
+        self.cooldown_bars_after_signal = max(0, int(cooldown_bars_after_signal))
 
     @property
     def directional_win_column(self) -> str:
@@ -74,10 +82,21 @@ class MetricsCalculator:
         mfe = np.full(n, np.nan)
         mae = np.full(n, np.nan)
 
-        for i in range(n - self.forward_window):
-            future_high = high[i + 1 : i + 1 + self.forward_window]
-            future_low = low[i + 1 : i + 1 + self.forward_window]
-            entry_price = close[i]
+        exit_offset = self._earliest_exit_offset()
+        for i in range(n):
+            entry_i = i + self.entry_delay_bars
+            end_i = entry_i + self.forward_window
+            favorable_start_i = entry_i + exit_offset
+            adverse_start_i = entry_i + 1
+            if entry_i >= n or end_i >= n or favorable_start_i > end_i or adverse_start_i > end_i:
+                continue
+
+            future_high = high[favorable_start_i : end_i + 1]
+            future_low = low[adverse_start_i : end_i + 1]
+            entry_price = close[entry_i]
+
+            if len(future_high) == 0 or len(future_low) == 0:
+                continue
 
             mfe[i] = float(np.max(future_high) - entry_price)
             mae[i] = float(entry_price - np.min(future_low))
@@ -188,13 +207,24 @@ class MetricsCalculator:
         close = df["close"].to_numpy()
         timestamps = df["timestamp"].to_list()
 
-        # Get signal direction (None for non-signal bars)
-        direction = df["signal_direction"].to_list()
-
         # Pre-compute date for each bar to find end-of-day boundaries
         dates = df.select(
             et_date_expr("timestamp").alias("trade_date")
         )["trade_date"].to_list()
+
+        signal = [bool(value) for value in df["signal"].to_list()]
+        direction = df["signal_direction"].to_list()
+        accepted_signal = self._apply_signal_cooldown(signal, dates)
+        if accepted_signal != signal:
+            accepted_direction = [
+                value if accepted_signal[idx] else None
+                for idx, value in enumerate(direction)
+            ]
+            df = df.with_columns([
+                pl.Series("signal", accepted_signal),
+                pl.Series("signal_direction", accepted_direction),
+            ])
+            direction = df["signal_direction"].to_list()
 
         # Build day-end index lookup: for each bar, the last bar of that day
         day_end_idx = {}
@@ -207,28 +237,36 @@ class MetricsCalculator:
         mfe_eod = np.full(n, np.nan)
         mae_eod = np.full(n, np.nan)
 
+        exit_offset = self._earliest_exit_offset()
         for i in range(n):
             if not direction[i]:
                 continue
 
             d = dates[i]
             end_i = day_end_idx.get(d, i)
-            if end_i <= i:
+            entry_i = i + self.entry_delay_bars
+            if entry_i >= n or dates[entry_i] != d:
+                continue
+            favorable_start_i = entry_i + exit_offset
+            adverse_start_i = entry_i + 1
+            if favorable_start_i > end_i or adverse_start_i > end_i:
                 continue
 
-            future_high = high[i + 1 : end_i + 1]
-            future_low = low[i + 1 : end_i + 1]
-            entry_price = close[i]
+            favorable_high = high[favorable_start_i : end_i + 1]
+            favorable_low = low[favorable_start_i : end_i + 1]
+            adverse_high = high[adverse_start_i : end_i + 1]
+            adverse_low = low[adverse_start_i : end_i + 1]
+            entry_price = close[entry_i]
 
-            if len(future_high) == 0:
+            if len(favorable_high) == 0 or len(adverse_high) == 0:
                 continue
 
             if direction[i] == "long":
-                mfe_eod[i] = float(np.max(future_high) - entry_price)
-                mae_eod[i] = float(entry_price - np.min(future_low))
+                mfe_eod[i] = float(np.max(favorable_high) - entry_price)
+                mae_eod[i] = float(entry_price - np.min(adverse_low))
             elif direction[i] == "short":
-                mfe_eod[i] = float(entry_price - np.min(future_low))
-                mae_eod[i] = float(np.max(future_high) - entry_price)
+                mfe_eod[i] = float(entry_price - np.min(favorable_low))
+                mae_eod[i] = float(np.max(adverse_high) - entry_price)
 
         df = df.with_columns([
             pl.Series("forward_mfe_eod", mfe_eod),
@@ -244,23 +282,32 @@ class MetricsCalculator:
                 if not direction[i]:
                     continue
 
-                end_i = min(i + window, n - 1)
-                if end_i <= i:
+                entry_i = i + self.entry_delay_bars
+                if entry_i >= n:
+                    continue
+                end_i = min(entry_i + window, n - 1)
+                if dates[entry_i] != dates[i]:
+                    continue
+                favorable_start_i = entry_i + exit_offset
+                adverse_start_i = entry_i + 1
+                if favorable_start_i > end_i or adverse_start_i > end_i:
                     continue
 
-                future_high = high[i + 1 : end_i + 1]
-                future_low = low[i + 1 : end_i + 1]
-                entry_price = close[i]
+                favorable_high = high[favorable_start_i : end_i + 1]
+                favorable_low = low[favorable_start_i : end_i + 1]
+                adverse_high = high[adverse_start_i : end_i + 1]
+                adverse_low = low[adverse_start_i : end_i + 1]
+                entry_price = close[entry_i]
 
-                if len(future_high) == 0:
+                if len(favorable_high) == 0 or len(adverse_high) == 0:
                     continue
 
                 if direction[i] == "long":
-                    mfe_w[i] = float(np.max(future_high) - entry_price)
-                    mae_w[i] = float(entry_price - np.min(future_low))
+                    mfe_w[i] = float(np.max(favorable_high) - entry_price)
+                    mae_w[i] = float(entry_price - np.min(adverse_low))
                 elif direction[i] == "short":
-                    mfe_w[i] = float(entry_price - np.min(future_low))
-                    mae_w[i] = float(np.max(future_high) - entry_price)
+                    mfe_w[i] = float(entry_price - np.min(favorable_low))
+                    mae_w[i] = float(np.max(adverse_high) - entry_price)
 
             df = df.with_columns([
                 pl.Series(f"forward_mfe_{window}", mfe_w),
@@ -278,6 +325,29 @@ class MetricsCalculator:
             snapshot_windows,
         )
         return df
+
+    def _earliest_exit_offset(self) -> int:
+        return max(1, self.exit_evaluation_start_bar, self.min_hold_bars)
+
+    def _apply_signal_cooldown(
+        self,
+        signal: list[bool],
+        dates: list[object],
+    ) -> list[bool]:
+        if self.cooldown_bars_after_signal <= 0:
+            return signal
+        accepted = [False] * len(signal)
+        last_signal_idx_by_date: dict[object, int] = {}
+        for idx, is_signal in enumerate(signal):
+            if not is_signal:
+                continue
+            trade_date = dates[idx]
+            last_idx = last_signal_idx_by_date.get(trade_date)
+            if last_idx is not None and idx - last_idx <= self.cooldown_bars_after_signal:
+                continue
+            accepted[idx] = True
+            last_signal_idx_by_date[trade_date] = idx
+        return accepted
 
     def summarise_directional_signals(self, df: pl.DataFrame) -> pl.DataFrame:
         """

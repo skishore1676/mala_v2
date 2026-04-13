@@ -122,6 +122,12 @@ _m5 = _CFG.get("m5", {})
 BASE_COST_R             = _m5.get("base_cost_r", 0.08)
 BOOTSTRAP_ITERS         = _m5.get("bootstrap_iters", 4000)
 
+_exec = _CFG.get("execution", {})
+ENTRY_DELAY_BARS = _exec.get("entry_delay_bars", 0)
+MIN_HOLD_BARS = _exec.get("min_hold_bars", 0)
+EXIT_EVALUATION_START_BAR = _exec.get("exit_evaluation_start_bar", 1)
+COOLDOWN_BARS_AFTER_SIGNAL = _exec.get("cooldown_bars_after_signal", 0)
+
 _cat = _CFG.get("catalog", {})
 MIN_MC_PROB_FOR_CATALOG = _cat.get("min_mc_prob_for_catalog", 0.70)
 MIN_MC_PROB_FOR_PROMOTE = _cat.get("min_mc_prob_for_promote", 0.95)
@@ -1287,7 +1293,19 @@ def main() -> None:
         log("ERROR  no data for any ticker")
         sys.exit(1)
 
-    metrics = MetricsCalculator()
+    metrics = MetricsCalculator(
+        entry_delay_bars=ENTRY_DELAY_BARS,
+        min_hold_bars=MIN_HOLD_BARS,
+        exit_evaluation_start_bar=EXIT_EVALUATION_START_BAR,
+        cooldown_bars_after_signal=COOLDOWN_BARS_AFTER_SIGNAL,
+    )
+    log(
+        "EXECUTION_GUARDRAILS"
+        f"  entry_delay={ENTRY_DELAY_BARS}"
+        f"  min_hold={MIN_HOLD_BARS}"
+        f"  exit_start={EXIT_EVALUATION_START_BAR}"
+        f"  cooldown={COOLDOWN_BARS_AFTER_SIGNAL}"
+    )
     windows = build_windows(args.start, args.calibration_end, TRAIN_MONTHS, TEST_MONTHS)
     log(f"WINDOWS  {len(windows)}  (train={TRAIN_MONTHS}m / test={TEST_MONTHS}m)")
 
@@ -1581,6 +1599,9 @@ def main() -> None:
                     holdout_start=args.holdout_start,
                     holdout_end=args.holdout_end,
                     catastrophe_exit_params=DEFAULT_CATASTROPHE_EXIT,
+                    entry_delay_bars=ENTRY_DELAY_BARS,
+                    min_hold_bars=MIN_HOLD_BARS,
+                    cooldown_bars_after_signal=COOLDOWN_BARS_AFTER_SIGNAL,
                 )
                 if exit_opt:
                     m5_exit_opts[_candidate_key(m5_best, param_keys)] = exit_opt

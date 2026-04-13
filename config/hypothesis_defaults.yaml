@@ -44,6 +44,13 @@ m5:
   base_cost_r:      0.08
   bootstrap_iters:  4000
 
+# ── Execution Sanity — 1-minute data guardrails ──────────────────────────────
+execution:
+  entry_delay_bars:          1   # signal on bar t can fill no earlier than t+1
+  min_hold_bars:             2   # favorable exit credit starts after this many bars
+  exit_evaluation_start_bar: 1   # never credit same-bar exits
+  cooldown_bars_after_signal: 5  # suppress rapid-fire repeat signals
+
 # ── Catalog — Strategy_Catalog Write ─────────────────────────────────────────
 catalog:
   min_mc_prob_for_catalog: 0.70   # minimum mc_prob_positive_exp to write to sheet

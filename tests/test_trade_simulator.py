@@ -65,6 +65,33 @@ def test_trade_simulator_can_use_fixed_rr_without_vma_columns() -> None:
     assert trade.vma_5m_at_entry == 0.0
 
 
+def test_trade_simulator_honors_entry_delay_and_min_hold() -> None:
+    timestamps = [datetime(2025, 1, 2, 9, 30) + timedelta(minutes=i) for i in range(5)]
+    df = pl.DataFrame(
+        {
+            "timestamp": timestamps,
+            "close": [100.0, 101.0, 101.0, 99.0, 99.0],
+            "high": [100.0, 103.0, 103.0, 101.0, 99.5],
+            "low": [100.0, 100.5, 100.5, 99.5, 98.5],
+            "signal": [True, False, False, False, False],
+            "signal_direction": ["long", None, None, None, None],
+        }
+    )
+
+    result = TradeSimulator(
+        entry_delay_bars=1,
+        min_hold_bars=2,
+        exit_policy=FixedRewardRiskExitPolicy(stop_loss=1.0, reward_multiple=1.0),
+    ).simulate(df)
+
+    assert result.total_trades == 1
+    trade = result.trades[0]
+    assert trade.entry_time == timestamps[1]
+    assert trade.exit_reason == "stop_loss"
+    assert trade.exit_price == 100.0
+    assert trade.pnl == -1.0
+
+
 def test_fixed_rr_policy_validates_configuration() -> None:
     with pytest.raises(ValueError, match="stop_loss must be positive"):
         FixedRewardRiskExitPolicy(stop_loss=0.0)

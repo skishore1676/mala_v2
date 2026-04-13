@@ -84,3 +84,31 @@ class TestMetricsCalculator:
         # Should have at most as many entries as signals
         signal_count = signal_df.filter(pl.col("signal")).height
         assert len(log) <= signal_count
+
+    def test_directional_metrics_apply_entry_delay_min_hold_and_cooldown(self) -> None:
+        df = pl.DataFrame(
+            {
+                "timestamp": pl.datetime_range(
+                    pl.datetime(2024, 1, 2, 9, 30),
+                    pl.datetime(2024, 1, 2, 9, 37),
+                    interval="1m",
+                    eager=True,
+                ),
+                "close": [100.0, 101.0, 102.0, 103.0, 104.0, 104.0, 104.0, 104.0],
+                "high": [100.0, 101.5, 110.0, 103.5, 104.5, 104.0, 104.0, 105.0],
+                "low": [99.5, 100.5, 100.0, 102.0, 103.0, 103.0, 103.0, 103.0],
+                "signal": [True, False, False, True, False, False, False, True],
+                "signal_direction": ["long", None, None, "long", None, None, None, "long"],
+            }
+        )
+        mc = MetricsCalculator(
+            entry_delay_bars=1,
+            min_hold_bars=2,
+            cooldown_bars_after_signal=5,
+        )
+
+        result = mc.add_directional_forward_metrics(df, snapshot_windows=(3,))
+
+        assert result["signal"].to_list() == [True, False, False, False, False, False, False, True]
+        assert result["forward_mfe_3"][0] == 3.5
+        assert result["forward_mae_3"][0] == 1.0

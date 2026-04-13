@@ -106,6 +106,9 @@ def optimize_underlying_exit(
     holdout_start: date,
     holdout_end: date,
     catastrophe_exit_params: dict[str, Any] | None = None,
+    entry_delay_bars: int = 0,
+    min_hold_bars: int = 0,
+    cooldown_bars_after_signal: int = 0,
 ) -> ExitOptimizationResult | None:
     """Evaluate exit policies on the holdout window. Returns the best."""
     if enriched_frame.is_empty():
@@ -119,7 +122,13 @@ def optimize_underlying_exit(
     if filtered.is_empty():
         return None
 
-    candidates = _policy_candidates(strategy_key=canonical_strategy_key, strategy=strategy)
+    candidates = _policy_candidates(
+        strategy_key=canonical_strategy_key,
+        strategy=strategy,
+        entry_delay_bars=entry_delay_bars,
+        min_hold_bars=min_hold_bars,
+        cooldown_bars_after_signal=cooldown_bars_after_signal,
+    )
     evaluations: list[ExitPolicyEvaluation] = []
     best: ExitPolicyEvaluation | None = None
 
@@ -162,6 +171,9 @@ def optimize_underlying_exit(
         selection_slice={
             "holdout_start": holdout_start.isoformat(),
             "holdout_end":   holdout_end.isoformat(),
+            "entry_delay_bars": str(max(0, int(entry_delay_bars))),
+            "min_hold_bars": str(max(0, int(min_hold_bars))),
+            "cooldown_bars_after_signal": str(max(0, int(cooldown_bars_after_signal))),
         },
         selected_policy_name=best.policy_name,
         thesis_exit_policy=best.thesis_exit_policy,
@@ -209,7 +221,12 @@ def _holdout_signal_frame(
 
 
 def _policy_candidates(
-    *, strategy_key: str, strategy: BaseStrategy
+    *,
+    strategy_key: str,
+    strategy: BaseStrategy,
+    entry_delay_bars: int = 0,
+    min_hold_bars: int = 0,
+    cooldown_bars_after_signal: int = 0,
 ) -> list[_PolicyCandidate]:
     candidates: list[_PolicyCandidate] = []
 
@@ -222,6 +239,9 @@ def _policy_candidates(
                 thesis_exit_policy="trailing_vma_underlying",
                 thesis_exit_params={"vma_col": vma_col},
                 simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
                     exit_policy=VmaTrailingExitPolicy(
                         vma_col=vma_col, policy_name="trailing_vma_underlying"
                     )
@@ -242,6 +262,9 @@ def _policy_candidates(
                     "take_profit_underlying_r_multiple": reward_multiple,
                 },
                 simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
                     exit_policy=FixedPercentRewardRiskExitPolicy(
                         stop_loss_pct=stop_loss_pct,
                         reward_multiple=reward_multiple,
