@@ -2,13 +2,13 @@
 
 ## Config
 - id: `opening-drive-v2-current-basket-discovery`
-- state: `pending`
-- decision: ``
+- state: `retune`
+- decision: `retune`
 - symbol_scope: `SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA`
 - strategy: `Opening Drive v2 (Short Continue)`
 - max_stage: `M5`
 - max_configs: `48`
-- last_run: ``
+- last_run: `2026-04-13T00:04:12+0000`
 
 ## Thesis
 Opening Drive v2 narrows the opening-drive idea toward short continuation after a stronger early move. If the opening auction exhausts upward or confirms bearish continuation, the short-side continuation profile should survive costs better than the broader opening-drive classifier.
@@ -26,4 +26,17 @@ Opening Drive v2 narrows the opening-drive idea toward short continuation after 
 - Use `CATALOG_SELECTED.csv` as the concise selected-candidate readout after M5.
 
 ## Agent Report
-Pending.
+### Run
+`2026-04-12T190235` — strategy: `Opening Drive v2 (Short Continue)`
+
+### Stages Executed
+`M1`
+
+### Notes
+- M1 FAIL: signals=47<50
+
+### Decision
+`retune`
+
+### Artifacts
+`/Users/suman/kg_env/projects/mala_v2/data/results/hypothesis_runs/opening-drive-v2-current-basket-discovery/2026-04-12T190235`
