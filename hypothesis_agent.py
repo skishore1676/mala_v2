@@ -1174,6 +1174,10 @@ def parse_args() -> argparse.Namespace:
                         help="Path to Google service-account JSON (enables Strategy_Catalog write on promote)")
     parser.add_argument("--catalog-sheet-id", default=None,
                         help="Override spreadsheet ID for Strategy_Catalog")
+    parser.add_argument("--no-catalog-write", action="store_true",
+                        help="Skip Strategy_Catalog upsert even when credentials are present. "
+                             "Use this for reruns, exit experiments, or any run where you do not "
+                             "want to touch the live Google Sheet.")
     return parser.parse_args()
 
 
@@ -1368,7 +1372,9 @@ def main() -> None:
         if d == "promote":
             creds = args.google_credentials or settings.google_api_credentials_path
             sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
-            if creds and sheet_id and not m5_df.is_empty():
+            if args.no_catalog_write:
+                log("CATALOG_SKIP  --no-catalog-write set — skipping Strategy_Catalog upsert")
+            elif creds and sheet_id and not m5_df.is_empty():
                 # Write one catalog entry per ticker×direction that clears the mc_prob threshold
                 written = 0
                 for row in _catalog_candidate_rows(m5_df):

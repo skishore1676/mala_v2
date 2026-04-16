@@ -7,7 +7,7 @@
 - symbol_scope: `SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA`
 - strategy: `Market Impulse (Cross & Reclaim)`
 - max_stage: `M5`
-- last_run: `2026-04-13T01:21:50+0000`
+- last_run: `2026-04-16T03:56:26+0000`
 
 ## Thesis
 Market Impulse captures the directional move that follows a confirmed
@@ -35,7 +35,7 @@ is most durable across cost frictions and out-of-sample windows.
 
 ## Agent Report
 ### Run
-`2026-04-12T201909` — strategy: `Market Impulse (Cross & Reclaim)`
+`2026-04-15T225335` — strategy: `Market Impulse (Cross & Reclaim)`
 
 ### Stages Executed
 `M1 → M2 → M3 → M4 → M5`
@@ -52,4 +52,4 @@ is most durable across cost frictions and out-of-sample windows.
 `promote`
 
 ### Artifacts
-`/Users/suman/kg_env/projects/mala_v2/data/results/hypothesis_runs/market-impulse-all-basket-discovery/2026-04-12T201909`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/market-impulse-all-basket-discovery/2026-04-15T225335`
