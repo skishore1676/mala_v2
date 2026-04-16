@@ -96,4 +96,4 @@ def test_upsert_strategy_catalog_writes_canonical_market_impulse_row(monkeypatch
     assert row["strategy_family"] == "market_impulse"
     assert row["bias_template"] == "bearish_trend_intraday"
     assert row["lifecycle_status"] == "candidate"
-    assert row["bionic_ready"] == "false"
+    assert row["bhiksha_ready"] == "false"
