@@ -96,6 +96,17 @@ def test_market_impulse_accepts_valid_vwma_period_surface() -> None:
     assert "market_impulse_vwma_5_13_21" in strategy.feature_requests
 
 
+def test_market_impulse_accepts_serialized_vwma_period_surface() -> None:
+    strategy = build_strategy(
+        "Market Impulse (Cross & Reclaim)",
+        {"vwma_periods": "5,13,21"},
+    )
+
+    assert isinstance(strategy, MarketImpulseStrategy)
+    assert strategy.vwma_periods == (5, 13, 21)
+    assert "market_impulse_vwma_5_13_21" in strategy.feature_requests
+
+
 def test_market_impulse_rejects_invalid_vwma_period_surface() -> None:
     try:
         build_strategy(

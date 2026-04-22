@@ -62,7 +62,7 @@ class MarketImpulseStrategy(BaseStrategy):
         self.entry_window_minutes = entry_window_minutes
         self.market_open = time(market_open_hour, market_open_minute)
         self.vma_length = _resolve_vma_length(vma_length=vma_length, vma_col=vma_col)
-        self.vwma_periods = validate_vwma_periods(tuple(vwma_periods))
+        self.vwma_periods = _normalize_vwma_periods(vwma_periods)
         self.vma_col = vma_col or f"vma_{self.vma_length}"
         self.regime_timeframe = _resolve_regime_timeframe(
             regime_timeframe=regime_timeframe,
@@ -273,3 +273,10 @@ def _resolve_regime_timeframe(*, regime_timeframe: str, regime_col: str | None) 
         if match:
             return match.group(1)
     return regime_timeframe
+
+
+def _normalize_vwma_periods(vwma_periods: Any) -> tuple[int, int, int]:
+    if isinstance(vwma_periods, str):
+        parts = [part.strip() for part in vwma_periods.split(",") if part.strip()]
+        return validate_vwma_periods(tuple(int(part) for part in parts))
+    return validate_vwma_periods(tuple(vwma_periods))
