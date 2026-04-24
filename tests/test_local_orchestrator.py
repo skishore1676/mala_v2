@@ -106,3 +106,22 @@ def test_control_row_approval_maps_to_retune_command(tmp_path: Path) -> None:
         "--hypothesis",
         str(hypotheses / "retune-me.md"),
     ]
+
+
+def test_control_row_surface_expansion_is_reasoning_only(tmp_path: Path) -> None:
+    args = parse_args(["once", "--hypotheses-dir", str(tmp_path / "hypotheses")])
+
+    command = _command_for_control_row(
+        {
+            "operator_action": "APPROVE_SURFACE_EXPANSION",
+            "rank": "1",
+            "priority": "medium",
+            "action_type": "retune_plan",
+            "key": "retune-me",
+            "reason": "needs search-space review",
+            "suggested_command": "",
+        },
+        args,
+    )
+
+    assert command is None

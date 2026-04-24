@@ -89,6 +89,7 @@ Research Ops outputs are rebuildable summaries:
 uv run python -m src.research.research_ops backfill
 uv run python -m src.research.research_ops hot-start
 uv run python -m src.research.research_ops next-actions
+uv run python -m src.research.research_ops action-brief --key retune_plan:<hypothesis_id>
 uv run python -m src.research.research_ops push-control --control-sheet-id <sheet_id> --control-sheet-name Research_Control
 uv run python -m src.research.research_ops publish-pending --dry-run
 uv run python -m src.research.research_ops sync-board --dry-run
@@ -104,6 +105,10 @@ Default output:
 Use `hot_start.md` at the beginning or end of a research session to identify:
 stale board rows, missing summaries, promoted rows absent from Strategy_Catalog,
 terminal hypotheses without artifacts, and other next-action cleanup items.
+Use `action-brief` before approving a queued retune or sheet mutation; it reads
+the latest artifacts, writes a local Markdown brief, and can mirror
+`brief_recommendation`, `brief_summary`, and `brief_path` into
+`Research_Control` with `--push-control`.
 
 Use `src.research.research_runner` for bounded execution commands. It wraps
 `hypothesis_agent.py` and keeps agents on a deterministic command menu:
@@ -137,10 +142,12 @@ The orchestrator consumes `next-actions`, runs only safe/dry-run commands, and
 writes a reasoning brief under `data/results/research_ops/orchestrator/`. It
 must stop for approval before research execution, retunes, catalog writes,
 board writes, and evidence repairs.
+`APPROVE_SURFACE_EXPANSION` is recognized as a reasoning-only control action;
+it should produce a search-space review, not execute code or a retune directly.
 
 The optional Google Sheet control layer uses a `Research_Control` tab. Valid
 `operator_action` values are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`,
-`APPROVE_BOARD_SYNC`, `MARK_STALE`, and `SKIP`.
+`APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
 
 ---
 

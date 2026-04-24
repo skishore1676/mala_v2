@@ -41,6 +41,9 @@ CONTROL_SHEET_HEADERS = [
     "mutates_external_state",
     "operator_action",
     "status",
+    "brief_recommendation",
+    "brief_summary",
+    "brief_path",
     "last_report_path",
     "updated_at",
     "generated_at",
@@ -51,6 +54,7 @@ CONTROL_OPERATOR_ACTIONS = {
     "APPROVE_RETUNE",
     "APPROVE_PUBLISH",
     "APPROVE_BOARD_SYNC",
+    "APPROVE_SURFACE_EXPANSION",
     "MARK_STALE",
     "SKIP",
 }
@@ -150,6 +154,23 @@ class NextAction:
 
 
 @dataclass(slots=True)
+class ActionBrief:
+    generated_at: str
+    action_id: str
+    action_type: str
+    key: str
+    hypothesis_id: str
+    recommendation: str
+    suggested_operator_action: str
+    summary: str
+    suggested_command: str
+    report_path: str
+    evidence: list[str]
+    surface_proposal: list[str]
+    sources: list[str]
+
+
+@dataclass(slots=True)
 class ResearchLedger:
     generated_at: str
     hypotheses: list[HypothesisLedgerRow]
@@ -188,6 +209,46 @@ def _read_csv_dicts(path: Path) -> list[dict[str, str]]:
         return []
     with path.open("r", encoding="utf-8", newline="") as handle:
         return [dict(row) for row in csv.DictReader(handle)]
+
+
+def _read_text(path: Path, *, max_chars: int = 12000) -> str:
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return text[:max_chars]
+
+
+def _artifact_path(value: str) -> Path | None:
+    if not value:
+        return None
+    path = Path(value)
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        text = str(value).strip().replace("%", "")
+        return float(text)
+    except (TypeError, ValueError):
+        return default
+
+
+def _truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "pass", "passed"}
+
+
+def _brief_cell(text: str, *, max_chars: int = 450) -> str:
+    collapsed = re.sub(r"\s+", " ", text).strip()
+    return collapsed[: max_chars - 3] + "..." if len(collapsed) > max_chars else collapsed
+
+
+def _format_number(value: Any, *, digits: int = 4) -> str:
+    if value in (None, ""):
+        return ""
+    number = _to_float(value, default=float("nan"))
+    if number != number:
+        return str(value)
+    return f"{number:.{digits}f}"
 
 
 def _detected_stages(run_dir: Path) -> list[str]:
@@ -685,6 +746,9 @@ def build_control_rows(
                 "mutates_external_state": item.mutates_external_state,
                 "operator_action": operator_action,
                 "status": str(existing.get("status", "") or "queued"),
+                "brief_recommendation": str(existing.get("brief_recommendation", "")),
+                "brief_summary": str(existing.get("brief_summary", "")),
+                "brief_path": str(existing.get("brief_path", "")),
                 "last_report_path": str(existing.get("last_report_path", "")),
                 "updated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
                 "generated_at": generated_at,
@@ -705,6 +769,395 @@ def _match_board_row_to_hypothesis(
         if hypothesis_id.lower() in haystack:
             return row
     return None
+
+
+def _split_action_key(value: str) -> tuple[str, str]:
+    if ":" in value:
+        action_type, key = value.split(":", 1)
+        return action_type.strip(), key.strip()
+    return "", value.strip()
+
+
+def _find_action_for_brief(
+    *,
+    actions: list[NextAction],
+    key: str,
+    action_type: str = "",
+) -> NextAction | None:
+    for action in actions:
+        if action.key != key:
+            continue
+        if action_type and action.action_type != action_type:
+            continue
+        return action
+    return None
+
+
+def _find_hypothesis(ledger: ResearchLedger, key: str) -> HypothesisLedgerRow | None:
+    for row in ledger.hypotheses:
+        if row.hypothesis_id == key:
+            return row
+    return None
+
+
+def _latest_run(ledger: ResearchLedger, hypothesis_id: str) -> RunLedgerRow | None:
+    rows = [row for row in ledger.runs if row.hypothesis_id == hypothesis_id]
+    return sorted(rows, key=lambda row: row.run_ts)[-1] if rows else None
+
+
+def _sorted_metric_rows(
+    rows: list[dict[str, str]],
+    *,
+    primary: str,
+    secondary: str = "avg_test_exp_r",
+    limit: int = 3,
+) -> list[dict[str, str]]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            _to_float(row.get(primary), default=-999999),
+            _to_float(row.get(secondary), default=-999999),
+        ),
+        reverse=True,
+    )[:limit]
+
+
+def _compact_config(row: dict[str, str]) -> str:
+    skip = {
+        "ticker",
+        "strategy",
+        "direction",
+        "oos_windows",
+        "oos_signals",
+        "avg_test_exp_r",
+        "pct_positive_oos_windows",
+        "avg_test_confidence",
+        "avg_test_mfe_mae_ratio",
+        "m1_score",
+        "observed_cost_points",
+        "min_oos_windows",
+        "min_oos_signals",
+        "min_avg_test_exp_r",
+        "mean_avg_test_exp_r",
+        "min_pct_positive_oos_windows",
+        "mean_pct_positive_oos_windows",
+        "mean_test_confidence",
+        "has_all_cost_points",
+        "passes_window_gate",
+        "passes_signal_gate",
+        "passes_stability_gate",
+        "passes_exp_gate",
+        "passes_all_gates",
+        "decision",
+        "score",
+    }
+    parts = [f"{key}={value}" for key, value in row.items() if key not in skip and str(value).strip()]
+    return ", ".join(parts[:8])
+
+
+def _m1_evidence_lines(m1_rows: list[dict[str, str]]) -> list[str]:
+    if not m1_rows:
+        return ["M1_top.csv is absent or empty for the latest run."]
+    lines = [f"M1_top.csv has {len(m1_rows)} candidate rows."]
+    for row in _sorted_metric_rows(m1_rows, primary="m1_score"):
+        lines.append(
+            (
+                "M1 top: "
+                f"{row.get('ticker', '')} {row.get('direction', '')} "
+                f"exp_r={_format_number(row.get('avg_test_exp_r'))} "
+                f"pct_pos={_format_number(row.get('pct_positive_oos_windows'), digits=2)} "
+                f"signals={row.get('oos_signals', '')} "
+                f"config=({_compact_config(row)})"
+            ).strip()
+        )
+    return lines
+
+
+def _m2_evidence_lines(m2_rows: list[dict[str, str]]) -> list[str]:
+    if not m2_rows:
+        return ["M2_gate_report.csv is absent or empty for the latest run."]
+    pass_all = sum(1 for row in m2_rows if _truthy(row.get("passes_all_gates")))
+    pass_exp = sum(1 for row in m2_rows if _truthy(row.get("passes_exp_gate")))
+    pass_stability = sum(1 for row in m2_rows if _truthy(row.get("passes_stability_gate")))
+    lines = [
+        (
+            f"M2_gate_report.csv has {len(m2_rows)} rows; "
+            f"passes_all={pass_all}, passes_exp={pass_exp}, passes_stability={pass_stability}."
+        )
+    ]
+    for row in _sorted_metric_rows(m2_rows, primary="score", secondary="min_avg_test_exp_r"):
+        lines.append(
+            (
+                "M2 best: "
+                f"{row.get('ticker', '')} {row.get('direction', '')} "
+                f"min_exp_r={_format_number(row.get('min_avg_test_exp_r'))} "
+                f"min_pct_pos={_format_number(row.get('min_pct_positive_oos_windows'), digits=2)} "
+                f"all={row.get('passes_all_gates', '')} "
+                f"exp={row.get('passes_exp_gate', '')} "
+                f"stability={row.get('passes_stability_gate', '')} "
+                f"config=({_compact_config(row)})"
+            ).strip()
+        )
+    return lines
+
+
+def _surface_proposal(
+    *,
+    hypothesis: HypothesisLedgerRow | None,
+    action_type: str,
+    m1_rows: list[dict[str, str]],
+    m2_rows: list[dict[str, str]],
+) -> list[str]:
+    if hypothesis is None:
+        return ["No matching hypothesis row; inspect the action key before changing search space."]
+    strategy = hypothesis.strategy.lower()
+    if action_type != "retune_plan":
+        return ["No parameter-surface change is proposed for this action type."]
+
+    proposal: list[str] = []
+    if m2_rows:
+        pass_exp = [row for row in m2_rows if _truthy(row.get("passes_exp_gate"))]
+        pass_stability = [row for row in m2_rows if _truthy(row.get("passes_stability_gate"))]
+        pass_all = [row for row in m2_rows if _truthy(row.get("passes_all_gates"))]
+        if pass_all:
+            proposal.append("Surface does not need expansion before continuation; at least one M2 row already passed all gates.")
+        elif pass_exp and not pass_stability:
+            proposal.append("Evidence is edge-positive but cost/window stability is weak; prefer a bounded retune or surface expansion over blind rerun.")
+        elif not pass_exp:
+            proposal.append("M2 did not preserve positive expectancy across cost points; favor kill/skip unless M1 shows a clear alternate cluster.")
+
+    best_source = _sorted_metric_rows(m1_rows, primary="m1_score", limit=1) or _sorted_metric_rows(
+        m2_rows,
+        primary="score",
+        secondary="min_avg_test_exp_r",
+        limit=1,
+    )
+    best = best_source[0] if best_source else {}
+    if "market impulse" in strategy:
+        config = _compact_config(best) if best else ""
+        if config:
+            proposal.append(f"Market Impulse tuning center from best evidence: {config}.")
+        proposal.append(
+            "If approving surface expansion, keep it config-only: tighten around observed timeframe/VWMA/threshold clusters, "
+            "then rerun M1 before any M2 continuation."
+        )
+    elif best:
+        proposal.append(f"Use the best observed config as the retune center: {_compact_config(best)}.")
+    else:
+        proposal.append("No candidate-level CSV evidence was found; rerun or mark stale before expanding search space.")
+    return proposal
+
+
+def _brief_recommendation(
+    *,
+    hypothesis: HypothesisLedgerRow | None,
+    action: NextAction | None,
+    m1_rows: list[dict[str, str]],
+    m2_rows: list[dict[str, str]],
+    summary_text: str,
+) -> tuple[str, str, str]:
+    action_type = action.action_type if action else ""
+    if action_type == "publish_pending":
+        return "PUBLISH_REVIEW", "APPROVE_PUBLISH", "Catalog write is external state; dedupe and review execution fields before applying."
+    if action_type == "sync_board":
+        return "BOARD_SYNC_REVIEW", "APPROVE_BOARD_SYNC", "Board state is stale relative to Mala; sync after confirming the matched row."
+    if action_type in {"repair_run_summary", "inspect_terminal"}:
+        return "MARK_STALE_OR_REPAIR", "MARK_STALE", "Evidence is incomplete; mark stale if the artifact is not needed, otherwise repair before use."
+    if action_type == "run_m1":
+        return "RUN_M1_REVIEW", "SKIP", "Pending hypothesis needs human/agent thesis review before first execution."
+
+    if hypothesis is None:
+        return "INSPECT", "SKIP", "Action key does not map to a local hypothesis; inspect before execution."
+    combined = f"{hypothesis.state} {hypothesis.decision} {summary_text}".lower()
+    if hypothesis.state == "kill":
+        return "NO_ACTION", "SKIP", "Hypothesis is already kill; do not spend more research cycles unless a new thesis is written."
+    if hypothesis.state == "completed":
+        return "PUBLISH_REVIEW", "APPROVE_PUBLISH", "Hypothesis is completed; use publish review only if a selected catalog row is missing."
+
+    if action_type == "retune_plan":
+        if "m1 fail: no positive configs" in combined:
+            return "KILL_OR_SKIP", "SKIP", "Latest retune found no positive configs; archive or kill unless the thesis changes materially."
+        if "m1 fail" in combined and ("signals=" in combined or "windows=" in combined or "pct_pos=" in combined):
+            return "SURFACE_EXPANSION_REVIEW", "APPROVE_SURFACE_EXPANSION", "M1 failed on sample/stability; inspect whether the search surface is too narrow before another retune."
+        if m2_rows:
+            pass_all = any(_truthy(row.get("passes_all_gates")) for row in m2_rows)
+            pass_exp = any(_truthy(row.get("passes_exp_gate")) for row in m2_rows)
+            pass_stability = any(_truthy(row.get("passes_stability_gate")) for row in m2_rows)
+            if pass_all:
+                return "APPROVE_CONTINUATION_REVIEW", "SKIP", "M2 has passing candidates; inspect why the hypothesis remains retune before rerunning."
+            if pass_exp and not pass_stability:
+                return "APPROVE_RETUNE", "APPROVE_RETUNE", "Expectancy exists but stability did not survive M2; a bounded retune is reasonable."
+            if not pass_exp:
+                return "KILL_OR_SURFACE_RETHINK", "SKIP", "M2 expectancy did not survive cost convergence; avoid another simple retune."
+        if m1_rows:
+            positive = [row for row in m1_rows if _to_float(row.get("avg_test_exp_r")) > 0]
+            if positive:
+                return "APPROVE_RETUNE", "APPROVE_RETUNE", "M1 still has positive candidates; run the bounded retune plan."
+        return "INSPECT_BEFORE_RETUNE", "SKIP", "Retune is queued, but artifact evidence is thin."
+
+    return "INSPECT", "SKIP", "No specific recommendation rule matched this action."
+
+
+def build_action_brief(
+    *,
+    ledger: ResearchLedger,
+    key: str,
+    action_type: str = "",
+) -> ActionBrief:
+    requested_action_type, clean_key = _split_action_key(key)
+    action_type = action_type or requested_action_type
+    actions = build_next_actions(ledger)
+    action = _find_action_for_brief(actions=actions, key=clean_key, action_type=action_type)
+    if action is None and action_type:
+        action = NextAction(
+            rank=0,
+            priority="medium",
+            action_type=action_type,
+            key=clean_key,
+            reason="Ad hoc action brief request.",
+            suggested_command="",
+            requires_approval="yes",
+            mutates_external_state="no",
+        )
+
+    hypothesis = _find_hypothesis(ledger, clean_key)
+    latest_run = _latest_run(ledger, clean_key)
+    latest_dir = _artifact_path(hypothesis.latest_artifact_dir) if hypothesis else None
+    summary_path = latest_dir / "RUN_SUMMARY.md" if latest_dir else None
+    summary_text = _read_text(summary_path) if summary_path else ""
+    m1_rows = _read_csv_dicts(latest_dir / "M1_top.csv") if latest_dir else []
+    m2_rows = _read_csv_dicts(latest_dir / "M2_gate_report.csv") if latest_dir else []
+    recommendation, operator_action, summary = _brief_recommendation(
+        hypothesis=hypothesis,
+        action=action,
+        m1_rows=m1_rows,
+        m2_rows=m2_rows,
+        summary_text=summary_text,
+    )
+    evidence: list[str] = []
+    if action is not None:
+        evidence.append(
+            (
+                f"Queued action rank={action.rank}, priority={action.priority}, "
+                f"type={action.action_type}, reason={action.reason}"
+            )
+        )
+    if hypothesis is not None:
+        evidence.append(
+            (
+                f"Hypothesis state={hypothesis.state}, decision={hypothesis.decision or '<empty>'}, "
+                f"strategy={hypothesis.strategy}, symbols={hypothesis.symbol_scope}, latest_stage={hypothesis.latest_stage}."
+            )
+        )
+    if latest_run is not None:
+        evidence.append(
+            (
+                f"Latest run {latest_run.run_ts} terminal_stage={latest_run.terminal_stage}, "
+                f"decision={latest_run.decision or '<empty>'}, artifacts={latest_run.artifact_files}."
+            )
+        )
+    if hypothesis is not None or (action is not None and action.action_type in {"retune_plan", "run_m1"}):
+        evidence.extend(_m2_evidence_lines(m2_rows))
+        evidence.extend(_m1_evidence_lines(m1_rows))
+    sources = []
+    if hypothesis is not None:
+        sources.append(hypothesis.file_path)
+    if latest_run is not None:
+        sources.append(latest_run.artifact_dir)
+    if summary_path and summary_path.exists():
+        sources.append(_relative(summary_path))
+
+    brief_action_id = action_id(action) if action else f"{action_type}:{clean_key}".strip(":")
+    return ActionBrief(
+        generated_at=ledger.generated_at,
+        action_id=brief_action_id,
+        action_type=action.action_type if action else action_type,
+        key=clean_key,
+        hypothesis_id=hypothesis.hypothesis_id if hypothesis else "",
+        recommendation=recommendation,
+        suggested_operator_action=operator_action,
+        summary=summary,
+        suggested_command=action.suggested_command if action else "",
+        report_path="",
+        evidence=evidence,
+        surface_proposal=_surface_proposal(
+            hypothesis=hypothesis,
+            action_type=action.action_type if action else action_type,
+            m1_rows=m1_rows,
+            m2_rows=m2_rows,
+        ),
+        sources=sources,
+    )
+
+
+def write_action_brief(brief: ActionBrief, out_dir: Path) -> ActionBrief:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "-", brief.action_id).strip("-") or "action"
+    stamp = brief.generated_at.replace(":", "").replace("-", "").replace("+", "Z")
+    path = out_dir / "action_briefs" / f"{stamp}__{safe_key}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Mala Research Action Brief",
+        "",
+        f"- generated_at: `{brief.generated_at}`",
+        f"- action_id: `{brief.action_id}`",
+        f"- key: `{brief.key}`",
+        f"- recommendation: `{brief.recommendation}`",
+        f"- suggested_operator_action: `{brief.suggested_operator_action}`",
+        f"- suggested_command: `{brief.suggested_command}`",
+        "",
+        "## Summary",
+        "",
+        brief.summary,
+        "",
+        "## Evidence",
+        "",
+    ]
+    lines.extend(f"- {line}" for line in brief.evidence)
+    lines.extend(["", "## Retune And Surface Proposal", ""])
+    lines.extend(f"- {line}" for line in brief.surface_proposal)
+    lines.extend(["", "## Sources", ""])
+    lines.extend(f"- `{source}`" for source in brief.sources)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return ActionBrief(
+        generated_at=brief.generated_at,
+        action_id=brief.action_id,
+        action_type=brief.action_type,
+        key=brief.key,
+        hypothesis_id=brief.hypothesis_id,
+        recommendation=brief.recommendation,
+        suggested_operator_action=brief.suggested_operator_action,
+        summary=brief.summary,
+        suggested_command=brief.suggested_command,
+        report_path=str(path),
+        evidence=brief.evidence,
+        surface_proposal=brief.surface_proposal,
+        sources=brief.sources,
+    )
+
+
+def update_control_row_with_brief(
+    *,
+    client: GoogleSheetTableClient,
+    brief: ActionBrief,
+) -> bool:
+    client.ensure_sheet_exists()
+    client.ensure_columns(CONTROL_SHEET_HEADERS)
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    for row in rows:
+        if str(row.get("action_id", "")).strip() != brief.action_id:
+            continue
+        next_row = dict(row)
+        next_row["brief_recommendation"] = brief.recommendation
+        next_row["brief_summary"] = _brief_cell(brief.summary)
+        next_row["brief_path"] = brief.report_path
+        next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+        client.batch_update_rows(
+            rows=[next_row],
+            columns=["brief_recommendation", "brief_summary", "brief_path", "updated_at"],
+        )
+        return True
+    return False
 
 
 def write_csv_tables(ledger: ResearchLedger, out_dir: Path) -> dict[str, Path]:
@@ -1227,6 +1680,26 @@ def cmd_push_control(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_action_brief(args: argparse.Namespace) -> int:
+    ledger = _build_with_optional_sheets(args)
+    brief = build_action_brief(
+        ledger=ledger,
+        key=args.key,
+        action_type=args.action_type,
+    )
+    brief = write_action_brief(brief, Path(args.out_dir))
+    pushed = False
+    if args.push_control:
+        client = _control_client(args)
+        pushed = update_control_row_with_brief(client=client, brief=brief)
+    print(f"ACTION_BRIEF_REPORT={brief.report_path}")
+    print(f"ACTION_BRIEF_ID={brief.action_id}")
+    print(f"ACTION_BRIEF_RECOMMENDATION={brief.recommendation}")
+    print(f"ACTION_BRIEF_OPERATOR_ACTION={brief.suggested_operator_action}")
+    print(f"ACTION_BRIEF_CONTROL_UPDATED={'yes' if pushed else 'no'}")
+    return 0
+
+
 def cmd_publish_pending(args: argparse.Namespace) -> int:
     catalog_client = _strategy_catalog_client(args)
     catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
@@ -1388,6 +1861,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_common_args(push_control)
     push_control.add_argument("--limit", type=int, default=25)
     push_control.set_defaults(func=cmd_push_control)
+
+    action_brief = subparsers.add_parser("action-brief", help="Write an evidence brief for a queued Research_Control action.")
+    _add_common_args(action_brief)
+    action_brief.add_argument("--key", required=True, help="Hypothesis key or action_id, e.g. retune_plan:my-hypothesis.")
+    action_brief.add_argument("--action-type", default="", help="Optional action type when --key is only the hypothesis id.")
+    action_brief.add_argument("--push-control", action="store_true", help="Mirror recommendation/summary/path to Research_Control.")
+    action_brief.set_defaults(func=cmd_action_brief)
 
     publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
     _add_common_args(publish)

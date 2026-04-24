@@ -108,6 +108,8 @@ python -m src.research.research_ops backfill
 # Generate hot-start and next-action reconciliation reports
 python -m src.research.research_ops hot-start
 python -m src.research.research_ops next-actions
+python -m src.research.research_ops action-brief --key retune_plan:my-idea
+python -m src.research.research_ops action-brief --key retune_plan:my-idea --push-control
 
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
@@ -159,9 +161,10 @@ Finding dispositions are decision memory and live in
 Mental model:
 - Mala research engine proves or kills ideas through M1-M5.
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
+- Action Briefs inspect the queued item, summarize evidence, and recommend a bounded operator action.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
-- Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set.
+- Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
 - Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
 - Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.

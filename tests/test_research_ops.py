@@ -8,11 +8,14 @@ from src.research.research_ops import (
     _catalog_publish_plan,
     FindingDisposition,
     append_disposition,
+    build_action_brief,
     build_control_rows,
     build_hot_start_findings,
     build_ledger,
     build_next_actions,
     read_dispositions,
+    update_control_row_with_brief,
+    write_action_brief,
     write_csv_tables,
     write_hot_start_report,
     write_workbook,
@@ -241,7 +244,113 @@ def test_build_control_rows_preserves_operator_action() -> None:
     assert rows[0]["action_id"] == "retune_plan:idea"
     assert rows[0]["operator_action"] == "APPROVE_RETUNE"
     assert rows[0]["status"] == "reviewed"
+    assert rows[0]["brief_recommendation"] == ""
     assert rows[0]["last_report_path"] == "old.md"
+
+
+def test_action_brief_recommends_retune_after_m2_exp_positive_instability(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="idea", state="retune", decision="retune")
+    run_dir = runs / "idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text("- decision: `retune`\n- M2: 0 candidates promoted\n", encoding="utf-8")
+    _write_csv(
+        run_dir / "M2_gate_report.csv",
+        [
+            {
+                "ticker": "AMD",
+                "strategy": "Market Impulse",
+                "direction": "short",
+                "min_avg_test_exp_r": "0.04",
+                "min_pct_positive_oos_windows": "50.0",
+                "passes_exp_gate": "true",
+                "passes_stability_gate": "false",
+                "passes_all_gates": "false",
+                "score": "0.40",
+                "regime_timeframe": "15m",
+                "fast_vwma": "8",
+                "slow_vwma": "21",
+            }
+        ],
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    brief = build_action_brief(ledger=ledger, key="idea", action_type="retune_plan")
+    brief = write_action_brief(brief, tmp_path / "ops")
+
+    assert brief.recommendation == "APPROVE_RETUNE"
+    assert brief.suggested_operator_action == "APPROVE_RETUNE"
+    assert "Expectancy exists" in brief.summary
+    assert Path(brief.report_path).exists()
+    assert "Market Impulse tuning center" in "\n".join(brief.surface_proposal)
+
+
+def test_action_brief_recommends_skip_after_no_positive_m1_retune(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="dead-idea", state="retune", decision="retune")
+    run_dir = runs / "dead-idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: no positive configs found\n",
+        encoding="utf-8",
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    brief = build_action_brief(ledger=ledger, key="retune_plan:dead-idea")
+
+    assert brief.recommendation == "KILL_OR_SKIP"
+    assert brief.suggested_operator_action == "SKIP"
+
+
+class _FakeControlClient:
+    def __init__(self) -> None:
+        self.rows = [{"row_index": 2, "action_id": "retune_plan:idea", "updated_at": ""}]
+        self.columns: list[str] = []
+
+    def ensure_sheet_exists(self) -> None:
+        return None
+
+    def ensure_columns(self, columns: list[str]) -> list[str]:
+        self.columns = columns
+        return []
+
+    def read_rows(self, *, range_suffix: str = "A1:ZZ5000") -> list[dict[str, object]]:
+        return self.rows
+
+    def batch_update_rows(self, *, rows: list[dict[str, object]], columns: list[str]) -> dict[str, object]:
+        self.rows = rows
+        self.columns = columns
+        return {}
+
+
+def test_update_control_row_with_brief_writes_brief_columns() -> None:
+    from src.research.research_ops import ActionBrief
+
+    client = _FakeControlClient()
+    brief = ActionBrief(
+        generated_at="2026-04-24T00:00:00+00:00",
+        action_id="retune_plan:idea",
+        action_type="retune_plan",
+        key="idea",
+        hypothesis_id="idea",
+        recommendation="APPROVE_RETUNE",
+        suggested_operator_action="APPROVE_RETUNE",
+        summary="Bounded retune is reasonable.",
+        suggested_command="cmd",
+        report_path="brief.md",
+        evidence=[],
+        surface_proposal=[],
+        sources=[],
+    )
+
+    assert update_control_row_with_brief(client=client, brief=brief)
+    assert client.rows[0]["brief_recommendation"] == "APPROVE_RETUNE"
+    assert client.rows[0]["brief_summary"] == "Bounded retune is reasonable."
+    assert client.rows[0]["brief_path"] == "brief.md"
 
 
 def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) -> None:
