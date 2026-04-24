@@ -112,6 +112,9 @@ python -m src.research.research_ops next-actions
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
 python -m src.research.research_ops sync-board --dry-run
+python -m src.research.research_ops push-control \
+  --control-sheet-id 1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0 \
+  --control-sheet-name Research_Control
 
 # Non-destructively suppress reviewed stale findings from future queues
 python -m src.research.research_ops mark-stale \
@@ -143,6 +146,7 @@ reasoning brief for Codex/OpenClaw/human review before any gated action.
 ```bash
 python -m src.research.local_orchestrator once --mode dry-run
 python -m src.research.local_orchestrator once --mode apply-safe
+python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet
 python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
 ```
 
@@ -157,6 +161,7 @@ Mental model:
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
+- Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set.
 - Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
 - Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.

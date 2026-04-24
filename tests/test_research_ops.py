@@ -8,6 +8,7 @@ from src.research.research_ops import (
     _catalog_publish_plan,
     FindingDisposition,
     append_disposition,
+    build_control_rows,
     build_hot_start_findings,
     build_ledger,
     build_next_actions,
@@ -206,6 +207,41 @@ def test_next_actions_rank_publish_and_retune_work(tmp_path: Path) -> None:
 
     assert [action.action_type for action in actions[:3]] == ["publish_pending", "retune_plan", "run_m1"]
     assert actions[0].mutates_external_state == "yes"
+
+
+def test_build_control_rows_preserves_operator_action() -> None:
+    from src.research.research_ops import NextAction
+
+    actions = [
+        NextAction(
+            rank=1,
+            priority="medium",
+            action_type="retune_plan",
+            key="idea",
+            reason="needs retune",
+            suggested_command="cmd",
+            requires_approval="yes",
+            mutates_external_state="no",
+        )
+    ]
+
+    rows = build_control_rows(
+        actions=actions,
+        generated_at="2026-04-24T00:00:00+00:00",
+        existing_rows=[
+            {
+                "action_id": "retune_plan:idea",
+                "operator_action": "APPROVE_RETUNE",
+                "status": "reviewed",
+                "last_report_path": "old.md",
+            }
+        ],
+    )
+
+    assert rows[0]["action_id"] == "retune_plan:idea"
+    assert rows[0]["operator_action"] == "APPROVE_RETUNE"
+    assert rows[0]["status"] == "reviewed"
+    assert rows[0]["last_report_path"] == "old.md"
 
 
 def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) -> None:

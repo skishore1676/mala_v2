@@ -27,6 +27,33 @@ DEFAULT_HYPOTHESES_DIR = REPO_ROOT / "research" / "hypotheses"
 DEFAULT_RUNS_DIR = REPO_ROOT / "data" / "results" / "hypothesis_runs"
 DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
 DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
+DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
+
+CONTROL_SHEET_HEADERS = [
+    "action_id",
+    "rank",
+    "priority",
+    "action_type",
+    "key",
+    "reason",
+    "suggested_command",
+    "requires_approval",
+    "mutates_external_state",
+    "operator_action",
+    "status",
+    "last_report_path",
+    "updated_at",
+    "generated_at",
+]
+
+CONTROL_OPERATOR_ACTIONS = {
+    "",
+    "APPROVE_RETUNE",
+    "APPROVE_PUBLISH",
+    "APPROVE_BOARD_SYNC",
+    "MARK_STALE",
+    "SKIP",
+}
 
 STAGE_FILES = {
     "M1": ("M1_top.csv", "M1_aggregate.csv", "M1_detail.csv"),
@@ -621,6 +648,51 @@ def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
     ]
 
 
+def action_id(action: NextAction | dict[str, Any]) -> str:
+    action_type = action.action_type if isinstance(action, NextAction) else str(action.get("action_type", ""))
+    key = action.key if isinstance(action, NextAction) else str(action.get("key", ""))
+    return f"{action_type}:{key}"
+
+
+def build_control_rows(
+    *,
+    actions: list[NextAction],
+    generated_at: str,
+    existing_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build Research_Control rows while preserving operator-entered fields."""
+    existing_by_id = {
+        str(row.get("action_id", "")).strip(): row
+        for row in existing_rows or []
+        if str(row.get("action_id", "")).strip()
+    }
+    rows: list[dict[str, Any]] = []
+    for item in actions:
+        existing = existing_by_id.get(action_id(item), {})
+        operator_action = str(existing.get("operator_action", "")).strip().upper()
+        if operator_action not in CONTROL_OPERATOR_ACTIONS:
+            operator_action = ""
+        rows.append(
+            {
+                "action_id": action_id(item),
+                "rank": item.rank,
+                "priority": item.priority,
+                "action_type": item.action_type,
+                "key": item.key,
+                "reason": item.reason,
+                "suggested_command": item.suggested_command,
+                "requires_approval": item.requires_approval,
+                "mutates_external_state": item.mutates_external_state,
+                "operator_action": operator_action,
+                "status": str(existing.get("status", "") or "queued"),
+                "last_report_path": str(existing.get("last_report_path", "")),
+                "updated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+                "generated_at": generated_at,
+            }
+        )
+    return rows
+
+
 def _match_board_row_to_hypothesis(
     board_row: dict[str, Any],
     latest_by_hypothesis: dict[str, HypothesisLedgerRow],
@@ -803,6 +875,20 @@ def _board_client(args: argparse.Namespace) -> GoogleSheetTableClient:
     return GoogleSheetTableClient(
         spreadsheet_id=args.board_sheet_id,
         sheet_name=args.board_scout_sheet,
+        credentials_path=Path(credentials),
+    )
+
+
+def _control_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.control_google_credentials or args.google_credentials
+    sheet_id = args.control_sheet_id or args.board_sheet_id
+    if not sheet_id:
+        raise SystemExit("--control-sheet-id or --board-sheet-id is required")
+    if not credentials:
+        raise SystemExit("--google-credentials or --control-google-credentials is required")
+    return GoogleSheetTableClient(
+        spreadsheet_id=sheet_id,
+        sheet_name=args.control_sheet_name,
         credentials_path=Path(credentials),
     )
 
@@ -1121,6 +1207,26 @@ def cmd_next_actions(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_push_control(args: argparse.Namespace) -> int:
+    ledger = _build_with_optional_sheets(args)
+    actions = build_next_actions(ledger)
+    if args.limit:
+        actions = actions[: args.limit]
+    client = _control_client(args)
+    client.ensure_sheet_exists()
+    existing_rows = client.read_rows(range_suffix="A1:ZZ5000")
+    rows = build_control_rows(
+        actions=actions,
+        generated_at=ledger.generated_at,
+        existing_rows=existing_rows,
+    )
+    client.overwrite_table(headers=CONTROL_SHEET_HEADERS, rows=rows)
+    print(f"CONTROL_SHEET_ID={args.control_sheet_id or args.board_sheet_id}")
+    print(f"CONTROL_SHEET_NAME={args.control_sheet_name}")
+    print(f"CONTROL_ROWS={len(rows)}")
+    return 0
+
+
 def cmd_publish_pending(args: argparse.Namespace) -> int:
     catalog_client = _strategy_catalog_client(args)
     catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
@@ -1250,6 +1356,9 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--board-google-credentials", default="")
     parser.add_argument("--board-sheet-id", default="")
     parser.add_argument("--board-scout-sheet", default="Scout_Queue")
+    parser.add_argument("--control-google-credentials", default="")
+    parser.add_argument("--control-sheet-id", default="")
+    parser.add_argument("--control-sheet-name", default=DEFAULT_CONTROL_SHEET_NAME)
     parser.add_argument("--with-catalog", action="store_true", help="Read Strategy_Catalog and mark promoted rows present/absent.")
     parser.add_argument("--with-board", action="store_true", help="Read Scout_Queue and include stale-board findings.")
 
@@ -1274,6 +1383,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     next_actions.add_argument("--output", default="")
     next_actions.add_argument("--limit", type=int, default=0)
     next_actions.set_defaults(func=cmd_next_actions)
+
+    push_control = subparsers.add_parser("push-control", help="Mirror next-actions into a Google Sheet control tab.")
+    _add_common_args(push_control)
+    push_control.add_argument("--limit", type=int, default=25)
+    push_control.set_defaults(func=cmd_push_control)
 
     publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
     _add_common_args(publish)

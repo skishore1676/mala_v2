@@ -20,14 +20,19 @@ from typing import Any
 
 from src.config import settings
 from src.research.research_ops import (
+    CONTROL_OPERATOR_ACTIONS,
+    CONTROL_SHEET_HEADERS,
     DEFAULT_DISPOSITIONS_PATH,
+    DEFAULT_CONTROL_SHEET_NAME,
     DEFAULT_HYPOTHESES_DIR,
     DEFAULT_OUT_DIR,
     DEFAULT_RUNS_DIR,
     NextAction,
     _build_with_optional_sheets,
     build_next_actions,
+    build_control_rows,
 )
+from src.research.google_sheets import GoogleSheetTableClient
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +53,7 @@ class OrchestratorResult:
     reasoning_brief: str
     report_path: str
     json_path: str
+    control_action: str = ""
 
 
 def _timestamp() -> str:
@@ -116,6 +122,150 @@ def _command_for_action(action: NextAction, args: argparse.Namespace) -> list[st
     return None
 
 
+def _control_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.control_google_credentials or args.google_credentials
+    sheet_id = args.control_sheet_id or args.board_sheet_id
+    if not sheet_id:
+        raise SystemExit("--control-sheet-id or --board-sheet-id is required with --with-control-sheet")
+    if not credentials:
+        raise SystemExit("--google-credentials or --control-google-credentials is required with --with-control-sheet")
+    return GoogleSheetTableClient(
+        spreadsheet_id=sheet_id,
+        sheet_name=args.control_sheet_name,
+        credentials_path=Path(credentials),
+    )
+
+
+def _sync_control_sheet(
+    *,
+    client: GoogleSheetTableClient,
+    actions: list[NextAction],
+    generated_at: str,
+) -> list[dict[str, Any]]:
+    client.ensure_sheet_exists()
+    existing = client.read_rows(range_suffix="A1:ZZ5000")
+    rows = build_control_rows(actions=actions, generated_at=generated_at, existing_rows=existing)
+    client.overwrite_table(headers=CONTROL_SHEET_HEADERS, rows=rows)
+    return client.read_rows(range_suffix="A1:ZZ5000")
+
+
+def _select_control_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        operator_action = str(row.get("operator_action", "")).strip().upper()
+        if operator_action and operator_action in CONTROL_OPERATOR_ACTIONS:
+            candidates.append(row)
+    candidates.sort(key=lambda row: int(row.get("rank") or 999999))
+    return candidates[0] if candidates else None
+
+
+def _action_from_control_row(row: dict[str, Any]) -> NextAction:
+    return NextAction(
+        rank=int(row.get("rank") or 0),
+        priority=str(row.get("priority", "")),
+        action_type=str(row.get("action_type", "")),
+        key=str(row.get("key", "")),
+        reason=str(row.get("reason", "")),
+        suggested_command=str(row.get("suggested_command", "")),
+        requires_approval=str(row.get("requires_approval", "yes")),
+        mutates_external_state=str(row.get("mutates_external_state", "no")),
+    )
+
+
+def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> list[str] | None:
+    action = _action_from_control_row(row)
+    operator_action = str(row.get("operator_action", "")).strip().upper()
+    python = sys.executable
+    if operator_action == "SKIP":
+        return None
+    if operator_action == "APPROVE_RETUNE" and action.action_type == "retune_plan":
+        hypothesis_path = Path(args.hypotheses_dir) / f"{action.key}.md"
+        hypothesis_arg = str(hypothesis_path) if hypothesis_path.exists() else action.key
+        return [
+            python,
+            "-m",
+            "src.research.research_runner",
+            "retune-approved",
+            "--hypothesis",
+            hypothesis_arg,
+        ]
+    if operator_action == "MARK_STALE" and action.action_type in {"repair_run_summary", "inspect_terminal"}:
+        category = "run_missing_summary" if action.action_type == "repair_run_summary" else "terminal_without_artifacts"
+        return [
+            python,
+            "-m",
+            "src.research.research_ops",
+            "mark-stale",
+            "--category",
+            category,
+            "--key",
+            action.key,
+            "--reason",
+            "operator marked stale from Research_Control",
+            "--operator",
+            "research_control",
+        ]
+    if operator_action == "APPROVE_PUBLISH" and action.action_type == "publish_pending":
+        command = [
+            python,
+            "-m",
+            "src.research.research_ops",
+            "publish-pending",
+            "--catalog-key",
+            action.key,
+            "--apply",
+        ]
+        if args.catalog_sheet_id:
+            command.extend(["--catalog-sheet-id", args.catalog_sheet_id])
+        if args.catalog_sheet_name:
+            command.extend(["--catalog-sheet-name", args.catalog_sheet_name])
+        if args.google_credentials:
+            command.extend(["--google-credentials", args.google_credentials])
+        if args.catalog_google_credentials:
+            command.extend(["--catalog-google-credentials", args.catalog_google_credentials])
+        return command
+    if operator_action == "APPROVE_BOARD_SYNC" and action.action_type == "sync_board":
+        command = [
+            python,
+            "-m",
+            "src.research.research_ops",
+            "sync-board",
+            "--task-id",
+            action.key,
+            "--apply",
+        ]
+        if args.board_sheet_id:
+            command.extend(["--board-sheet-id", args.board_sheet_id])
+        if args.board_scout_sheet:
+            command.extend(["--board-scout-sheet", args.board_scout_sheet])
+        if args.board_google_credentials:
+            command.extend(["--board-google-credentials", args.board_google_credentials])
+        return command
+    return None
+
+
+def _update_control_row(
+    *,
+    client: GoogleSheetTableClient,
+    row: dict[str, Any],
+    status: str,
+    report_path: str,
+    clear_operator_action: bool,
+) -> None:
+    if not row:
+        return
+    next_row = dict(row)
+    next_row["status"] = status
+    next_row["last_report_path"] = report_path
+    next_row["updated_at"] = _timestamp()
+    if clear_operator_action:
+        next_row["operator_action"] = ""
+    client.batch_update_rows(
+        rows=[next_row],
+        columns=["operator_action", "status", "last_report_path", "updated_at"],
+    )
+
+
 def _reasoning_brief(action: NextAction | None, executed: str) -> str:
     if action is None:
         return "No queued action. Agent reasoning checkpoint: review whether new hypotheses should be scouted."
@@ -171,6 +321,7 @@ def _write_reports(result: OrchestratorResult, out_dir: Path) -> OrchestratorRes
         f"- generated_at: `{result.generated_at}`",
         f"- mode: `{result.mode}`",
         f"- executed: `{result.executed}`",
+        f"- control_action: `{result.control_action}`",
         f"- command: `{result.command}`",
         f"- returncode: `{result.returncode if result.returncode is not None else ''}`",
         "",
@@ -208,6 +359,7 @@ def _write_reports(result: OrchestratorResult, out_dir: Path) -> OrchestratorRes
         reasoning_brief=result.reasoning_brief,
         report_path=str(md_path),
         json_path=str(json_path),
+        control_action=result.control_action,
     )
 
 
@@ -216,6 +368,21 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
     actions = build_next_actions(ledger)
     selected = actions[0] if actions else None
     generated_at = _timestamp()
+    control_client: GoogleSheetTableClient | None = None
+    control_row: dict[str, Any] | None = None
+    control_action = ""
+
+    if args.with_control_sheet:
+        control_client = _control_client(args)
+        control_rows = _sync_control_sheet(
+            client=control_client,
+            actions=actions,
+            generated_at=generated_at,
+        )
+        control_row = _select_control_row(control_rows)
+        if control_row:
+            selected = _action_from_control_row(control_row)
+            control_action = str(control_row.get("operator_action", "")).strip().upper()
 
     executed = "none"
     command_text = ""
@@ -224,13 +391,13 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
     stderr_tail = ""
 
     if selected is not None:
-        command = _command_for_action(selected, args)
+        command = _command_for_control_row(control_row, args) if control_row else _command_for_action(selected, args)
         if command is None:
-            executed = "blocked_for_reasoning"
+            executed = "skipped_by_control" if control_action == "SKIP" else "blocked_for_reasoning"
         elif args.mode == "dry-run":
             executed = "planned"
             command_text = _shell_join(command)
-        elif args.mode == "apply-safe" and selected.action_type in SAFE_AUTO_ACTIONS:
+        elif args.mode == "apply-safe" and (control_row or selected.action_type in SAFE_AUTO_ACTIONS):
             completed = subprocess.run(
                 command,
                 cwd=REPO_ROOT,
@@ -259,8 +426,21 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
         reasoning_brief=_reasoning_brief(selected, executed),
         report_path="",
         json_path="",
+        control_action=control_action,
     )
-    return _write_reports(result, Path(args.orchestrator_out_dir))
+    result = _write_reports(result, Path(args.orchestrator_out_dir))
+    if control_client is not None and control_row is not None:
+        status = executed
+        if returncode not in (None, 0):
+            status = f"failed:{returncode}"
+        _update_control_row(
+            client=control_client,
+            row=control_row,
+            status=status,
+            report_path=result.report_path,
+            clear_operator_action=args.mode == "apply-safe",
+        )
+    return result
 
 
 def cmd_once(args: argparse.Namespace) -> int:
@@ -272,6 +452,8 @@ def cmd_once(args: argparse.Namespace) -> int:
         print(f"ORCHESTRATOR_ACTION={result.selected_action.get('action_type')}:{result.selected_action.get('key')}")
     else:
         print("ORCHESTRATOR_ACTION=none")
+    if result.control_action:
+        print(f"ORCHESTRATOR_CONTROL_ACTION={result.control_action}")
     return int(result.returncode or 0)
 
 
@@ -306,6 +488,10 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--board-google-credentials", default="")
     parser.add_argument("--board-sheet-id", default="")
     parser.add_argument("--board-scout-sheet", default="Scout_Queue")
+    parser.add_argument("--control-google-credentials", default="")
+    parser.add_argument("--control-sheet-id", default="")
+    parser.add_argument("--control-sheet-name", default=DEFAULT_CONTROL_SHEET_NAME)
+    parser.add_argument("--with-control-sheet", action="store_true")
     parser.add_argument("--with-catalog", action="store_true")
     parser.add_argument("--with-board", action="store_true")
     parser.add_argument(

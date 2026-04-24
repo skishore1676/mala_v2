@@ -89,6 +89,7 @@ Research Ops outputs are rebuildable summaries:
 uv run python -m src.research.research_ops backfill
 uv run python -m src.research.research_ops hot-start
 uv run python -m src.research.research_ops next-actions
+uv run python -m src.research.research_ops push-control --control-sheet-id <sheet_id> --control-sheet-name Research_Control
 uv run python -m src.research.research_ops publish-pending --dry-run
 uv run python -m src.research.research_ops sync-board --dry-run
 uv run python -m src.research.research_ops mark-stale --category run_missing_summary --key <hypothesis/run_ts> --reason "old run; not used as evidence"
@@ -128,6 +129,7 @@ Local orchestration is available through `src.research.local_orchestrator`:
 ```bash
 uv run python -m src.research.local_orchestrator once --mode dry-run
 uv run python -m src.research.local_orchestrator once --mode apply-safe
+uv run python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet
 uv run python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
 ```
 
@@ -135,6 +137,10 @@ The orchestrator consumes `next-actions`, runs only safe/dry-run commands, and
 writes a reasoning brief under `data/results/research_ops/orchestrator/`. It
 must stop for approval before research execution, retunes, catalog writes,
 board writes, and evidence repairs.
+
+The optional Google Sheet control layer uses a `Research_Control` tab. Valid
+`operator_action` values are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`,
+`APPROVE_BOARD_SYNC`, `MARK_STALE`, and `SKIP`.
 
 ---
 

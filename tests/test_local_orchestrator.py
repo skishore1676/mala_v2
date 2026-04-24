@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.research.local_orchestrator import parse_args, run_once
+from src.research.local_orchestrator import _command_for_control_row, parse_args, run_once
 
 
 def _write_hypothesis(root: Path, hypothesis_id: str, state: str = "retune") -> None:
@@ -79,3 +79,30 @@ def test_orchestrator_apply_safe_runs_retune_plan(tmp_path: Path) -> None:
     assert result.executed == "ran_safe_command"
     assert result.returncode == 0
     assert "RETUNE_PLAN_FOR=" in result.stdout_tail
+
+
+def test_control_row_approval_maps_to_retune_command(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "hypotheses"
+    _write_hypothesis(hypotheses, "retune-me")
+    args = parse_args(["once", "--hypotheses-dir", str(hypotheses)])
+
+    command = _command_for_control_row(
+        {
+            "operator_action": "APPROVE_RETUNE",
+            "rank": "1",
+            "priority": "medium",
+            "action_type": "retune_plan",
+            "key": "retune-me",
+            "reason": "test",
+            "suggested_command": "",
+        },
+        args,
+    )
+
+    assert command is not None
+    assert command[2:] == [
+        "src.research.research_runner",
+        "retune-approved",
+        "--hypothesis",
+        str(hypotheses / "retune-me.md"),
+    ]
