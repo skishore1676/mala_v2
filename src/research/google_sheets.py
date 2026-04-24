@@ -63,32 +63,49 @@ class GoogleSheetTableClient:
             return {}
         header_map = self._header_column_map()
         data: list[dict[str, Any]] = []
+        clear_ranges: list[str] = []
         for row in rows:
             row_index = int(row["row_index"])
             for column in columns:
                 column_letter = header_map.get(column)
                 if column_letter is None:
                     continue
+                range_name = f"{self.sheet_name}!{column_letter}{row_index}"
+                value = row.get(column, "")
+                if value == "":
+                    clear_ranges.append(range_name)
+                    continue
                 data.append(
                     {
-                        "range": f"{self.sheet_name}!{column_letter}{row_index}",
-                        "values": [[row.get(column, "")]],
+                        "range": range_name,
+                        "values": [[value]],
                     }
                 )
-        if not data:
-            return {}
-        return (
-            self.service.spreadsheets()
-            .values()
-            .batchUpdate(
-                spreadsheetId=self.spreadsheet_id,
-                body={
-                    "valueInputOption": "USER_ENTERED",
-                    "data": data,
-                },
+        result: dict[str, Any] = {}
+        if clear_ranges:
+            result["clear"] = (
+                self.service.spreadsheets()
+                .values()
+                .batchClear(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={"ranges": clear_ranges},
+                )
+                .execute()
             )
-            .execute()
-        )
+        if data:
+            result["update"] = (
+                self.service.spreadsheets()
+                .values()
+                .batchUpdate(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={
+                        "valueInputOption": "USER_ENTERED",
+                        "data": data,
+                    },
+                )
+                .execute()
+            )
+        return result
 
     def ensure_columns(self, columns: list[str]) -> list[str]:
         """Append missing header columns to the right side of the sheet."""
