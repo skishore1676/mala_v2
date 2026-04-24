@@ -89,6 +89,7 @@ its view from local Mala evidence:
 ```bash
 ./.venv/bin/python -m src.research.research_ops backfill
 ./.venv/bin/python -m src.research.research_ops hot-start
+./.venv/bin/python -m src.research.research_ops digest --days 1 --with-control --with-intake
 ./.venv/bin/python -m src.research.research_ops next-actions
 ./.venv/bin/python -m src.research.research_ops action-brief --key retune_plan:<hypothesis_id>
 ./.venv/bin/python -m src.research.research_ops surface-expansion-plan --key retune_plan:<hypothesis_id>
@@ -119,6 +120,7 @@ Interpretation:
 - `action-brief` writes an evidence summary for a queued action, recommends a bounded operator action, and can mirror `brief_recommendation`, `brief_summary`, and `brief_path` to `Research_Control` with `--push-control`.
 - `surface-expansion-plan` writes a bounded search-surface plan for `APPROVE_SURFACE_EXPANSION`; it classifies feasibility and proposes config bounds without changing code or running a retune.
 - `push-intake-template` and `process-intake` power the `Research_Intake` tab for new hypotheses. Intake evaluates current-code feasibility before creating any hypothesis file.
+- `digest` writes the daily/weekly operating brief for humans and advisory agents.
 - `push-control` mirrors the queue into the `Research_Control` Google Sheet tab while preserving `operator_action`, `status`, `brief_*`, and `last_report_path`.
 - Valid `Research_Control.operator_action` values are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
 - `publish-pending` and `sync-board` are dry-run by default; use `--apply` only after explicit review.

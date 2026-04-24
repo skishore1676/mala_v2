@@ -21,6 +21,7 @@ from src.research.research_ops import (
     update_control_row_with_surface_plan,
     write_action_brief,
     write_csv_tables,
+    write_digest_report,
     write_hot_start_report,
     write_surface_expansion_plan,
     write_workbook,
@@ -177,6 +178,37 @@ def test_writers_emit_csv_workbook_and_hot_start_report(tmp_path: Path) -> None:
     assert csv_paths["hypotheses"].exists()
     assert workbook.exists()
     assert report.read_text(encoding="utf-8").startswith("# Mala Research Hot Start")
+
+
+def test_digest_report_summarizes_queue_and_intake(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="idea", state="pending", decision="")
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+    actions = build_next_actions(ledger)
+
+    digest = write_digest_report(
+        ledger=ledger,
+        actions=actions,
+        control_rows=[{"operator_action": "APPROVE_RETUNE", "action_id": "retune_plan:old", "status": "queued"}],
+        intake_rows=[
+            {
+                "status": "evaluated_ready_for_approval",
+                "hypothesis_id": "new-idea",
+                "strategy": "Opening Drive Classifier",
+                "operator_action": "",
+            }
+        ],
+        path=tmp_path / "digest.md",
+        days=1,
+    )
+
+    text = Path(digest.report_path).read_text(encoding="utf-8")
+    assert digest.pending_control_actions == 1
+    assert "Mala Research Digest" in text
+    assert "`run_m1`" in text
+    assert "new-idea" in text
 
 
 def test_next_actions_rank_publish_and_retune_work(tmp_path: Path) -> None:

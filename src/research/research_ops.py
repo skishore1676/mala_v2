@@ -242,6 +242,19 @@ class HypothesisIntakeEvaluation:
 
 
 @dataclass(slots=True)
+class ResearchDigest:
+    generated_at: str
+    days: int
+    report_path: str
+    hypotheses_by_state: dict[str, int]
+    next_actions_by_type: dict[str, int]
+    findings_by_category: dict[str, int]
+    recent_runs: int
+    pending_control_actions: int
+    pending_intake_actions: int
+
+
+@dataclass(slots=True)
 class ResearchLedger:
     generated_at: str
     hypotheses: list[HypothesisLedgerRow]
@@ -1900,6 +1913,146 @@ def write_hot_start_report(
     return path
 
 
+def _parse_run_ts(value: str) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%dT%H%M%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC)
+        except ValueError:
+            continue
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def _nonempty_operator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if str(row.get("operator_action", "")).strip()]
+
+
+def write_digest_report(
+    *,
+    ledger: ResearchLedger,
+    actions: list[NextAction],
+    control_rows: list[dict[str, Any]],
+    intake_rows: list[dict[str, Any]],
+    path: Path,
+    days: int,
+) -> ResearchDigest:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC).replace(microsecond=0)
+    cutoff_seconds = max(1, days) * 24 * 60 * 60
+    recent_runs = [
+        row
+        for row in ledger.runs
+        if (parsed := _parse_run_ts(row.run_ts)) is not None
+        and (now - parsed).total_seconds() <= cutoff_seconds
+    ]
+    hypotheses_by_state = dict(Counter(row.state or "<empty>" for row in ledger.hypotheses))
+    actions_by_type = dict(Counter(row.action_type for row in actions))
+    findings_by_category = dict(Counter(row.category for row in ledger.findings))
+    pending_control = _nonempty_operator_rows(control_rows)
+    pending_intake = _nonempty_operator_rows(intake_rows)
+    blocked_intake = [
+        row for row in intake_rows if str(row.get("status", "")).strip().startswith("blocked_")
+    ]
+    ready_intake = [
+        row for row in intake_rows if str(row.get("status", "")).strip() == "evaluated_ready_for_approval"
+    ]
+
+    lines = [
+        "# Mala Research Digest",
+        "",
+        f"- generated_at: `{now.isoformat()}`",
+        f"- window_days: `{days}`",
+        f"- hypotheses: `{len(ledger.hypotheses)}`",
+        f"- runs: `{len(ledger.runs)}`",
+        f"- recent_runs: `{len(recent_runs)}`",
+        f"- promoted_candidates: `{len(ledger.promoted)}`",
+        f"- findings: `{len(ledger.findings)}`",
+        f"- next_actions: `{len(actions)}`",
+        f"- pending_control_actions: `{len(pending_control)}`",
+        f"- pending_intake_actions: `{len(pending_intake)}`",
+        "",
+        "## State Counts",
+        "",
+    ]
+    for key, count in sorted(hypotheses_by_state.items()):
+        lines.append(f"- hypotheses `{key}`: `{count}`")
+    lines.append("")
+    lines.append("## Next Action Counts")
+    lines.append("")
+    if not actions_by_type:
+        lines.append("- No queued actions.")
+    for key, count in sorted(actions_by_type.items()):
+        lines.append(f"- `{key}`: `{count}`")
+    lines.extend(["", "## Top Queue", ""])
+    if not actions:
+        lines.append("- Empty.")
+    for action in actions[:10]:
+        lines.append(
+            f"- #{action.rank} `{action.action_type}` `{action.key}`: {action.reason}"
+        )
+    lines.extend(["", "## Recent Runs", ""])
+    if not recent_runs:
+        lines.append("- No recent runs in this window.")
+    for run in sorted(recent_runs, key=lambda item: item.run_ts, reverse=True)[:12]:
+        lines.append(
+            f"- `{run.run_ts}` `{run.hypothesis_id}` stage={run.terminal_stage} decision={run.decision or '<empty>'}"
+        )
+    lines.extend(["", "## Findings", ""])
+    if not findings_by_category:
+        lines.append("- No hot-start findings.")
+    for key, count in sorted(findings_by_category.items()):
+        lines.append(f"- `{key}`: `{count}`")
+    lines.extend(["", "## Control Sheet", ""])
+    if not pending_control:
+        lines.append("- No pending operator actions.")
+    for row in pending_control[:10]:
+        lines.append(
+            f"- `{row.get('operator_action', '')}` `{row.get('action_id', '')}` status={row.get('status', '')}"
+        )
+    lines.extend(["", "## Intake Sheet", ""])
+    if not pending_intake and not ready_intake and not blocked_intake:
+        lines.append("- No active intake rows.")
+    for row in pending_intake[:10]:
+        lines.append(
+            f"- pending `{row.get('operator_action', '')}` `{row.get('hypothesis_id', '') or row.get('intake_id', '')}`"
+        )
+    for row in ready_intake[:10]:
+        lines.append(
+            f"- ready `{row.get('hypothesis_id', '')}` strategy={row.get('strategy', '')}"
+        )
+    for row in blocked_intake[:10]:
+        lines.append(
+            f"- blocked `{row.get('hypothesis_id', '')}` tag={row.get('feasibility_tag', '')}: {row.get('feasibility_summary', '')}"
+        )
+    lines.extend(["", "## Suggested Routine", ""])
+    lines.append("- Review pending `Research_Control.operator_action` rows first; these are executable decisions.")
+    lines.append("- Review `Research_Intake` ready/blocked rows next; ready rows can become pending hypotheses, blocked rows need agent or human development.")
+    lines.append("- Let agents propose changes as sheet rows or reports; keep Mala artifacts as the source of truth.")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return ResearchDigest(
+        generated_at=now.isoformat(),
+        days=days,
+        report_path=str(path),
+        hypotheses_by_state=hypotheses_by_state,
+        next_actions_by_type=actions_by_type,
+        findings_by_category=findings_by_category,
+        recent_runs=len(recent_runs),
+        pending_control_actions=len(pending_control),
+        pending_intake_actions=len(pending_intake),
+    )
+
+
 def _read_strategy_catalog_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     credentials = args.catalog_google_credentials or args.google_credentials
     if not args.catalog_sheet_id or not credentials:
@@ -1997,6 +2150,26 @@ def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
             dispositions=dispositions,
         )
     return ledger
+
+
+def _read_control_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if not getattr(args, "with_control", False):
+        return []
+    try:
+        client = _control_client(args)
+    except SystemExit:
+        return []
+    return client.read_rows(range_suffix="A1:ZZ5000")
+
+
+def _read_intake_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if not getattr(args, "with_intake", False):
+        return []
+    try:
+        client = _intake_client(args)
+    except SystemExit:
+        return []
+    return client.read_rows(range_suffix="A1:ZZ5000")
 
 
 def _selected_matches_m5(selected: dict[str, str], row: dict[str, str]) -> bool:
@@ -2244,6 +2417,30 @@ def cmd_hot_start(args: argparse.Namespace) -> int:
     print(f"FINDINGS={len(ledger.findings)}")
     high = sum(1 for row in ledger.findings if row.severity == "high")
     print(f"HIGH_FINDINGS={high}")
+    return 0
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    ledger = _build_with_optional_sheets(args)
+    actions = build_next_actions(ledger)
+    if args.limit:
+        actions = actions[: args.limit]
+    out_dir = Path(args.out_dir)
+    stamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace(":", "").replace("-", "").replace("+", "Z")
+    path = Path(args.output) if args.output else out_dir / "digests" / f"digest-{stamp}.md"
+    digest = write_digest_report(
+        ledger=ledger,
+        actions=actions,
+        control_rows=_read_control_rows(args),
+        intake_rows=_read_intake_rows(args),
+        path=path,
+        days=args.days,
+    )
+    print(f"DIGEST_REPORT={digest.report_path}")
+    print(f"DIGEST_DAYS={digest.days}")
+    print(f"DIGEST_RECENT_RUNS={digest.recent_runs}")
+    print(f"DIGEST_PENDING_CONTROL={digest.pending_control_actions}")
+    print(f"DIGEST_PENDING_INTAKE={digest.pending_intake_actions}")
     return 0
 
 
@@ -2544,6 +2741,8 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--intake-sheet-name", default=DEFAULT_INTAKE_SHEET_NAME)
     parser.add_argument("--with-catalog", action="store_true", help="Read Strategy_Catalog and mark promoted rows present/absent.")
     parser.add_argument("--with-board", action="store_true", help="Read Scout_Queue and include stale-board findings.")
+    parser.add_argument("--with-control", action="store_true", help="Read Research_Control rows for digest/reporting.")
+    parser.add_argument("--with-intake", action="store_true", help="Read Research_Intake rows for digest/reporting.")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -2559,6 +2758,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_common_args(hot_start)
     hot_start.add_argument("--report", default="")
     hot_start.set_defaults(func=cmd_hot_start)
+
+    digest = subparsers.add_parser("digest", help="Write a daily/weekly research operations digest.")
+    _add_common_args(digest)
+    digest.add_argument("--days", type=int, default=1)
+    digest.add_argument("--limit", type=int, default=25)
+    digest.add_argument("--output", default="")
+    digest.set_defaults(func=cmd_digest)
 
     next_actions = subparsers.add_parser("next-actions", help="Write or print the ranked operator action queue.")
     _add_common_args(next_actions)

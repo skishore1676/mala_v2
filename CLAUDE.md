@@ -88,6 +88,7 @@ Research Ops outputs are rebuildable summaries:
 ```bash
 uv run python -m src.research.research_ops backfill
 uv run python -m src.research.research_ops hot-start
+uv run python -m src.research.research_ops digest --days 1 --with-control --with-intake
 uv run python -m src.research.research_ops next-actions
 uv run python -m src.research.research_ops action-brief --key retune_plan:<hypothesis_id>
 uv run python -m src.research.research_ops surface-expansion-plan --key retune_plan:<hypothesis_id>
@@ -119,6 +120,9 @@ Use `Research_Intake` for new ideas. `process-intake` evaluates whether the
 idea is runnable with the current strategy registry/search surface before it
 creates a pending hypothesis file. Unknown strategies are tagged `new-class`;
 search-surface failures are tagged `new-feature`.
+Use `digest` for the daily/weekly operating brief. It summarizes queued actions,
+recent runs, pending sheet approvals, and intake rows for human or advisory
+agent review.
 
 Use `src.research.research_runner` for bounded execution commands. It wraps
 `hypothesis_agent.py` and keeps agents on a deterministic command menu:
@@ -147,6 +151,7 @@ uv run python -m src.research.local_orchestrator once --mode apply-safe
 uv run python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet
 uv run python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet --with-intake-sheet
 uv run python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
+scripts/install_oldmac_orchestrator_launchd.sh
 ```
 
 The orchestrator consumes `next-actions`, runs only safe/dry-run commands, and
