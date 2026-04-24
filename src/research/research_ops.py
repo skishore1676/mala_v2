@@ -20,6 +20,9 @@ from typing import Any
 from src.config import settings
 from src.research.catalog import upsert_strategy_catalog
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.research_runner import create_hypothesis_file
+from src.research.search_space import build_search_configs, search_param_keys
+from src.strategy.factory import available_strategy_names
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +31,7 @@ DEFAULT_RUNS_DIR = REPO_ROOT / "data" / "results" / "hypothesis_runs"
 DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
 DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
 DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
+DEFAULT_INTAKE_SHEET_NAME = "Research_Intake"
 
 CONTROL_SHEET_HEADERS = [
     "action_id",
@@ -56,6 +60,36 @@ CONTROL_OPERATOR_ACTIONS = {
     "APPROVE_BOARD_SYNC",
     "APPROVE_SURFACE_EXPANSION",
     "MARK_STALE",
+    "SKIP",
+}
+
+INTAKE_SHEET_HEADERS = [
+    "intake_id",
+    "title",
+    "hypothesis_id",
+    "strategy",
+    "symbol_scope",
+    "thesis",
+    "rules",
+    "notes",
+    "max_stage",
+    "operator_action",
+    "status",
+    "feasibility_tag",
+    "feasibility_summary",
+    "search_param_keys",
+    "discovery_config_count",
+    "retune_config_count",
+    "hypothesis_path",
+    "report_path",
+    "updated_at",
+    "created_at",
+]
+
+INTAKE_OPERATOR_ACTIONS = {
+    "",
+    "EVALUATE",
+    "APPROVE_CREATE_HYPOTHESIS",
     "SKIP",
 }
 
@@ -191,6 +225,23 @@ class SurfaceExpansionPlan:
 
 
 @dataclass(slots=True)
+class HypothesisIntakeEvaluation:
+    intake_id: str
+    title: str
+    hypothesis_id: str
+    strategy: str
+    symbol_scope: str
+    max_stage: str
+    feasibility_tag: str
+    feasibility_summary: str
+    search_param_keys: str
+    discovery_config_count: int
+    retune_config_count: int
+    hypothesis_path: str = ""
+    report_path: str = ""
+
+
+@dataclass(slots=True)
 class ResearchLedger:
     generated_at: str
     hypotheses: list[HypothesisLedgerRow]
@@ -269,6 +320,19 @@ def _format_number(value: Any, *, digits: int = 4) -> str:
     if number != number:
         return str(value)
     return f"{number:.{digits}f}"
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "untitled-hypothesis"
+
+
+def _split_multiline_cell(value: Any) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = re.split(r"[\n;]+", text)
+    return [part.strip(" -\t") for part in parts if part.strip(" -\t")]
 
 
 def _detected_stages(run_dir: Path) -> list[str]:
@@ -1466,6 +1530,254 @@ def update_control_row_with_surface_plan(
     return False
 
 
+def evaluate_hypothesis_intake(row: dict[str, Any]) -> HypothesisIntakeEvaluation:
+    title = str(row.get("title", "")).strip()
+    hypothesis_id = _slug(str(row.get("hypothesis_id", "")).strip() or title)
+    strategy = str(row.get("strategy", "")).strip()
+    symbol_scope = str(row.get("symbol_scope", "")).strip()
+    max_stage = str(row.get("max_stage", "")).strip() or "M5"
+    intake_id = str(row.get("intake_id", "")).strip() or hypothesis_id
+
+    if not title:
+        return HypothesisIntakeEvaluation(
+            intake_id=intake_id,
+            title=title,
+            hypothesis_id=hypothesis_id,
+            strategy=strategy,
+            symbol_scope=symbol_scope,
+            max_stage=max_stage,
+            feasibility_tag="needs-human",
+            feasibility_summary="Missing title; fill the intake row before evaluation.",
+            search_param_keys="",
+            discovery_config_count=0,
+            retune_config_count=0,
+        )
+    if not symbol_scope:
+        return HypothesisIntakeEvaluation(
+            intake_id=intake_id,
+            title=title,
+            hypothesis_id=hypothesis_id,
+            strategy=strategy,
+            symbol_scope=symbol_scope,
+            max_stage=max_stage,
+            feasibility_tag="needs-human",
+            feasibility_summary="Missing symbol_scope; specify comma-separated tickers before evaluation.",
+            search_param_keys="",
+            discovery_config_count=0,
+            retune_config_count=0,
+        )
+    if strategy not in available_strategy_names():
+        return HypothesisIntakeEvaluation(
+            intake_id=intake_id,
+            title=title,
+            hypothesis_id=hypothesis_id,
+            strategy=strategy,
+            symbol_scope=symbol_scope,
+            max_stage=max_stage,
+            feasibility_tag="new-class",
+            feasibility_summary=(
+                "Strategy is not in the current factory registry; route to strategy/code development before creating a runnable hypothesis."
+            ),
+            search_param_keys="",
+            discovery_config_count=0,
+            retune_config_count=0,
+        )
+
+    try:
+        keys = search_param_keys(strategy)
+        discovery_configs = build_search_configs(strategy, mode="discovery", max_configs=32)
+        retune_configs = build_search_configs(strategy, mode="retune", max_configs=32)
+    except Exception as exc:  # pragma: no cover - defensive; surfaced in sheet summary
+        return HypothesisIntakeEvaluation(
+            intake_id=intake_id,
+            title=title,
+            hypothesis_id=hypothesis_id,
+            strategy=strategy,
+            symbol_scope=symbol_scope,
+            max_stage=max_stage,
+            feasibility_tag="new-feature",
+            feasibility_summary=f"Current strategy exists, but search-surface construction failed: {exc}",
+            search_param_keys="",
+            discovery_config_count=0,
+            retune_config_count=0,
+        )
+
+    tag = "config-only" if discovery_configs else "new-feature"
+    summary = (
+        f"Runnable with current codebase: strategy exists with {len(keys)} search parameters, "
+        f"{len(discovery_configs)} discovery configs, and {len(retune_configs)} retune configs."
+    )
+    if not keys:
+        summary = (
+            "Strategy is runnable but has no declared search parameters; this can be tested as fixed-config, "
+            "but surface expansion would need search_spec/parameter_space work."
+        )
+    return HypothesisIntakeEvaluation(
+        intake_id=intake_id,
+        title=title,
+        hypothesis_id=hypothesis_id,
+        strategy=strategy,
+        symbol_scope=symbol_scope,
+        max_stage=max_stage,
+        feasibility_tag=tag,
+        feasibility_summary=summary,
+        search_param_keys=", ".join(keys),
+        discovery_config_count=len(discovery_configs),
+        retune_config_count=len(retune_configs),
+    )
+
+
+def _intake_status_from_evaluation(evaluation: HypothesisIntakeEvaluation) -> str:
+    if evaluation.feasibility_tag == "config-only":
+        return "evaluated_ready_for_approval"
+    return f"blocked_{evaluation.feasibility_tag}"
+
+
+def _write_intake_report(
+    *,
+    evaluation: HypothesisIntakeEvaluation,
+    row: dict[str, Any],
+    out_dir: Path,
+) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace(":", "").replace("-", "").replace("+", "Z")
+    path = out_dir / "intake" / f"{stamp}__{evaluation.hypothesis_id}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Mala Hypothesis Intake Evaluation",
+        "",
+        f"- intake_id: `{evaluation.intake_id}`",
+        f"- hypothesis_id: `{evaluation.hypothesis_id}`",
+        f"- title: `{evaluation.title}`",
+        f"- strategy: `{evaluation.strategy}`",
+        f"- symbol_scope: `{evaluation.symbol_scope}`",
+        f"- max_stage: `{evaluation.max_stage}`",
+        f"- feasibility_tag: `{evaluation.feasibility_tag}`",
+        f"- discovery_config_count: `{evaluation.discovery_config_count}`",
+        f"- retune_config_count: `{evaluation.retune_config_count}`",
+        "",
+        "## Summary",
+        "",
+        evaluation.feasibility_summary,
+        "",
+        "## Thesis",
+        "",
+        str(row.get("thesis", "")).strip() or "<empty>",
+        "",
+        "## Search Parameters",
+        "",
+        evaluation.search_param_keys or "<none>",
+        "",
+        "## Next Step",
+        "",
+        (
+            "Set `operator_action=APPROVE_CREATE_HYPOTHESIS` to create a pending hypothesis file."
+            if evaluation.feasibility_tag == "config-only"
+            else "Route this to human/agent development before creating a runnable hypothesis."
+        ),
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _merge_intake_update(
+    *,
+    row: dict[str, Any],
+    evaluation: HypothesisIntakeEvaluation,
+    status: str,
+    report_path: str,
+    hypothesis_path: str = "",
+    clear_operator_action: bool,
+) -> dict[str, Any]:
+    next_row = dict(row)
+    next_row["intake_id"] = evaluation.intake_id
+    next_row["hypothesis_id"] = evaluation.hypothesis_id
+    next_row["max_stage"] = evaluation.max_stage
+    next_row["status"] = status
+    next_row["feasibility_tag"] = evaluation.feasibility_tag
+    next_row["feasibility_summary"] = evaluation.feasibility_summary
+    next_row["search_param_keys"] = evaluation.search_param_keys
+    next_row["discovery_config_count"] = evaluation.discovery_config_count
+    next_row["retune_config_count"] = evaluation.retune_config_count
+    next_row["report_path"] = report_path or evaluation.report_path
+    next_row["hypothesis_path"] = hypothesis_path or evaluation.hypothesis_path
+    next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+    if not str(next_row.get("created_at", "")).strip():
+        next_row["created_at"] = next_row["updated_at"]
+    if clear_operator_action:
+        next_row["operator_action"] = ""
+    return next_row
+
+
+def process_intake_rows(
+    *,
+    rows: list[dict[str, Any]],
+    hypotheses_dir: Path,
+    out_dir: Path,
+    apply: bool,
+    limit: int = 1,
+    force: bool = False,
+) -> list[dict[str, Any]]:
+    updates: list[dict[str, Any]] = []
+    for row in rows:
+        if limit and len(updates) >= limit:
+            break
+        operator_action = str(row.get("operator_action", "")).strip().upper()
+        if operator_action not in INTAKE_OPERATOR_ACTIONS:
+            continue
+        if not operator_action:
+            continue
+        evaluation = evaluate_hypothesis_intake(row)
+        report_path = _write_intake_report(evaluation=evaluation, row=row, out_dir=out_dir)
+        hypothesis_path = ""
+        status = _intake_status_from_evaluation(evaluation)
+        clear_operator_action = apply
+        if operator_action == "SKIP":
+            status = "skipped"
+        elif operator_action == "APPROVE_CREATE_HYPOTHESIS":
+            if evaluation.feasibility_tag != "config-only":
+                status = f"blocked_{evaluation.feasibility_tag}"
+            elif apply:
+                target_path = hypotheses_dir / f"{evaluation.hypothesis_id}.md"
+                if target_path.exists() and not force:
+                    hypothesis_path = _relative(target_path)
+                    status = "existing_hypothesis"
+                else:
+                    created = create_hypothesis_file(
+                        hypothesis_id=evaluation.hypothesis_id,
+                        title=evaluation.title,
+                        strategy=evaluation.strategy,
+                        symbol_scope=evaluation.symbol_scope,
+                        max_stage=evaluation.max_stage,
+                        thesis=str(row.get("thesis", "")),
+                        rules=_split_multiline_cell(row.get("rules", "")),
+                        notes=[
+                            f"Feasibility tag: {evaluation.feasibility_tag}.",
+                            evaluation.feasibility_summary,
+                            *_split_multiline_cell(row.get("notes", "")),
+                        ],
+                        hypotheses_dir=hypotheses_dir,
+                        force=force,
+                    )
+                    hypothesis_path = _relative(created)
+                    status = "created_pending"
+            else:
+                status = "would_create_pending"
+        elif operator_action == "EVALUATE":
+            status = _intake_status_from_evaluation(evaluation)
+        updates.append(
+            _merge_intake_update(
+                row=row,
+                evaluation=evaluation,
+                status=status,
+                report_path=str(report_path),
+                hypothesis_path=hypothesis_path,
+                clear_operator_action=clear_operator_action,
+            )
+        )
+    return updates
+
+
 def write_csv_tables(ledger: ResearchLedger, out_dir: Path) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     tables: dict[str, list[dict[str, Any]]] = {
@@ -1648,6 +1960,20 @@ def _control_client(args: argparse.Namespace) -> GoogleSheetTableClient:
     return GoogleSheetTableClient(
         spreadsheet_id=sheet_id,
         sheet_name=args.control_sheet_name,
+        credentials_path=Path(credentials),
+    )
+
+
+def _intake_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.intake_google_credentials or args.google_credentials
+    sheet_id = args.intake_sheet_id or args.control_sheet_id or args.board_sheet_id
+    if not sheet_id:
+        raise SystemExit("--intake-sheet-id, --control-sheet-id, or --board-sheet-id is required")
+    if not credentials:
+        raise SystemExit("--google-credentials or --intake-google-credentials is required")
+    return GoogleSheetTableClient(
+        spreadsheet_id=sheet_id,
+        sheet_name=args.intake_sheet_name,
         credentials_path=Path(credentials),
     )
 
@@ -2023,6 +2349,64 @@ def cmd_surface_expansion_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_push_intake_template(args: argparse.Namespace) -> int:
+    client = _intake_client(args)
+    client.ensure_sheet_exists()
+    existing_rows = client.read_rows(range_suffix="A1:ZZ5000")
+    if existing_rows and not args.force:
+        client.ensure_columns(INTAKE_SHEET_HEADERS)
+        print(f"INTAKE_SHEET_ID={args.intake_sheet_id or args.control_sheet_id or args.board_sheet_id}")
+        print(f"INTAKE_SHEET_NAME={args.intake_sheet_name}")
+        print("INTAKE_TEMPLATE_UPDATED=headers_only")
+        return 0
+    client.overwrite_table(headers=INTAKE_SHEET_HEADERS, rows=[])
+    print(f"INTAKE_SHEET_ID={args.intake_sheet_id or args.control_sheet_id or args.board_sheet_id}")
+    print(f"INTAKE_SHEET_NAME={args.intake_sheet_name}")
+    print("INTAKE_TEMPLATE_UPDATED=table")
+    return 0
+
+
+def cmd_process_intake(args: argparse.Namespace) -> int:
+    client = _intake_client(args)
+    client.ensure_sheet_exists()
+    client.ensure_columns(INTAKE_SHEET_HEADERS)
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    updates = process_intake_rows(
+        rows=rows,
+        hypotheses_dir=Path(args.hypotheses_dir),
+        out_dir=Path(args.out_dir),
+        apply=args.apply,
+        limit=args.limit,
+        force=args.force,
+    )
+    if args.apply and updates:
+        client.batch_update_rows(
+            rows=updates,
+            columns=[
+                "operator_action",
+                "status",
+                "feasibility_tag",
+                "feasibility_summary",
+                "search_param_keys",
+                "discovery_config_count",
+                "retune_config_count",
+                "hypothesis_id",
+                "hypothesis_path",
+                "report_path",
+                "updated_at",
+                "created_at",
+            ],
+        )
+    if args.output:
+        _write_csv(Path(args.output), updates)
+    else:
+        print(json.dumps(updates, indent=2))
+    print(f"INTAKE_ACTIONS={len(updates)}")
+    print(f"INTAKE_APPLIED={len(updates) if args.apply else 0}")
+    print(f"DRY_RUN={'false' if args.apply else 'true'}")
+    return 0
+
+
 def cmd_publish_pending(args: argparse.Namespace) -> int:
     catalog_client = _strategy_catalog_client(args)
     catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
@@ -2155,6 +2539,9 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--control-google-credentials", default="")
     parser.add_argument("--control-sheet-id", default="")
     parser.add_argument("--control-sheet-name", default=DEFAULT_CONTROL_SHEET_NAME)
+    parser.add_argument("--intake-google-credentials", default="")
+    parser.add_argument("--intake-sheet-id", default="")
+    parser.add_argument("--intake-sheet-name", default=DEFAULT_INTAKE_SHEET_NAME)
     parser.add_argument("--with-catalog", action="store_true", help="Read Strategy_Catalog and mark promoted rows present/absent.")
     parser.add_argument("--with-board", action="store_true", help="Read Scout_Queue and include stale-board findings.")
 
@@ -2200,6 +2587,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     surface_plan.add_argument("--key", required=True, help="Hypothesis key or action_id, e.g. retune_plan:my-hypothesis.")
     surface_plan.add_argument("--push-control", action="store_true", help="Mirror plan recommendation/summary/path to Research_Control.")
     surface_plan.set_defaults(func=cmd_surface_expansion_plan)
+
+    intake_template = subparsers.add_parser("push-intake-template", help="Create or update the Research_Intake sheet headers.")
+    _add_common_args(intake_template)
+    intake_template.add_argument("--force", action="store_true", help="Overwrite the intake table even when rows already exist.")
+    intake_template.set_defaults(func=cmd_push_intake_template)
+
+    process_intake = subparsers.add_parser("process-intake", help="Evaluate or create approved Research_Intake rows.")
+    _add_common_args(process_intake)
+    process_intake.add_argument("--limit", type=int, default=1)
+    process_intake.add_argument("--apply", action="store_true", help="Update the sheet and create approved hypothesis files.")
+    process_intake.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
+    process_intake.add_argument("--force", action="store_true", help="Allow overwriting an existing hypothesis file.")
+    process_intake.add_argument("--output", default="", help="Optional CSV output path for processed rows.")
+    process_intake.set_defaults(func=cmd_process_intake)
 
     publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
     _add_common_args(publish)

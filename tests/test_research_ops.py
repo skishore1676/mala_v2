@@ -14,6 +14,8 @@ from src.research.research_ops import (
     build_ledger,
     build_next_actions,
     build_surface_expansion_plan,
+    evaluate_hypothesis_intake,
+    process_intake_rows,
     read_dispositions,
     update_control_row_with_brief,
     update_control_row_with_surface_plan,
@@ -415,6 +417,81 @@ def test_update_control_row_with_surface_plan_writes_plan_columns() -> None:
     assert client.rows[0]["brief_summary"] == "Expand one bounded parameter family."
     assert client.rows[0]["brief_path"] == "surface.md"
     assert client.rows[0]["status"] == "surface_plan_ready"
+
+
+def test_evaluate_hypothesis_intake_classifies_config_only() -> None:
+    evaluation = evaluate_hypothesis_intake(
+        {
+            "title": "MSFT opening drive extension",
+            "strategy": "Opening Drive Classifier",
+            "symbol_scope": "MSFT",
+            "max_stage": "M5",
+        }
+    )
+
+    assert evaluation.feasibility_tag == "config-only"
+    assert evaluation.hypothesis_id == "msft-opening-drive-extension"
+    assert evaluation.discovery_config_count > 0
+    assert "opening_window_minutes" in evaluation.search_param_keys
+
+
+def test_evaluate_hypothesis_intake_blocks_unknown_strategy() -> None:
+    evaluation = evaluate_hypothesis_intake(
+        {
+            "title": "Needs new idea",
+            "strategy": "Totally New Strategy",
+            "symbol_scope": "SPY",
+        }
+    )
+
+    assert evaluation.feasibility_tag == "new-class"
+    assert "not in the current factory registry" in evaluation.feasibility_summary
+
+
+def test_process_intake_rows_creates_pending_hypothesis_when_approved(tmp_path: Path) -> None:
+    updates = process_intake_rows(
+        rows=[
+            {
+                "row_index": 2,
+                "title": "MSFT opening drive extension",
+                "strategy": "Opening Drive Classifier",
+                "symbol_scope": "MSFT",
+                "thesis": "Opening drive sample recovery.",
+                "rules": "Use existing Opening Drive rules; widen sample window one notch",
+                "operator_action": "APPROVE_CREATE_HYPOTHESIS",
+            }
+        ],
+        hypotheses_dir=tmp_path / "hypotheses",
+        out_dir=tmp_path / "ops",
+        apply=True,
+    )
+
+    assert updates[0]["status"] == "created_pending"
+    created = tmp_path / "hypotheses" / "msft-opening-drive-extension.md"
+    assert created.exists()
+    text = created.read_text(encoding="utf-8")
+    assert "- state: `pending`" in text
+    assert "Feasibility tag: config-only." in text
+
+
+def test_process_intake_rows_evaluate_does_not_create_hypothesis(tmp_path: Path) -> None:
+    updates = process_intake_rows(
+        rows=[
+            {
+                "row_index": 2,
+                "title": "Unknown class idea",
+                "strategy": "New Strategy",
+                "symbol_scope": "SPY",
+                "operator_action": "EVALUATE",
+            }
+        ],
+        hypotheses_dir=tmp_path / "hypotheses",
+        out_dir=tmp_path / "ops",
+        apply=True,
+    )
+
+    assert updates[0]["status"] == "blocked_new-class"
+    assert not list((tmp_path / "hypotheses").glob("*.md"))
 
 
 def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) -> None:

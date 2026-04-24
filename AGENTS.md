@@ -111,6 +111,8 @@ python -m src.research.research_ops next-actions
 python -m src.research.research_ops action-brief --key retune_plan:my-idea
 python -m src.research.research_ops action-brief --key retune_plan:my-idea --push-control
 python -m src.research.research_ops surface-expansion-plan --key retune_plan:my-idea --push-control
+python -m src.research.research_ops push-intake-template --intake-sheet-name Research_Intake
+python -m src.research.research_ops process-intake --apply
 
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
@@ -150,6 +152,7 @@ reasoning brief for Codex/OpenClaw/human review before any gated action.
 python -m src.research.local_orchestrator once --mode dry-run
 python -m src.research.local_orchestrator once --mode apply-safe
 python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet
+python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet --with-intake-sheet
 python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
 ```
 
@@ -164,6 +167,7 @@ Mental model:
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
 - Action Briefs inspect the queued item, summarize evidence, and recommend a bounded operator action.
 - Surface Expansion Plans turn `APPROVE_SURFACE_EXPANSION` into a config-only/new-code feasibility plan before any retune or code work.
+- Research_Intake is the new-hypothesis inbox; it evaluates whether an idea is `config-only`, `new-class`, `new-feature`, or `needs-human` before creating a pending hypothesis file.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
 - Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.

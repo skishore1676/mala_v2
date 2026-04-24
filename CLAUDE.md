@@ -91,6 +91,8 @@ uv run python -m src.research.research_ops hot-start
 uv run python -m src.research.research_ops next-actions
 uv run python -m src.research.research_ops action-brief --key retune_plan:<hypothesis_id>
 uv run python -m src.research.research_ops surface-expansion-plan --key retune_plan:<hypothesis_id>
+uv run python -m src.research.research_ops push-intake-template --intake-sheet-name Research_Intake
+uv run python -m src.research.research_ops process-intake --apply
 uv run python -m src.research.research_ops push-control --control-sheet-id <sheet_id> --control-sheet-name Research_Control
 uv run python -m src.research.research_ops publish-pending --dry-run
 uv run python -m src.research.research_ops sync-board --dry-run
@@ -113,6 +115,10 @@ the latest artifacts, writes a local Markdown brief, and can mirror
 Use `surface-expansion-plan` when `APPROVE_SURFACE_EXPANSION` is selected; it
 writes a bounded config-surface plan and mirrors the plan path back to
 `Research_Control` without changing strategy code or running research.
+Use `Research_Intake` for new ideas. `process-intake` evaluates whether the
+idea is runnable with the current strategy registry/search surface before it
+creates a pending hypothesis file. Unknown strategies are tagged `new-class`;
+search-surface failures are tagged `new-feature`.
 
 Use `src.research.research_runner` for bounded execution commands. It wraps
 `hypothesis_agent.py` and keeps agents on a deterministic command menu:
@@ -139,6 +145,7 @@ Local orchestration is available through `src.research.local_orchestrator`:
 uv run python -m src.research.local_orchestrator once --mode dry-run
 uv run python -m src.research.local_orchestrator once --mode apply-safe
 uv run python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet
+uv run python -m src.research.local_orchestrator once --mode apply-safe --with-control-sheet --with-intake-sheet
 uv run python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
 ```
 

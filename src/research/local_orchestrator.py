@@ -25,12 +25,15 @@ from src.research.research_ops import (
     DEFAULT_DISPOSITIONS_PATH,
     DEFAULT_CONTROL_SHEET_NAME,
     DEFAULT_HYPOTHESES_DIR,
+    DEFAULT_INTAKE_SHEET_NAME,
     DEFAULT_OUT_DIR,
     DEFAULT_RUNS_DIR,
+    INTAKE_SHEET_HEADERS,
     NextAction,
     _build_with_optional_sheets,
     build_next_actions,
     build_control_rows,
+    process_intake_rows,
 )
 from src.research.google_sheets import GoogleSheetTableClient
 
@@ -141,6 +144,53 @@ def _control_client(args: argparse.Namespace) -> GoogleSheetTableClient:
         sheet_name=args.control_sheet_name,
         credentials_path=Path(credentials),
     )
+
+
+def _intake_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.intake_google_credentials or args.control_google_credentials or args.google_credentials
+    sheet_id = args.intake_sheet_id or args.control_sheet_id or args.board_sheet_id
+    if not sheet_id:
+        raise SystemExit("--intake-sheet-id, --control-sheet-id, or --board-sheet-id is required with --with-intake-sheet")
+    if not credentials:
+        raise SystemExit("--google-credentials or --intake-google-credentials is required with --with-intake-sheet")
+    return GoogleSheetTableClient(
+        spreadsheet_id=sheet_id,
+        sheet_name=args.intake_sheet_name,
+        credentials_path=Path(credentials),
+    )
+
+
+def _process_intake_sheet(args: argparse.Namespace) -> list[dict[str, Any]]:
+    client = _intake_client(args)
+    client.ensure_sheet_exists()
+    client.ensure_columns(INTAKE_SHEET_HEADERS)
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    updates = process_intake_rows(
+        rows=rows,
+        hypotheses_dir=Path(args.hypotheses_dir),
+        out_dir=Path(args.out_dir),
+        apply=args.mode == "apply-safe",
+        limit=1,
+    )
+    if args.mode == "apply-safe" and updates:
+        client.batch_update_rows(
+            rows=updates,
+            columns=[
+                "operator_action",
+                "status",
+                "feasibility_tag",
+                "feasibility_summary",
+                "search_param_keys",
+                "discovery_config_count",
+                "retune_config_count",
+                "hypothesis_id",
+                "hypothesis_path",
+                "report_path",
+                "updated_at",
+                "created_at",
+            ],
+        )
+    return updates
 
 
 def _sync_control_sheet(
@@ -421,10 +471,31 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
     stdout_tail = ""
     stderr_tail = ""
 
+    if args.with_intake_sheet and control_row is None:
+        intake_updates = _process_intake_sheet(args)
+        if intake_updates:
+            row = intake_updates[0]
+            selected = NextAction(
+                rank=0,
+                priority="medium",
+                action_type="process_intake",
+                key=str(row.get("hypothesis_id", "") or row.get("intake_id", "")),
+                reason=str(row.get("feasibility_summary", "")),
+                suggested_command="python -m src.research.research_ops process-intake --apply",
+                requires_approval="yes",
+                mutates_external_state="yes",
+            )
+            executed = "ran_safe_command" if args.mode == "apply-safe" else "planned"
+            command_text = "python -m src.research.research_ops process-intake --apply"
+            stdout_tail = json.dumps(row, indent=2)
+
     if selected is not None:
-        command = _command_for_control_row(control_row, args) if control_row else _command_for_action(selected, args)
+        command = None if selected.action_type == "process_intake" else (
+            _command_for_control_row(control_row, args) if control_row else _command_for_action(selected, args)
+        )
         if command is None:
-            executed = "skipped_by_control" if control_action == "SKIP" else "blocked_for_reasoning"
+            if executed == "none":
+                executed = "skipped_by_control" if control_action == "SKIP" else "blocked_for_reasoning"
         elif args.mode == "dry-run":
             executed = "planned"
             command_text = _shell_join(command)
@@ -523,7 +594,11 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--control-google-credentials", default="")
     parser.add_argument("--control-sheet-id", default="")
     parser.add_argument("--control-sheet-name", default=DEFAULT_CONTROL_SHEET_NAME)
+    parser.add_argument("--intake-google-credentials", default="")
+    parser.add_argument("--intake-sheet-id", default="")
+    parser.add_argument("--intake-sheet-name", default=DEFAULT_INTAKE_SHEET_NAME)
     parser.add_argument("--with-control-sheet", action="store_true")
+    parser.add_argument("--with-intake-sheet", action="store_true")
     parser.add_argument("--with-catalog", action="store_true")
     parser.add_argument("--with-board", action="store_true")
     parser.add_argument(
