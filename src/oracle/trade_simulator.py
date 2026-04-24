@@ -84,6 +84,9 @@ class ExitPolicy(ABC):
     def entry_is_valid(self, entry_bar: BarSnapshot, direction: str) -> bool:
         return True
 
+    def reset(self) -> None:
+        return None
+
     @abstractmethod
     def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
         ...
@@ -185,6 +188,137 @@ class FixedPercentRewardRiskExitPolicy(ExitPolicy):
             return ExitDecision(reason="stop_loss_underlying", exit_price=stop_price)
         if bar.low <= target_price:
             return ExitDecision(reason="take_profit_underlying", exit_price=target_price)
+        return None
+
+
+@dataclass(slots=True)
+class AtrTrailingExitPolicy(ExitPolicy):
+    """ATR-based trailing stop anchored to the best favorable price seen so far."""
+
+    atr_col: str = "atr_14"
+    atr_multiple: float = 2.0
+    policy_name: str = "atr_trailing_underlying"
+    _extreme_by_entry_idx: dict[int, float] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.atr_multiple <= 0:
+            raise ValueError("atr_multiple must be positive for atr_trailing exits.")
+
+    @property
+    def required_columns(self) -> set[str]:
+        return {self.atr_col}
+
+    def entry_is_valid(self, entry_bar: BarSnapshot, direction: str) -> bool:
+        value = entry_bar.values.get(self.atr_col)
+        return value is not None and not np.isnan(value) and value > 0
+
+    def reset(self) -> None:
+        self._extreme_by_entry_idx.clear()
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        atr_value = bar.values.get(self.atr_col)
+        if atr_value is None or np.isnan(atr_value) or atr_value <= 0:
+            return None
+
+        if trade.direction == "long":
+            best = self._extreme_by_entry_idx.get(trade.entry_idx, trade.entry_price)
+            stop_price = best - self.atr_multiple * atr_value
+            if bar.low <= stop_price:
+                return ExitDecision(reason="atr_trailing_stop", exit_price=stop_price)
+            self._extreme_by_entry_idx[trade.entry_idx] = max(best, bar.high)
+            return None
+
+        best = self._extreme_by_entry_idx.get(trade.entry_idx, trade.entry_price)
+        stop_price = best + self.atr_multiple * atr_value
+        if bar.high >= stop_price:
+            return ExitDecision(reason="atr_trailing_stop", exit_price=stop_price)
+        self._extreme_by_entry_idx[trade.entry_idx] = min(best, bar.low)
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class MovingAverageTrailingExitPolicy(ExitPolicy):
+    """Exit when close crosses the wrong side of a moving average."""
+
+    ma_col: str = "ema_20_exit"
+    policy_name: str = "ma_trailing_underlying"
+
+    @property
+    def required_columns(self) -> set[str]:
+        return {self.ma_col}
+
+    def entry_is_valid(self, entry_bar: BarSnapshot, direction: str) -> bool:
+        value = entry_bar.values.get(self.ma_col)
+        return value is not None and not np.isnan(value)
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        ma_value = bar.values.get(self.ma_col)
+        if ma_value is None or np.isnan(ma_value):
+            return None
+        if trade.direction == "long" and bar.close < ma_value:
+            return ExitDecision(reason="ma_trailing_stop", exit_price=bar.close)
+        if trade.direction == "short" and bar.close > ma_value:
+            return ExitDecision(reason="ma_trailing_stop", exit_price=bar.close)
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class MovingAverageCrossoverExitPolicy(ExitPolicy):
+    """Exit when the fast moving average crosses against the trade direction."""
+
+    fast_ma_col: str = "ema_8_exit"
+    slow_ma_col: str = "ema_20_exit"
+    policy_name: str = "ma_crossover_underlying"
+
+    @property
+    def required_columns(self) -> set[str]:
+        return {self.fast_ma_col, self.slow_ma_col}
+
+    def entry_is_valid(self, entry_bar: BarSnapshot, direction: str) -> bool:
+        fast = entry_bar.values.get(self.fast_ma_col)
+        slow = entry_bar.values.get(self.slow_ma_col)
+        return (
+            fast is not None
+            and slow is not None
+            and not np.isnan(fast)
+            and not np.isnan(slow)
+        )
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        fast = bar.values.get(self.fast_ma_col)
+        slow = bar.values.get(self.slow_ma_col)
+        if fast is None or slow is None or np.isnan(fast) or np.isnan(slow):
+            return None
+        if trade.direction == "long" and fast < slow:
+            return ExitDecision(reason="ma_crossover_exit", exit_price=bar.close)
+        if trade.direction == "short" and fast > slow:
+            return ExitDecision(reason="ma_crossover_exit", exit_price=bar.close)
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class TimeStopExitPolicy(ExitPolicy):
+    """Hold until a configured intraday time unless the simulator reaches EOD first."""
+
+    exit_time: dt_time
+    policy_name: str = "time_stop_underlying"
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        if bar.bar_time >= self.exit_time:
+            return ExitDecision(
+                reason=f"time_stop_{self.exit_time.strftime('%H%M')}",
+                exit_price=bar.close,
+            )
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class HoldToEodExitPolicy(ExitPolicy):
+    """No thesis exit; the simulator exits at the same-day EOD boundary."""
+
+    policy_name: str = "hold_to_eod_underlying"
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
         return None
 
 
@@ -307,6 +441,7 @@ class TradeSimulator:
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"TradeSimulator requires columns: {missing}")
+        self.exit_policy.reset()
 
         # Convert to numpy for fast iteration
         timestamps = df["timestamp"].to_list()

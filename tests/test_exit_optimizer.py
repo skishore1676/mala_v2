@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import polars as pl
 
@@ -15,23 +15,21 @@ def test_optimize_underlying_exit_canonicalizes_display_strategy_key() -> None:
         regime_timeframe="1h",
     )
     timestamps = [
-        datetime(2026, 3, 16, 13, 35, tzinfo=timezone.utc),
-        datetime(2026, 3, 16, 13, 36, tzinfo=timezone.utc),
-        datetime(2026, 3, 16, 13, 37, tzinfo=timezone.utc),
-        datetime(2026, 3, 17, 13, 35, tzinfo=timezone.utc),
-        datetime(2026, 3, 17, 13, 36, tzinfo=timezone.utc),
-        datetime(2026, 3, 17, 13, 37, tzinfo=timezone.utc),
+        datetime(2026, 3, day, 13, 35, tzinfo=timezone.utc) + timedelta(minutes=i)
+        for day in (16, 17)
+        for i in range(35)
     ]
+    close = [100.0 + i * 0.05 for i in range(len(timestamps))]
     frame = pl.DataFrame(
         {
             "timestamp": timestamps,
             "ticker": ["SPY"] * len(timestamps),
-            "open": [100.0, 100.2, 100.4, 101.0, 101.1, 101.2],
-            "high": [100.3, 100.6, 100.8, 101.3, 101.6, 101.8],
-            "low": [99.9, 99.95, 100.2, 100.9, 100.95, 101.1],
-            "close": [100.2, 100.5, 100.7, 101.1, 101.4, 101.6],
+            "open": [c - 0.02 for c in close],
+            "high": [c + 0.12 for c in close],
+            "low": [c - 0.12 for c in close],
+            "close": close,
             "volume": [1000.0] * len(timestamps),
-            "vma_10": [100.0, 100.1, 100.3, 100.9, 101.0, 101.2],
+            "vma_10": [c - 0.05 for c in close],
             "impulse_regime_1h": ["bullish"] * len(timestamps),
         }
     )
@@ -54,6 +52,18 @@ def test_optimize_underlying_exit_canonicalizes_display_strategy_key() -> None:
     assert result.selected_metrics["trade_count"] >= 1
     assert any(
         candidate.thesis_exit_policy == "trailing_vma_underlying"
+        for candidate in result.candidate_policies
+    )
+    assert any(
+        candidate.thesis_exit_policy == "atr_trailing_underlying"
+        for candidate in result.candidate_policies
+    )
+    assert any(
+        candidate.thesis_exit_policy == "ma_trailing_underlying"
+        for candidate in result.candidate_policies
+    )
+    assert any(
+        candidate.thesis_exit_policy == "hold_to_eod_underlying"
         for candidate in result.candidate_policies
     )
 

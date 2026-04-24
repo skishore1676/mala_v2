@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time as dt_time
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,12 @@ import polars as pl
 from pydantic import BaseModel, Field
 
 from src.oracle.trade_simulator import (
+    AtrTrailingExitPolicy,
     FixedPercentRewardRiskExitPolicy,
+    HoldToEodExitPolicy,
+    MovingAverageCrossoverExitPolicy,
+    MovingAverageTrailingExitPolicy,
+    TimeStopExitPolicy,
     TradeSimulator,
     VmaTrailingExitPolicy,
 )
@@ -85,6 +90,26 @@ _DEFAULT_FIXED_RR_GRID: list[tuple[float, float]] = [
     (0.0035, 1.5), (0.005, 2.0), (0.0075, 2.0),
 ]
 
+_RUNNER_FIXED_RR_GRID: dict[str, list[tuple[float, float]]] = {
+    "market_impulse": [(0.0075, 3.0), (0.01, 3.0), (0.01, 4.0)],
+    "jerk_pivot_momentum": [(0.005, 2.5), (0.0075, 3.0), (0.01, 3.0)],
+    "compression_expansion_breakout": [(0.0075, 3.0), (0.01, 3.0), (0.01, 4.0)],
+    "opening_drive_classifier": [(0.0075, 2.5), (0.01, 3.0)],
+    "opening_drive_v2": [(0.0075, 2.5), (0.01, 3.0)],
+    "kinematic_ladder": [(0.005, 2.5), (0.0075, 3.0)],
+}
+
+_ATR_GRID: dict[str, list[tuple[str, float]]] = {
+    "default": [("atr_14_exit", 1.5), ("atr_14_exit", 2.0), ("atr_30_exit", 2.0)],
+    "market_impulse": [("atr_14_exit", 1.5), ("atr_14_exit", 2.0), ("atr_30_exit", 2.5)],
+    "compression_expansion_breakout": [("atr_14_exit", 2.0), ("atr_30_exit", 2.5), ("atr_30_exit", 3.0)],
+    "jerk_pivot_momentum": [("atr_14_exit", 1.5), ("atr_14_exit", 2.0), ("atr_30_exit", 2.5)],
+}
+
+_MA_TRAILING_COLS = ["ema_8_exit", "ema_12_exit", "ema_20_exit", "ema_50_exit"]
+_MA_CROSSOVER_PAIRS = [("ema_8_exit", "ema_20_exit"), ("ema_12_exit", "ema_50_exit")]
+_TIME_STOP_GRID = [dt_time(11, 30), dt_time(14, 30), dt_time(15, 55)]
+
 
 @dataclass(frozen=True, slots=True)
 class _PolicyCandidate:
@@ -117,7 +142,7 @@ def optimize_underlying_exit(
     if direction.lower() not in {"long", "short"}:
         return None
 
-    signal_frame = strategy.generate_signals(enriched_frame.clone())
+    signal_frame = _with_exit_policy_features(strategy.generate_signals(enriched_frame.clone()))
     filtered = _holdout_signal_frame(signal_frame, direction, holdout_start, holdout_end)
     if filtered.is_empty():
         return None
@@ -230,6 +255,95 @@ def _policy_candidates(
 ) -> list[_PolicyCandidate]:
     candidates: list[_PolicyCandidate] = []
 
+    candidates.append(
+        _PolicyCandidate(
+            name="hold_to_eod_underlying",
+            thesis_exit_policy="hold_to_eod_underlying",
+            thesis_exit_params={},
+            simulator=TradeSimulator(
+                entry_delay_bars=entry_delay_bars,
+                min_hold_bars=min_hold_bars,
+                cooldown_bars_after_signal=cooldown_bars_after_signal,
+                exit_policy=HoldToEodExitPolicy(),
+            ),
+        )
+    )
+
+    for exit_time in _TIME_STOP_GRID:
+        time_label = exit_time.strftime("%H%M")
+        candidates.append(
+            _PolicyCandidate(
+                name=f"time_stop_underlying:{time_label}",
+                thesis_exit_policy="time_stop_underlying",
+                thesis_exit_params={"exit_time_et": exit_time.strftime("%H:%M")},
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=TimeStopExitPolicy(
+                        exit_time=exit_time,
+                        policy_name="time_stop_underlying",
+                    ),
+                ),
+            )
+        )
+
+    for atr_col, atr_multiple in _ATR_GRID.get(strategy_key, _ATR_GRID["default"]):
+        candidates.append(
+            _PolicyCandidate(
+                name=f"atr_trailing_underlying:{atr_col}x{atr_multiple:.2f}",
+                thesis_exit_policy="atr_trailing_underlying",
+                thesis_exit_params={"atr_col": atr_col, "atr_multiple": atr_multiple},
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=AtrTrailingExitPolicy(
+                        atr_col=atr_col,
+                        atr_multiple=atr_multiple,
+                        policy_name="atr_trailing_underlying",
+                    ),
+                ),
+            )
+        )
+
+    for ma_col in _MA_TRAILING_COLS:
+        candidates.append(
+            _PolicyCandidate(
+                name=f"ma_trailing_underlying:{ma_col}",
+                thesis_exit_policy="ma_trailing_underlying",
+                thesis_exit_params={"ma_col": ma_col},
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=MovingAverageTrailingExitPolicy(
+                        ma_col=ma_col,
+                        policy_name="ma_trailing_underlying",
+                    ),
+                ),
+            )
+        )
+
+    for fast_col, slow_col in _MA_CROSSOVER_PAIRS:
+        candidates.append(
+            _PolicyCandidate(
+                name=f"ma_crossover_underlying:{fast_col}>{slow_col}",
+                thesis_exit_policy="ma_crossover_underlying",
+                thesis_exit_params={"fast_ma_col": fast_col, "slow_ma_col": slow_col},
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=MovingAverageCrossoverExitPolicy(
+                        fast_ma_col=fast_col,
+                        slow_ma_col=slow_col,
+                        policy_name="ma_crossover_underlying",
+                    ),
+                ),
+            )
+        )
+
     # VMA trailing (market_impulse only, where vma_col exists)
     if strategy_key == "market_impulse":
         vma_col = getattr(strategy, "vma_col", "vma_10")
@@ -250,7 +364,10 @@ def _policy_candidates(
         )
 
     # Fixed reward-risk grid
-    grid = _FIXED_RR_GRID.get(strategy_key, _DEFAULT_FIXED_RR_GRID)
+    grid = [
+        *_FIXED_RR_GRID.get(strategy_key, _DEFAULT_FIXED_RR_GRID),
+        *_RUNNER_FIXED_RR_GRID.get(strategy_key, []),
+    ]
     for stop_loss_pct, reward_multiple in grid:
         name = f"fixed_rr_underlying:{stop_loss_pct:.4f}x{reward_multiple:.2f}"
         candidates.append(
@@ -273,6 +390,33 @@ def _policy_candidates(
             )
         )
     return candidates
+
+
+def _with_exit_policy_features(frame: pl.DataFrame) -> pl.DataFrame:
+    if frame.is_empty():
+        return frame
+    required = {"high", "low", "close"}
+    if not required.issubset(frame.columns):
+        return frame
+    prev_close = pl.col("close").shift(1)
+    true_range = pl.max_horizontal(
+        pl.col("high") - pl.col("low"),
+        (pl.col("high") - prev_close).abs(),
+        (pl.col("low") - prev_close).abs(),
+    )
+    return (
+        frame
+        .with_columns(true_range.alias("_exit_true_range"))
+        .with_columns([
+            pl.col("_exit_true_range").rolling_mean(window_size=14).alias("atr_14_exit"),
+            pl.col("_exit_true_range").rolling_mean(window_size=30).alias("atr_30_exit"),
+            pl.col("close").ewm_mean(span=8, adjust=False).alias("ema_8_exit"),
+            pl.col("close").ewm_mean(span=12, adjust=False).alias("ema_12_exit"),
+            pl.col("close").ewm_mean(span=20, adjust=False).alias("ema_20_exit"),
+            pl.col("close").ewm_mean(span=50, adjust=False).alias("ema_50_exit"),
+        ])
+        .drop("_exit_true_range")
+    )
 
 
 def _sort_key(e: ExitPolicyEvaluation) -> tuple[float, float, float, float]:
