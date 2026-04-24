@@ -329,7 +329,7 @@ def build_hot_start_findings(
             latest_promoted_by_key[row.catalog_key] = row
 
     for row in latest_promoted_by_key.values():
-        if row.in_strategy_catalog == "no":
+        if row.in_strategy_catalog == "no" and row.recommendation_tier in {"promote", "shadow"}:
             findings.append(
                 HotStartFinding(
                     severity="medium",
