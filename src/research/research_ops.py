@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import settings
+from src.research.catalog import upsert_strategy_catalog
 from src.research.google_sheets import GoogleSheetTableClient
 
 
@@ -96,6 +97,18 @@ class HotStartFinding:
     key: str
     detail: str
     next_action: str
+
+
+@dataclass(slots=True)
+class NextAction:
+    rank: int
+    priority: str
+    action_type: str
+    key: str
+    reason: str
+    suggested_command: str
+    requires_approval: str
+    mutates_external_state: str
 
 
 @dataclass(slots=True)
@@ -368,6 +381,148 @@ def build_hot_start_findings(
     return sorted(findings, key=lambda item: (item.severity != "high", item.category, item.key))
 
 
+def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
+    """Turn the ledger and hot-start findings into a small operator queue."""
+    actions: list[NextAction] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(
+        *,
+        priority: str,
+        action_type: str,
+        key: str,
+        reason: str,
+        suggested_command: str,
+        requires_approval: str = "yes",
+        mutates_external_state: str = "no",
+    ) -> None:
+        marker = (action_type, key)
+        if marker in seen:
+            return
+        seen.add(marker)
+        actions.append(
+            NextAction(
+                rank=0,
+                priority=priority,
+                action_type=action_type,
+                key=key,
+                reason=reason,
+                suggested_command=suggested_command,
+                requires_approval=requires_approval,
+                mutates_external_state=mutates_external_state,
+            )
+        )
+
+    for finding in ledger.findings:
+        if finding.category == "catalog_publish_pending":
+            add(
+                priority="high" if finding.severity == "high" else "medium",
+                action_type="publish_pending",
+                key=finding.key,
+                reason=finding.detail,
+                suggested_command=(
+                    "python -m src.research.research_ops publish-pending "
+                    f"--catalog-key {finding.key} --dry-run"
+                ),
+                requires_approval="yes",
+                mutates_external_state="yes",
+            )
+        elif finding.category == "board_state_stale":
+            add(
+                priority="medium",
+                action_type="sync_board",
+                key=finding.key,
+                reason=finding.detail,
+                suggested_command="python -m src.research.research_ops sync-board --dry-run",
+                requires_approval="yes",
+                mutates_external_state="yes",
+            )
+        elif finding.category == "run_missing_summary":
+            add(
+                priority="high",
+                action_type="repair_run_summary",
+                key=finding.key,
+                reason=finding.detail,
+                suggested_command=f"# inspect or rerun reporting for {finding.key}",
+                requires_approval="yes",
+            )
+        elif finding.category == "running_hypothesis":
+            add(
+                priority="high",
+                action_type="resume_or_normalize",
+                key=finding.key,
+                reason=finding.detail,
+                suggested_command=f"python -m src.research.research_runner continue-approved --hypothesis {finding.key}",
+                requires_approval="yes",
+            )
+        elif finding.category == "terminal_without_artifacts":
+            add(
+                priority="medium",
+                action_type="inspect_terminal",
+                key=finding.key,
+                reason=finding.detail,
+                suggested_command=f"# inspect research/hypotheses/{finding.key}.md before trusting terminal state",
+                requires_approval="yes",
+            )
+
+    for row in ledger.hypotheses:
+        if row.state == "pending":
+            add(
+                priority="medium",
+                action_type="run_m1",
+                key=row.hypothesis_id,
+                reason=f"Pending hypothesis for {row.symbol_scope} / {row.strategy}.",
+                suggested_command=(
+                    "python -m src.research.research_runner run-m1 "
+                    f"--hypothesis research/hypotheses/{row.hypothesis_id}.md"
+                ),
+                requires_approval="yes",
+            )
+        elif row.state == "retune":
+            add(
+                priority="medium",
+                action_type="retune_plan",
+                key=row.hypothesis_id,
+                reason=f"Retune requested after latest_stage={row.latest_stage} decision={row.decision}.",
+                suggested_command=(
+                    "python -m src.research.research_runner retune-plan "
+                    f"--hypothesis research/hypotheses/{row.hypothesis_id}.md"
+                ),
+                requires_approval="yes",
+            )
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    action_order = {
+        "publish_pending": 0,
+        "sync_board": 1,
+        "repair_run_summary": 2,
+        "resume_or_normalize": 3,
+        "retune_plan": 4,
+        "run_m1": 5,
+        "inspect_terminal": 6,
+    }
+    actions.sort(
+        key=lambda row: (
+            priority_order.get(row.priority, 9),
+            action_order.get(row.action_type, 9),
+            row.key,
+        )
+    )
+    return [
+        NextAction(
+            rank=index,
+            priority=row.priority,
+            action_type=row.action_type,
+            key=row.key,
+            reason=row.reason,
+            suggested_command=row.suggested_command,
+            requires_approval=row.requires_approval,
+            mutates_external_state=row.mutates_external_state,
+        )
+        for index, row in enumerate(actions, start=1)
+    ]
+
+
 def _match_board_row_to_hypothesis(
     board_row: dict[str, Any],
     latest_by_hypothesis: dict[str, HypothesisLedgerRow],
@@ -528,6 +683,32 @@ def _read_board_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     return client.read_rows(range_suffix="A1:ZZ5000")
 
 
+def _strategy_catalog_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.catalog_google_credentials or args.google_credentials
+    if not args.catalog_sheet_id:
+        raise SystemExit("--catalog-sheet-id or STRATEGY_CATALOG_SHEET_ID is required")
+    if not credentials:
+        raise SystemExit("--google-credentials or --catalog-google-credentials is required")
+    return GoogleSheetTableClient(
+        spreadsheet_id=args.catalog_sheet_id,
+        sheet_name=args.catalog_sheet_name,
+        credentials_path=Path(credentials),
+    )
+
+
+def _board_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.board_google_credentials or args.google_credentials
+    if not args.board_sheet_id:
+        raise SystemExit("--board-sheet-id is required")
+    if not credentials:
+        raise SystemExit("--google-credentials or --board-google-credentials is required")
+    return GoogleSheetTableClient(
+        spreadsheet_id=args.board_sheet_id,
+        sheet_name=args.board_scout_sheet,
+        credentials_path=Path(credentials),
+    )
+
+
 def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
     catalog_rows = _read_strategy_catalog_rows(args) if args.with_catalog else []
     ledger = build_ledger(
@@ -544,6 +725,224 @@ def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
             board_rows=board_rows,
         )
     return ledger
+
+
+def _selected_matches_m5(selected: dict[str, str], row: dict[str, str]) -> bool:
+    ignored = {
+        "catalog_key",
+        "recommendation_tier",
+        "exit_reliability",
+        "exit_trade_count",
+        "selected_exit_policy",
+        "mc_prob_positive_exp",
+        "mc_exp_r_p50",
+        "base_exp_r",
+        "holdout_trades",
+        "holdout_win_rate",
+    }
+    for key, value in selected.items():
+        if key in ignored or value in ("", None):
+            continue
+        if key not in row:
+            continue
+        if str(row.get(key, "")).strip() != str(value).strip():
+            return False
+    return True
+
+
+def _matching_m5_row(run_dir: Path, selected: dict[str, str]) -> dict[str, str]:
+    rows = _read_csv_dicts(run_dir / "M5_execution.csv")
+    for row in rows:
+        if _selected_matches_m5(selected, row):
+            return row
+    catalog_key = selected.get("catalog_key", "<unknown>")
+    raise RuntimeError(f"No M5_execution.csv row matched {catalog_key} in {run_dir}")
+
+
+def _exit_opt_matches_selected(item: dict[str, Any], selected: dict[str, str]) -> bool:
+    key = item.get("candidate_key", {})
+    if not isinstance(key, dict):
+        return False
+    match_keys = [
+        "ticker",
+        "direction",
+        "strategy",
+        "entry_buffer_minutes",
+        "entry_window_minutes",
+        "regime_timeframe",
+        "vwma_periods",
+    ]
+    for field in match_keys:
+        selected_value = selected.get(field, "")
+        if not selected_value:
+            continue
+        if str(key.get(field, "")).strip() != str(selected_value).strip():
+            return False
+    return True
+
+
+def _exit_opt_for_selected(run_dir: Path, selected: dict[str, str]) -> dict[str, Any] | None:
+    summary_path = run_dir / "m5_exit_optimizations.json"
+    if not summary_path.exists():
+        return None
+    try:
+        items = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(items, list):
+        return None
+
+    for item in items:
+        if not isinstance(item, dict) or not _exit_opt_matches_selected(item, selected):
+            continue
+        artifact = run_dir / str(item.get("artifact", ""))
+        if artifact.exists():
+            try:
+                return json.loads(artifact.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                return None
+        selected_policy = str(item.get("selected_policy_name", "") or selected.get("selected_exit_policy", ""))
+        if not selected_policy:
+            return None
+        return {
+            "selected_policy_name": selected_policy,
+            "thesis_exit_policy": selected_policy.split(":", 1)[0],
+            "selected_metrics": item.get("selected_metrics", {}),
+        }
+    return None
+
+
+def _latest_promoted_by_catalog_key(ledger: ResearchLedger) -> dict[str, PromotedLedgerRow]:
+    latest: dict[str, PromotedLedgerRow] = {}
+    for row in ledger.promoted:
+        if row.catalog_key:
+            latest[row.catalog_key] = row
+    return latest
+
+
+def _catalog_publish_plan(
+    *,
+    ledger: ResearchLedger,
+    catalog_keys: set[str],
+    only_catalog_key: str = "",
+) -> list[PromotedLedgerRow]:
+    rows: list[PromotedLedgerRow] = []
+    for row in _latest_promoted_by_catalog_key(ledger).values():
+        if only_catalog_key and row.catalog_key != only_catalog_key:
+            continue
+        if row.catalog_key in catalog_keys:
+            continue
+        if row.recommendation_tier not in {"promote", "shadow"}:
+            continue
+        rows.append(row)
+    return sorted(rows, key=lambda item: (item.recommendation_tier != "promote", item.catalog_key))
+
+
+def _publish_catalog_rows(
+    *,
+    rows: list[PromotedLedgerRow],
+    args: argparse.Namespace,
+    dry_run: bool,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    credentials = args.catalog_google_credentials or args.google_credentials
+    if not dry_run and not credentials:
+        raise SystemExit("--google-credentials or --catalog-google-credentials is required for --apply")
+    for row in rows:
+        run_dir = REPO_ROOT / row.artifact_dir
+        selected_rows = [
+            selected
+            for selected in _read_csv_dicts(run_dir / "CATALOG_SELECTED.csv")
+            if selected.get("catalog_key") == row.catalog_key
+        ]
+        if not selected_rows:
+            raise RuntimeError(f"CATALOG_SELECTED.csv row missing for {row.catalog_key}")
+        selected = selected_rows[-1]
+        m5_best = _matching_m5_row(run_dir, selected)
+        exit_opt = _exit_opt_for_selected(run_dir, selected)
+        result = {
+            "catalog_key": row.catalog_key,
+            "ticker": row.ticker,
+            "direction": row.direction,
+            "strategy": row.strategy,
+            "recommendation_tier": row.recommendation_tier,
+            "artifact_dir": row.artifact_dir,
+            "action": "would_publish" if dry_run else "published",
+        }
+        if not dry_run:
+            upsert_strategy_catalog(
+                catalog_key=row.catalog_key,
+                symbol=row.ticker,
+                strategy=row.strategy,
+                m5_best=m5_best,
+                spreadsheet_id=args.catalog_sheet_id,
+                credentials_path=Path(credentials),
+                sheet_name=args.catalog_sheet_name,
+                exit_opt=exit_opt,
+            )
+        results.append(result)
+    return results
+
+
+def _board_status_for(row: HypothesisLedgerRow) -> dict[str, str]:
+    stage = row.latest_stage if row.latest_stage != "none" else "FEASIBILITY"
+    if row.state == "completed" and row.decision == "promote":
+        return {
+            "Operator_Action": "",
+            "Agent_State": "PROMOTED",
+            "Current_Stage": "M5",
+            "Recommendation": "PROMOTE",
+        }
+    if row.state == "kill":
+        return {
+            "Operator_Action": "",
+            "Agent_State": "KILLED",
+            "Current_Stage": stage,
+            "Recommendation": "KILL",
+        }
+    if row.state == "retune":
+        return {
+            "Operator_Action": "",
+            "Agent_State": "ASSESSED",
+            "Current_Stage": stage,
+            "Recommendation": "RETUNE_M1",
+        }
+    if row.state == "running":
+        return {
+            "Operator_Action": "",
+            "Agent_State": "RUNNING_PIPELINE",
+            "Current_Stage": stage,
+            "Recommendation": "CONTINUE_PIPELINE",
+        }
+    return {}
+
+
+def _board_sync_plan(
+    *,
+    ledger: ResearchLedger,
+    board_rows: list[dict[str, Any]],
+    only_task_id: str = "",
+) -> list[dict[str, Any]]:
+    latest_by_hyp = {row.hypothesis_id: row for row in ledger.hypotheses}
+    updates: list[dict[str, Any]] = []
+    for board_row in board_rows:
+        task_id = str(board_row.get("Task_ID", "")).strip()
+        if not task_id or (only_task_id and task_id != only_task_id):
+            continue
+        matched = _match_board_row_to_hypothesis(board_row, latest_by_hyp)
+        if matched is None:
+            continue
+        status = _board_status_for(matched)
+        if not status:
+            continue
+        needs_update = any(str(board_row.get(key, "")) != value for key, value in status.items())
+        if not needs_update:
+            continue
+        next_row = dict(board_row)
+        next_row.update(status)
+        next_row["_matched_hypothesis_id"] = matched.hypothesis_id
+        updates.append(next_row)
+    return updates
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
@@ -576,6 +975,125 @@ def cmd_hot_start(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_next_actions(args: argparse.Namespace) -> int:
+    ledger = _build_with_optional_sheets(args)
+    actions = build_next_actions(ledger)
+    if args.limit:
+        actions = actions[: args.limit]
+    rows = [asdict(row) for row in actions]
+    out_dir = Path(args.out_dir)
+    if args.format == "json":
+        print(json.dumps(rows, indent=2))
+    elif args.format == "csv":
+        path = Path(args.output) if args.output else out_dir / "next_actions.csv"
+        _write_csv(path, rows)
+        print(f"NEXT_ACTIONS_CSV={path}")
+    else:
+        path = Path(args.output) if args.output else out_dir / "next_actions.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "# Mala Research Next Actions",
+            "",
+            f"- generated_at: `{ledger.generated_at}`",
+            f"- actions: `{len(actions)}`",
+            "",
+            "| Rank | Priority | Action | Key | Approval | External | Suggested Command |",
+            "|---:|---|---|---|---|---|---|",
+        ]
+        if not actions:
+            lines.append("|  |  | No actions |  |  |  |  |")
+        for action in actions:
+            lines.append(
+                "| {rank} | {priority} | `{action_type}` | `{key}` | {approval} | {external} | `{command}` |".format(
+                    rank=action.rank,
+                    priority=action.priority,
+                    action_type=action.action_type,
+                    key=action.key,
+                    approval=action.requires_approval,
+                    external=action.mutates_external_state,
+                    command=action.suggested_command.replace("|", "/"),
+                )
+            )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"NEXT_ACTIONS_REPORT={path}")
+    print(f"NEXT_ACTIONS={len(actions)}")
+    return 0
+
+
+def cmd_publish_pending(args: argparse.Namespace) -> int:
+    catalog_client = _strategy_catalog_client(args)
+    catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
+    catalog_keys = {
+        str(row.get("catalog_key", "")).strip()
+        for row in catalog_rows
+        if str(row.get("catalog_key", "")).strip()
+    }
+    ledger = build_ledger(
+        hypotheses_dir=Path(args.hypotheses_dir),
+        runs_dir=Path(args.runs_dir),
+        strategy_catalog_rows=catalog_rows,
+    )
+    rows = _catalog_publish_plan(
+        ledger=ledger,
+        catalog_keys=catalog_keys,
+        only_catalog_key=args.catalog_key,
+    )
+    results = _publish_catalog_rows(rows=rows, args=args, dry_run=not args.apply)
+    if args.output:
+        _write_csv(Path(args.output), results)
+    else:
+        print(json.dumps(results, indent=2))
+    print(f"CATALOG_PENDING={len(rows)}")
+    print(f"CATALOG_PUBLISHED={0 if not args.apply else len(results)}")
+    print(f"DRY_RUN={'false' if args.apply else 'true'}")
+    return 0
+
+
+def cmd_sync_board(args: argparse.Namespace) -> int:
+    board_client = _board_client(args)
+    board_rows = board_client.read_rows(range_suffix="A1:ZZ5000")
+    catalog_rows = _read_strategy_catalog_rows(args) if args.with_catalog else []
+    ledger = build_ledger(
+        hypotheses_dir=Path(args.hypotheses_dir),
+        runs_dir=Path(args.runs_dir),
+        strategy_catalog_rows=catalog_rows,
+    )
+    updates = _board_sync_plan(
+        ledger=ledger,
+        board_rows=board_rows,
+        only_task_id=args.task_id,
+    )
+    public_rows = [
+        {
+            "Task_ID": row.get("Task_ID", ""),
+            "matched_hypothesis_id": row.get("_matched_hypothesis_id", ""),
+            "Operator_Action": row.get("Operator_Action", ""),
+            "Agent_State": row.get("Agent_State", ""),
+            "Current_Stage": row.get("Current_Stage", ""),
+            "Recommendation": row.get("Recommendation", ""),
+        }
+        for row in updates
+    ]
+    if args.output:
+        _write_csv(Path(args.output), public_rows)
+    else:
+        print(json.dumps(public_rows, indent=2))
+    if args.apply and updates:
+        clean_updates = []
+        for row in updates:
+            clean = dict(row)
+            clean.pop("_matched_hypothesis_id", None)
+            clean_updates.append(clean)
+        board_client.batch_update_rows(
+            rows=clean_updates,
+            columns=["Operator_Action", "Agent_State", "Current_Stage", "Recommendation"],
+        )
+    print(f"BOARD_UPDATES={len(updates)}")
+    print(f"BOARD_APPLIED={len(updates) if args.apply else 0}")
+    print(f"DRY_RUN={'false' if args.apply else 'true'}")
+    return 0
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
@@ -604,6 +1122,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_common_args(hot_start)
     hot_start.add_argument("--report", default="")
     hot_start.set_defaults(func=cmd_hot_start)
+
+    next_actions = subparsers.add_parser("next-actions", help="Write or print the ranked operator action queue.")
+    _add_common_args(next_actions)
+    next_actions.add_argument("--format", choices=["md", "csv", "json"], default="md")
+    next_actions.add_argument("--output", default="")
+    next_actions.add_argument("--limit", type=int, default=0)
+    next_actions.set_defaults(func=cmd_next_actions)
+
+    publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
+    _add_common_args(publish)
+    publish.add_argument("--catalog-key", default="", help="Limit to one catalog_key.")
+    publish.add_argument("--apply", action="store_true", help="Actually upsert rows into Strategy_Catalog. Omit for dry-run.")
+    publish.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
+    publish.add_argument("--output", default="", help="Optional CSV output path for the publish plan.")
+    publish.set_defaults(func=cmd_publish_pending)
+
+    sync_board = subparsers.add_parser("sync-board", help="Dry-run or apply Scout_Queue status updates from Mala ledger state.")
+    _add_common_args(sync_board)
+    sync_board.add_argument("--task-id", default="", help="Limit to one Scout_Queue Task_ID.")
+    sync_board.add_argument("--apply", action="store_true", help="Actually update Scout_Queue. Omit for dry-run.")
+    sync_board.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
+    sync_board.add_argument("--output", default="", help="Optional CSV output path for the sync plan.")
+    sync_board.set_defaults(func=cmd_sync_board)
 
     return parser.parse_args(argv)
 

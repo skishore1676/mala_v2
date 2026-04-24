@@ -88,6 +88,9 @@ Research Ops outputs are rebuildable summaries:
 ```bash
 uv run python -m src.research.research_ops backfill
 uv run python -m src.research.research_ops hot-start
+uv run python -m src.research.research_ops next-actions
+uv run python -m src.research.research_ops publish-pending --dry-run
+uv run python -m src.research.research_ops sync-board --dry-run
 ```
 
 Default output:
@@ -99,6 +102,21 @@ Default output:
 Use `hot_start.md` at the beginning or end of a research session to identify:
 stale board rows, missing summaries, promoted rows absent from Strategy_Catalog,
 terminal hypotheses without artifacts, and other next-action cleanup items.
+
+Use `src.research.research_runner` for bounded execution commands. It wraps
+`hypothesis_agent.py` and keeps agents on a deterministic command menu:
+
+```bash
+uv run python -m src.research.research_runner create-hypothesis --title "..." --strategy "Opening Drive Classifier" --symbol-scope SPY
+uv run python -m src.research.research_runner dry-run --hypothesis research/hypotheses/my-idea.md
+uv run python -m src.research.research_runner run-m1 --hypothesis research/hypotheses/my-idea.md
+uv run python -m src.research.research_runner continue-approved --hypothesis research/hypotheses/my-idea.md
+uv run python -m src.research.research_runner retune-plan --hypothesis research/hypotheses/my-idea.md
+uv run python -m src.research.research_runner retune-approved --hypothesis research/hypotheses/my-idea.md
+```
+
+`publish-pending` and `sync-board` are dry-run by default. Require explicit
+`--apply` before touching Google Sheets.
 
 ---
 

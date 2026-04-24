@@ -105,8 +105,29 @@ Use `src.research.research_ops` whenever you need the research memory layer:
 # Rebuild the local research ledger from hypothesis files + run artifacts
 python -m src.research.research_ops backfill
 
-# Generate a next-action reconciliation report
+# Generate hot-start and next-action reconciliation reports
 python -m src.research.research_ops hot-start
+python -m src.research.research_ops next-actions
+
+# External mutations are dry-run by default; add --apply only after review
+python -m src.research.research_ops publish-pending --dry-run
+python -m src.research.research_ops sync-board --dry-run
+```
+
+Use `src.research.research_runner` as the safe command surface for actual
+Mala research execution. It delegates to `hypothesis_agent.py`; it does not
+replace the staged engine.
+
+```bash
+python -m src.research.research_runner create-hypothesis \
+  --title "AMD Market Impulse retest" \
+  --strategy "Market Impulse (Cross & Reclaim)" \
+  --symbol-scope AMD
+python -m src.research.research_runner dry-run --hypothesis research/hypotheses/my-idea.md
+python -m src.research.research_runner run-m1 --hypothesis research/hypotheses/my-idea.md
+python -m src.research.research_runner continue-approved --hypothesis research/hypotheses/my-idea.md
+python -m src.research.research_runner retune-plan --hypothesis research/hypotheses/my-idea.md
+python -m src.research.research_runner retune-approved --hypothesis research/hypotheses/my-idea.md
 ```
 
 The workbook/CSV outputs under `data/results/research_ops/` are rebuildable
@@ -116,6 +137,7 @@ summaries, not canonical truth. Canonical research evidence remains:
 Mental model:
 - Mala research engine proves or kills ideas through M1-M5.
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
+- Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
 - Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.

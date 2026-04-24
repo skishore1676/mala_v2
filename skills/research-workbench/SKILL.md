@@ -89,6 +89,9 @@ its view from local Mala evidence:
 ```bash
 ./.venv/bin/python -m src.research.research_ops backfill
 ./.venv/bin/python -m src.research.research_ops hot-start
+./.venv/bin/python -m src.research.research_ops next-actions
+./.venv/bin/python -m src.research.research_ops publish-pending --dry-run
+./.venv/bin/python -m src.research.research_ops sync-board --dry-run
 ```
 
 Outputs:
@@ -101,6 +104,25 @@ Interpretation:
 - `board_state_stale` means an operator-facing sheet row no longer matches Mala's local state.
 - `run_missing_summary` means a run has stage artifacts but lacks a summary; repair or rerun reporting before relying on it as evidence.
 - `terminal_without_artifacts` means a hypothesis file is terminal but no run directory was found; inspect before trusting it.
+- `next-actions` turns those findings plus pending/retune hypotheses into a ranked operator queue.
+- `publish-pending` and `sync-board` are dry-run by default; use `--apply` only after explicit review.
+
+## Research Runner Layer
+
+Use Research Runner for the bounded execution surface. It delegates to
+`hypothesis_agent.py`; the staged engine remains authoritative.
+
+```bash
+./.venv/bin/python -m src.research.research_runner create-hypothesis \
+  --title "SPY Opening Drive continuation" \
+  --strategy "Opening Drive Classifier" \
+  --symbol-scope SPY
+./.venv/bin/python -m src.research.research_runner dry-run --hypothesis research/hypotheses/my-idea.md
+./.venv/bin/python -m src.research.research_runner run-m1 --hypothesis research/hypotheses/my-idea.md
+./.venv/bin/python -m src.research.research_runner continue-approved --hypothesis research/hypotheses/my-idea.md
+./.venv/bin/python -m src.research.research_runner retune-plan --hypothesis research/hypotheses/my-idea.md
+./.venv/bin/python -m src.research.research_runner retune-approved --hypothesis research/hypotheses/my-idea.md
+```
 
 ## Validation
 
