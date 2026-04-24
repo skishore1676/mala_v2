@@ -49,6 +49,7 @@ python -m pytest tests/ -v
 | `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes per-candidate exit optimization artifacts |
 | `src/research/catalog.py` | Strategy_Catalog upsert (called on M5 promote, includes exit fields) |
 | `src/research/catalog_steward.py` | Advisory Strategy_Catalog + active_strategy review; writes local recommendations and optional steward Sheet annotations |
+| `src/research/research_ops.py` | Research ledger/backfill/hot-start tool; reconstructs tested ideas, runs, promoted rows, and next-action findings |
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
 | `src/newton/engine.py` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
 | `research/hypotheses/` | Hypothesis state machine files |
@@ -98,6 +99,27 @@ active_strategy. That role is advisory: it can write local recommendation
 artifacts by default and may update only `steward_recommendation` /
 `steward_notes` in Strategy_Catalog when explicitly asked.
 
+Use `src.research.research_ops` whenever you need the research memory layer:
+
+```bash
+# Rebuild the local research ledger from hypothesis files + run artifacts
+python -m src.research.research_ops backfill
+
+# Generate a next-action reconciliation report
+python -m src.research.research_ops hot-start
+```
+
+The workbook/CSV outputs under `data/results/research_ops/` are rebuildable
+summaries, not canonical truth. Canonical research evidence remains:
+`research/hypotheses/` plus `data/results/hypothesis_runs/`.
+
+Mental model:
+- Mala research engine proves or kills ideas through M1-M5.
+- Research Ops keeps the lab notebook, backfills history, and proposes next actions.
+- Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
+- Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
+- OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.
+
 **If the user has a new hypothesis:**
 1. Create `research/hypotheses/{slug}.md` from `TEMPLATE.md`
 2. Fill in `strategy`, `symbol_scope`, `max_stage`
@@ -107,6 +129,7 @@ artifacts by default and may update only `steward_recommendation` /
 6. After M5: exit optimizer runs automatically — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
 8. On M5 promote: Strategy_Catalog row is written with all 20 columns filled from M5 data + exit optimization results. `bhiksha_ready` is derived from Bhiksha-supported strategy keys and thesis exit policies in `src/research/catalog.py`.
+9. After a research batch, run `python -m src.research.research_ops backfill` and read `data/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
 
 **Reading regime slices post-run:**
 Look at `M4_holdout.csv` columns `vix_band`, `spy_trend_20d`, `session_type`, `market_regime_key` to answer:

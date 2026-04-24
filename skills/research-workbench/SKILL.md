@@ -20,6 +20,7 @@ Do:
 - use `CATALOG_SELECTED.csv` as the concise selected-candidate readout
 - treat `m5_exit_optimizations.json` plus the per-candidate `m5_exit_optimization_<ticker>_<direction>_<hash>.json` files as the Bhiksha-facing exit research artifacts
 - remember that 1-minute runs apply execution guardrails from `config/hypothesis_defaults.yaml`
+- run `src.research.research_ops` after batches when you need the master ledger, hot-start findings, or next-action cleanup list
 - allow the optional `Strategy_Catalog` write only after M5 `promote`
 
 Do not:
@@ -80,10 +81,32 @@ The agent owns the stage protocol; the human should not need to remember it.
 - Exit optimization is research output for execution readiness; Bhiksha translation stays outside v2.
 - The sheet writer should create `lifecycle_status=candidate`; human approval happens outside the workbench.
 
+## Research Ops Layer
+
+Use Research Ops for memory and continuity, not for gate decisions. It rebuilds
+its view from local Mala evidence:
+
+```bash
+./.venv/bin/python -m src.research.research_ops backfill
+./.venv/bin/python -m src.research.research_ops hot-start
+```
+
+Outputs:
+- `data/results/research_ops/research_ledger.xlsx`
+- `data/results/research_ops/hot_start.md`
+- `data/results/research_ops/csv/*.csv`
+
+Interpretation:
+- `catalog_publish_pending` means an M5 selected candidate is absent from Strategy_Catalog; dedupe before publishing.
+- `board_state_stale` means an operator-facing sheet row no longer matches Mala's local state.
+- `run_missing_summary` means a run has stage artifacts but lacks a summary; repair or rerun reporting before relying on it as evidence.
+- `terminal_without_artifacts` means a hypothesis file is terminal but no run directory was found; inspect before trusting it.
+
 ## Validation
 
 After code changes, run:
 ```bash
 ./.venv/bin/python -m pytest tests/ -q
 ./.venv/bin/python hypothesis_agent.py --hypothesis research/hypotheses/TEMPLATE.md --dry-run
+./.venv/bin/python -m src.research.research_ops hot-start
 ```

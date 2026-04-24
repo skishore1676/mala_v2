@@ -1063,8 +1063,8 @@ def _build_analysis(*, out_dir: Path, decision: str, tickers: list[str]) -> str:
             t = row.get("ticker", "?")
             d = row.get("direction", "?")
             params = _candidate_param_summary(row, [c for c in group_cols if c not in {"ticker", "strategy", "direction"}])
-            avg = row.get("avg_exp_r", 0)
-            min_e = row.get("min_exp_r", 0)
+            avg = row.get("avg_exp_r") or 0
+            min_e = row.get("min_exp_r") or 0
             passed = row.get("all_costs_pass", False)
             if avg > 0.3 and passed:
                 tier = "STRONG"

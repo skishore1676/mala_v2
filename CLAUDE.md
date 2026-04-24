@@ -12,6 +12,8 @@ when a hypothesis reaches M5 promote.
 uv sync
 uv run python hypothesis_agent.py --hypothesis research/hypotheses/my-idea.md --max-stage M5
 uv run python hypothesis_agent.py --hypothesis research/hypotheses/my-idea.md --dry-run
+uv run python -m src.research.research_ops backfill
+uv run python -m src.research.research_ops hot-start
 uv run python main.py --tickers SPY --start 2024-01-01 --end 2024-12-31
 uv run pytest tests/ -v
 ```
@@ -54,12 +56,49 @@ Polygon.io API → Chronos (Parquet cache)
 | `src/strategy/` | Strategy classes + factory registry |
 | `src/oracle/` | MFE/MAE metrics, Monte Carlo stress, trade simulator |
 | `src/research/catalog.py` | Optional Strategy_Catalog row writer for M5 promotes |
+| `src/research/catalog_steward.py` | Advisory review of Strategy_Catalog candidates against active/shadow state |
+| `src/research/research_ops.py` | Local research ledger, historical backfill, and hot-start reconciliation |
 | `src/research/market_regime.py` | Observational regime tags for detail artifacts |
 | `src/research/exit_optimizer.py` | M5-plus thesis exit optimization artifact |
 | `src/research/stages/` | M1-M5 gate logic |
 | `hypothesis_agent.py` | The main entry point — reads `.md`, runs gates, writes CSVs |
 | `research/hypotheses/` | Hypothesis state machine files |
 | `data/results/hypothesis_runs/` | All output CSVs |
+
+---
+
+## Research Memory
+
+Mala has three distinct research layers:
+
+1. **Research Engine** — `hypothesis_agent.py` runs M1-M5 and writes canonical
+   local evidence under `data/results/hypothesis_runs/{id}/{run_ts}/`.
+2. **Research Ops** — `src.research.research_ops` reconstructs the lab notebook:
+   tested hypotheses, runs, promoted candidates, stale board state, missing
+   summaries, and Strategy_Catalog publish gaps.
+3. **Catalog Steward** — `src.research.catalog_steward` reviews only
+   Strategy_Catalog candidates and recommends `live`, `shadow`, `hold`, or
+   `pause`.
+
+Strategy_Catalog is not the research archive. It should contain only M5-passed
+execution candidates intended for Bhiksha/operator review.
+
+Research Ops outputs are rebuildable summaries:
+
+```bash
+uv run python -m src.research.research_ops backfill
+uv run python -m src.research.research_ops hot-start
+```
+
+Default output:
+
+- `data/results/research_ops/research_ledger.xlsx`
+- `data/results/research_ops/hot_start.md`
+- `data/results/research_ops/csv/*.csv`
+
+Use `hot_start.md` at the beginning or end of a research session to identify:
+stale board rows, missing summaries, promoted rows absent from Strategy_Catalog,
+terminal hypotheses without artifacts, and other next-action cleanup items.
 
 ---
 
