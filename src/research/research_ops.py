@@ -22,6 +22,7 @@ from src.research.catalog import upsert_strategy_catalog
 from src.research.google_sheets import GoogleSheetTableClient
 from src.research.research_runner import create_hypothesis_file
 from src.research.search_space import build_search_configs, search_param_keys
+from src.research.time_utils import sheet_timestamp
 from src.strategy.factory import available_strategy_names
 
 
@@ -847,7 +848,7 @@ def build_control_rows(
                 "brief_summary": str(existing.get("brief_summary", "")),
                 "brief_path": str(existing.get("brief_path", "")),
                 "last_report_path": str(existing.get("last_report_path", "")),
-                "updated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+                "updated_at": sheet_timestamp(),
                 "generated_at": generated_at,
             }
         )
@@ -1248,7 +1249,7 @@ def update_control_row_with_brief(
         next_row["brief_recommendation"] = brief.recommendation
         next_row["brief_summary"] = _brief_cell(brief.summary)
         next_row["brief_path"] = brief.report_path
-        next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+        next_row["updated_at"] = sheet_timestamp()
         client.batch_update_rows(
             rows=[next_row],
             columns=["brief_recommendation", "brief_summary", "brief_path", "updated_at"],
@@ -1534,7 +1535,7 @@ def update_control_row_with_surface_plan(
         next_row["brief_summary"] = _brief_cell(plan.summary)
         next_row["brief_path"] = plan.report_path
         next_row["status"] = "surface_plan_ready"
-        next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+        next_row["updated_at"] = sheet_timestamp()
         client.batch_update_rows(
             rows=[next_row],
             columns=["brief_recommendation", "brief_summary", "brief_path", "status", "updated_at"],
@@ -1714,7 +1715,7 @@ def _merge_intake_update(
     next_row["retune_config_count"] = evaluation.retune_config_count
     next_row["report_path"] = report_path or evaluation.report_path
     next_row["hypothesis_path"] = hypothesis_path or evaluation.hypothesis_path
-    next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+    next_row["updated_at"] = sheet_timestamp()
     if not str(next_row.get("created_at", "")).strip():
         next_row["created_at"] = next_row["updated_at"]
     if clear_operator_action:
@@ -2499,7 +2500,7 @@ def cmd_push_control(args: argparse.Namespace) -> int:
     existing_rows = client.read_rows(range_suffix="A1:ZZ5000")
     rows = build_control_rows(
         actions=actions,
-        generated_at=ledger.generated_at,
+        generated_at=sheet_timestamp(),
         existing_rows=existing_rows,
     )
     client.overwrite_table(headers=CONTROL_SHEET_HEADERS, rows=rows)

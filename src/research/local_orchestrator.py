@@ -36,6 +36,7 @@ from src.research.research_ops import (
     process_intake_rows,
 )
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.time_utils import sheet_timestamp
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -338,7 +339,7 @@ def _update_control_row(
     next_row = dict(row)
     next_row["status"] = status
     next_row["last_report_path"] = report_path
-    next_row["updated_at"] = _timestamp()
+    next_row["updated_at"] = sheet_timestamp()
     if clear_operator_action:
         next_row["operator_action"] = ""
     client.batch_update_rows(
@@ -458,7 +459,7 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
         control_rows = _sync_control_sheet(
             client=control_client,
             actions=actions,
-            generated_at=generated_at,
+            generated_at=sheet_timestamp(),
         )
         control_row = _select_control_row(control_rows)
         if control_row:
