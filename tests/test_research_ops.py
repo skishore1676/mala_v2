@@ -13,11 +13,14 @@ from src.research.research_ops import (
     build_hot_start_findings,
     build_ledger,
     build_next_actions,
+    build_surface_expansion_plan,
     read_dispositions,
     update_control_row_with_brief,
+    update_control_row_with_surface_plan,
     write_action_brief,
     write_csv_tables,
     write_hot_start_report,
+    write_surface_expansion_plan,
     write_workbook,
 )
 
@@ -351,6 +354,67 @@ def test_update_control_row_with_brief_writes_brief_columns() -> None:
     assert client.rows[0]["brief_recommendation"] == "APPROVE_RETUNE"
     assert client.rows[0]["brief_summary"] == "Bounded retune is reasonable."
     assert client.rows[0]["brief_path"] == "brief.md"
+
+
+def test_surface_expansion_plan_recommends_config_only_for_m1_sample_failure(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(
+        hypotheses,
+        hypothesis_id="opening-idea",
+        state="retune",
+        decision="retune",
+        strategy="Opening Drive Classifier",
+        symbol_scope="MSFT",
+    )
+    run_dir = runs / "opening-idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: signals=15<50; windows=1<3\n",
+        encoding="utf-8",
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    plan = build_surface_expansion_plan(ledger=ledger, key="retune_plan:opening-idea")
+    plan = write_surface_expansion_plan(plan, tmp_path / "ops")
+
+    assert plan.feasibility_tag == "config-only"
+    assert plan.recommendation == "CONFIG_ONLY_SURFACE_EXPANSION"
+    assert plan.next_operator_action == "APPROVE_RETUNE"
+    assert any("opening_window_minutes" in line for line in plan.proposed_bounds)
+    assert Path(plan.report_path).exists()
+    assert Path(plan.json_path).exists()
+
+
+def test_update_control_row_with_surface_plan_writes_plan_columns() -> None:
+    from src.research.research_ops import SurfaceExpansionPlan
+
+    client = _FakeControlClient()
+    plan = SurfaceExpansionPlan(
+        generated_at="2026-04-24T00:00:00+00:00",
+        action_id="retune_plan:idea",
+        key="idea",
+        hypothesis_id="idea",
+        strategy="Opening Drive Classifier",
+        symbol_scope="MSFT",
+        feasibility_tag="config-only",
+        recommendation="CONFIG_ONLY_SURFACE_EXPANSION",
+        next_operator_action="APPROVE_RETUNE",
+        summary="Expand one bounded parameter family.",
+        proposed_bounds=[],
+        rationale=[],
+        validation_steps=[],
+        sources=[],
+        report_path="surface.md",
+        json_path="surface.json",
+    )
+
+    assert update_control_row_with_surface_plan(client=client, plan=plan)
+    assert client.rows[0]["brief_recommendation"] == "CONFIG_ONLY_SURFACE_EXPANSION"
+    assert client.rows[0]["brief_summary"] == "Expand one bounded parameter family."
+    assert client.rows[0]["brief_path"] == "surface.md"
+    assert client.rows[0]["status"] == "surface_plan_ready"
 
 
 def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) -> None:

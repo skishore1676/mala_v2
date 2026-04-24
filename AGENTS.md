@@ -110,6 +110,7 @@ python -m src.research.research_ops hot-start
 python -m src.research.research_ops next-actions
 python -m src.research.research_ops action-brief --key retune_plan:my-idea
 python -m src.research.research_ops action-brief --key retune_plan:my-idea --push-control
+python -m src.research.research_ops surface-expansion-plan --key retune_plan:my-idea --push-control
 
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
@@ -162,6 +163,7 @@ Mental model:
 - Mala research engine proves or kills ideas through M1-M5.
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
 - Action Briefs inspect the queued item, summarize evidence, and recommend a bounded operator action.
+- Surface Expansion Plans turn `APPROVE_SURFACE_EXPANSION` into a config-only/new-code feasibility plan before any retune or code work.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
 - Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.

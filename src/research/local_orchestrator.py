@@ -72,6 +72,13 @@ def _shell_join(command: list[str]) -> str:
     return " ".join(command)
 
 
+def _report_path_from_stdout(stdout: str) -> str:
+    for line in stdout.splitlines():
+        if line.startswith(("SURFACE_EXPANSION_PLAN_REPORT=", "ACTION_BRIEF_REPORT=")):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
 def _command_for_action(action: NextAction, args: argparse.Namespace) -> list[str] | None:
     python = sys.executable
     if action.action_type == "retune_plan":
@@ -240,6 +247,30 @@ def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> l
             command.extend(["--board-scout-sheet", args.board_scout_sheet])
         if args.board_google_credentials:
             command.extend(["--board-google-credentials", args.board_google_credentials])
+        return command
+    if operator_action == "APPROVE_SURFACE_EXPANSION" and action.action_type == "retune_plan":
+        command = [
+            python,
+            "-m",
+            "src.research.research_ops",
+            "surface-expansion-plan",
+            "--key",
+            f"{action.action_type}:{action.key}",
+            "--push-control",
+        ]
+        command.extend(["--hypotheses-dir", args.hypotheses_dir])
+        command.extend(["--runs-dir", args.runs_dir])
+        command.extend(["--out-dir", args.out_dir])
+        if args.control_sheet_id:
+            command.extend(["--control-sheet-id", args.control_sheet_id])
+        elif args.board_sheet_id:
+            command.extend(["--control-sheet-id", args.board_sheet_id])
+        if args.control_sheet_name:
+            command.extend(["--control-sheet-name", args.control_sheet_name])
+        if args.control_google_credentials:
+            command.extend(["--control-google-credentials", args.control_google_credentials])
+        elif args.google_credentials:
+            command.extend(["--control-google-credentials", args.google_credentials])
         return command
     return None
 
@@ -433,11 +464,12 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
         status = executed
         if returncode not in (None, 0):
             status = f"failed:{returncode}"
+        control_report_path = _report_path_from_stdout(stdout_tail) or result.report_path
         _update_control_row(
             client=control_client,
             row=control_row,
             status=status,
-            report_path=result.report_path,
+            report_path=control_report_path,
             clear_operator_action=args.mode == "apply-safe",
         )
     return result

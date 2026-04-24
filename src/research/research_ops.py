@@ -171,6 +171,26 @@ class ActionBrief:
 
 
 @dataclass(slots=True)
+class SurfaceExpansionPlan:
+    generated_at: str
+    action_id: str
+    key: str
+    hypothesis_id: str
+    strategy: str
+    symbol_scope: str
+    feasibility_tag: str
+    recommendation: str
+    next_operator_action: str
+    summary: str
+    proposed_bounds: list[str]
+    rationale: list[str]
+    validation_steps: list[str]
+    sources: list[str]
+    report_path: str
+    json_path: str
+
+
+@dataclass(slots=True)
 class ResearchLedger:
     generated_at: str
     hypotheses: list[HypothesisLedgerRow]
@@ -1160,6 +1180,292 @@ def update_control_row_with_brief(
     return False
 
 
+def _numeric_range(rows: list[dict[str, str]], field: str) -> str:
+    values = [_to_float(row.get(field), default=float("nan")) for row in rows if str(row.get(field, "")).strip()]
+    values = [value for value in values if value == value]
+    if not values:
+        return ""
+    low = min(values)
+    high = max(values)
+    if low == high:
+        return _format_number(low, digits=2)
+    return f"{_format_number(low, digits=2)}..{_format_number(high, digits=2)}"
+
+
+def _categorical_values(rows: list[dict[str, str]], field: str, *, limit: int = 6) -> str:
+    counts = Counter(str(row.get(field, "")).strip() for row in rows if str(row.get(field, "")).strip())
+    if not counts:
+        return ""
+    return ", ".join(value for value, _count in counts.most_common(limit))
+
+
+def _candidate_rows_for_surface(latest_dir: Path | None) -> list[dict[str, str]]:
+    if latest_dir is None:
+        return []
+    rows: list[dict[str, str]] = []
+    for filename in ("M1_top.csv", "M1_aggregate.csv", "M2_gate_report.csv"):
+        rows.extend(_read_csv_dicts(latest_dir / filename))
+    return rows
+
+
+def _generic_surface_bounds(rows: list[dict[str, str]]) -> list[str]:
+    ignored = {
+        "ticker",
+        "strategy",
+        "direction",
+        "decision",
+        "passes_all_gates",
+        "passes_exp_gate",
+        "passes_signal_gate",
+        "passes_stability_gate",
+        "passes_window_gate",
+        "has_all_cost_points",
+    }
+    metric_tokens = (
+        "score",
+        "signals",
+        "windows",
+        "exp_r",
+        "confidence",
+        "mfe",
+        "mae",
+        "pct_positive",
+        "cost",
+    )
+    fields = sorted({key for row in rows for key in row if key not in ignored and not any(token in key for token in metric_tokens)})
+    bounds: list[str] = []
+    for field in fields[:12]:
+        numeric = _numeric_range(rows, field)
+        categorical = _categorical_values(rows, field)
+        if numeric:
+            bounds.append(f"{field}: center around observed range {numeric}.")
+        elif categorical:
+            bounds.append(f"{field}: restrict to observed values {categorical}.")
+    return bounds
+
+
+def _strategy_surface_template(strategy: str) -> list[str]:
+    lowered = strategy.lower()
+    if "opening drive" in lowered:
+        return [
+            "opening_window_minutes: test adjacent windows around the failing sample, not a broad sweep.",
+            "entry_start_offset_minutes / entry_end_offset_minutes: widen entry timing only enough to recover signal count.",
+            "breakout_buffer_pct and min_drive_return_pct: loosen one notch for sample recovery, then re-tighten if M1 passes.",
+            "volume_multiplier, use_volume_filter, use_directional_mass, use_jerk_confirmation: compare filter-on vs filter-off slices.",
+            "regime_timeframe / use_regime_filter: add one slower timeframe candidate if the current window is too sparse.",
+        ]
+    if "market impulse" in lowered:
+        return [
+            "regime_timeframe: test only adjacent timeframes around the best observed row.",
+            "vwma_periods: center around the best observed tuple; do not introduce a large tuple grid.",
+            "entry_buffer_minutes and entry_window_minutes: widen gradually only if signal count is the failure mode.",
+            "direction: split long/short or combined lanes if the latest report mixes unstable directions.",
+        ]
+    if "jerk" in lowered:
+        return [
+            "kinematic_periods_back: test adjacent lookbacks around the current pivot window.",
+            "jerk confirmation threshold/toggle: compare strict vs relaxed confirmation to recover sparse samples.",
+            "directional mass and regime filters: isolate whether filters are suppressing valid setups.",
+        ]
+    if "elastic band" in lowered:
+        return [
+            "zscore_threshold and zscore_window: center around the nearest passing/stretch candidates.",
+            "directional mass and jerk confirmation: relax one filter at a time to recover signal count.",
+            "kinematic lookback: test adjacent values only; keep this config-only.",
+        ]
+    return ["Use the strategy search_spec or parameter_space; expand one bounded parameter family at a time."]
+
+
+def _surface_plan_decision(
+    *,
+    hypothesis: HypothesisLedgerRow | None,
+    summary_text: str,
+    rows: list[dict[str, str]],
+) -> tuple[str, str, str, str]:
+    if hypothesis is None:
+        return "inspect", "INSPECT", "SKIP", "No matching hypothesis row; do not modify search surfaces yet."
+    combined = f"{hypothesis.state} {hypothesis.decision} {summary_text}".lower()
+    if hypothesis.state == "kill":
+        return "config-only", "NO_ACTION", "SKIP", "Hypothesis is already killed; write a new thesis before changing surface."
+    if "m1 fail" in combined and ("signals=" in combined or "windows=" in combined or "pct_pos=" in combined):
+        return (
+            "config-only",
+            "CONFIG_ONLY_SURFACE_EXPANSION",
+            "APPROVE_RETUNE",
+            "Search surface likely needs bounded widening before another M1 retune.",
+        )
+    if rows:
+        pass_exp = any(_truthy(row.get("passes_exp_gate")) for row in rows)
+        pass_all = any(_truthy(row.get("passes_all_gates")) for row in rows)
+        if pass_all:
+            return "config-only", "CONTINUATION_REVIEW", "SKIP", "Existing rows include a passing gate candidate; inspect state before expansion."
+        if pass_exp:
+            return (
+                "config-only",
+                "CONFIG_ONLY_STABILITY_RETUNE",
+                "APPROVE_RETUNE",
+                "Expectancy exists, but stability needs a narrower parameter surface.",
+            )
+        return (
+            "config-only",
+            "RETHINK_BEFORE_EXPANSION",
+            "SKIP",
+            "Candidate evidence did not preserve positive expectancy; surface expansion needs a stronger thesis.",
+        )
+    return "config-only", "EVIDENCE_THIN", "SKIP", "No candidate CSV evidence was found; inspect or rerun before expanding."
+
+
+def build_surface_expansion_plan(
+    *,
+    ledger: ResearchLedger,
+    key: str,
+) -> SurfaceExpansionPlan:
+    action_type, clean_key = _split_action_key(key)
+    action_id_value = f"{action_type or 'retune_plan'}:{clean_key}"
+    hypothesis = _find_hypothesis(ledger, clean_key)
+    latest_run = _latest_run(ledger, clean_key)
+    latest_dir = _artifact_path(hypothesis.latest_artifact_dir) if hypothesis else None
+    summary_path = latest_dir / "RUN_SUMMARY.md" if latest_dir else None
+    summary_text = _read_text(summary_path) if summary_path else ""
+    rows = _candidate_rows_for_surface(latest_dir)
+    feasibility, recommendation, next_action, summary = _surface_plan_decision(
+        hypothesis=hypothesis,
+        summary_text=summary_text,
+        rows=rows,
+    )
+    proposed_bounds = _generic_surface_bounds(rows)
+    proposed_bounds.extend(_strategy_surface_template(hypothesis.strategy if hypothesis else ""))
+    rationale = []
+    if hypothesis is not None:
+        rationale.append(
+            (
+                f"{hypothesis.hypothesis_id} is state={hypothesis.state}, decision={hypothesis.decision}, "
+                f"latest_stage={hypothesis.latest_stage}, strategy={hypothesis.strategy}, symbols={hypothesis.symbol_scope}."
+            )
+        )
+    if latest_run is not None:
+        rationale.append(
+            (
+                f"Latest run {latest_run.run_ts} reached {latest_run.terminal_stage} with decision={latest_run.decision or '<empty>'}."
+            )
+        )
+    rationale.extend(_m2_evidence_lines(_read_csv_dicts(latest_dir / "M2_gate_report.csv") if latest_dir else []))
+    rationale.extend(_m1_evidence_lines(_read_csv_dicts(latest_dir / "M1_top.csv") if latest_dir else []))
+    validation_steps = [
+        "Treat this as config-only unless the plan explicitly says a new strategy feature is required.",
+        "Update the strategy search_spec / parameter_space, not hypothesis_agent.py.",
+        "Run research_runner dry-run first to verify config count and data availability.",
+        "Run M1 only; do not continue to M2 until M1 meets the normal gate thresholds.",
+        "If M1 fails again on no positive expectancy, mark the hypothesis kill instead of widening again.",
+    ]
+    sources: list[str] = []
+    if hypothesis is not None:
+        sources.append(hypothesis.file_path)
+    if latest_run is not None:
+        sources.append(latest_run.artifact_dir)
+    if summary_path and summary_path.exists():
+        sources.append(_relative(summary_path))
+    return SurfaceExpansionPlan(
+        generated_at=ledger.generated_at,
+        action_id=action_id_value,
+        key=clean_key,
+        hypothesis_id=hypothesis.hypothesis_id if hypothesis else "",
+        strategy=hypothesis.strategy if hypothesis else "",
+        symbol_scope=hypothesis.symbol_scope if hypothesis else "",
+        feasibility_tag=feasibility,
+        recommendation=recommendation,
+        next_operator_action=next_action,
+        summary=summary,
+        proposed_bounds=proposed_bounds,
+        rationale=rationale,
+        validation_steps=validation_steps,
+        sources=sources,
+        report_path="",
+        json_path="",
+    )
+
+
+def write_surface_expansion_plan(plan: SurfaceExpansionPlan, out_dir: Path) -> SurfaceExpansionPlan:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "-", plan.action_id).strip("-") or "surface"
+    stamp = plan.generated_at.replace(":", "").replace("-", "").replace("+", "Z")
+    md_path = out_dir / "surface_expansion" / f"{stamp}__{safe_key}.md"
+    json_path = out_dir / "surface_expansion" / f"{stamp}__{safe_key}.json"
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    complete = SurfaceExpansionPlan(
+        generated_at=plan.generated_at,
+        action_id=plan.action_id,
+        key=plan.key,
+        hypothesis_id=plan.hypothesis_id,
+        strategy=plan.strategy,
+        symbol_scope=plan.symbol_scope,
+        feasibility_tag=plan.feasibility_tag,
+        recommendation=plan.recommendation,
+        next_operator_action=plan.next_operator_action,
+        summary=plan.summary,
+        proposed_bounds=plan.proposed_bounds,
+        rationale=plan.rationale,
+        validation_steps=plan.validation_steps,
+        sources=plan.sources,
+        report_path=str(md_path),
+        json_path=str(json_path),
+    )
+    lines = [
+        "# Mala Surface Expansion Plan",
+        "",
+        f"- generated_at: `{complete.generated_at}`",
+        f"- action_id: `{complete.action_id}`",
+        f"- hypothesis_id: `{complete.hypothesis_id}`",
+        f"- strategy: `{complete.strategy}`",
+        f"- symbol_scope: `{complete.symbol_scope}`",
+        f"- feasibility_tag: `{complete.feasibility_tag}`",
+        f"- recommendation: `{complete.recommendation}`",
+        f"- next_operator_action: `{complete.next_operator_action}`",
+        "",
+        "## Summary",
+        "",
+        complete.summary,
+        "",
+        "## Proposed Bounds",
+        "",
+    ]
+    lines.extend(f"- {line}" for line in complete.proposed_bounds)
+    lines.extend(["", "## Rationale", ""])
+    lines.extend(f"- {line}" for line in complete.rationale)
+    lines.extend(["", "## Validation Steps", ""])
+    lines.extend(f"- {line}" for line in complete.validation_steps)
+    lines.extend(["", "## Sources", ""])
+    lines.extend(f"- `{source}`" for source in complete.sources)
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    json_path.write_text(json.dumps(asdict(complete), indent=2), encoding="utf-8")
+    return complete
+
+
+def update_control_row_with_surface_plan(
+    *,
+    client: GoogleSheetTableClient,
+    plan: SurfaceExpansionPlan,
+) -> bool:
+    client.ensure_sheet_exists()
+    client.ensure_columns(CONTROL_SHEET_HEADERS)
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    for row in rows:
+        if str(row.get("action_id", "")).strip() != plan.action_id:
+            continue
+        next_row = dict(row)
+        next_row["brief_recommendation"] = plan.recommendation
+        next_row["brief_summary"] = _brief_cell(plan.summary)
+        next_row["brief_path"] = plan.report_path
+        next_row["status"] = "surface_plan_ready"
+        next_row["updated_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+        client.batch_update_rows(
+            rows=[next_row],
+            columns=["brief_recommendation", "brief_summary", "brief_path", "status", "updated_at"],
+        )
+        return True
+    return False
+
+
 def write_csv_tables(ledger: ResearchLedger, out_dir: Path) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     tables: dict[str, list[dict[str, Any]]] = {
@@ -1700,6 +2006,23 @@ def cmd_action_brief(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_surface_expansion_plan(args: argparse.Namespace) -> int:
+    ledger = _build_with_optional_sheets(args)
+    plan = build_surface_expansion_plan(ledger=ledger, key=args.key)
+    plan = write_surface_expansion_plan(plan, Path(args.out_dir))
+    pushed = False
+    if args.push_control:
+        client = _control_client(args)
+        pushed = update_control_row_with_surface_plan(client=client, plan=plan)
+    print(f"SURFACE_EXPANSION_PLAN_REPORT={plan.report_path}")
+    print(f"SURFACE_EXPANSION_PLAN_JSON={plan.json_path}")
+    print(f"SURFACE_EXPANSION_PLAN_ID={plan.action_id}")
+    print(f"SURFACE_EXPANSION_PLAN_RECOMMENDATION={plan.recommendation}")
+    print(f"SURFACE_EXPANSION_PLAN_NEXT_ACTION={plan.next_operator_action}")
+    print(f"SURFACE_EXPANSION_PLAN_CONTROL_UPDATED={'yes' if pushed else 'no'}")
+    return 0
+
+
 def cmd_publish_pending(args: argparse.Namespace) -> int:
     catalog_client = _strategy_catalog_client(args)
     catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
@@ -1868,6 +2191,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     action_brief.add_argument("--action-type", default="", help="Optional action type when --key is only the hypothesis id.")
     action_brief.add_argument("--push-control", action="store_true", help="Mirror recommendation/summary/path to Research_Control.")
     action_brief.set_defaults(func=cmd_action_brief)
+
+    surface_plan = subparsers.add_parser(
+        "surface-expansion-plan",
+        help="Write a bounded config-surface expansion plan for an approved queued retune.",
+    )
+    _add_common_args(surface_plan)
+    surface_plan.add_argument("--key", required=True, help="Hypothesis key or action_id, e.g. retune_plan:my-hypothesis.")
+    surface_plan.add_argument("--push-control", action="store_true", help="Mirror plan recommendation/summary/path to Research_Control.")
+    surface_plan.set_defaults(func=cmd_surface_expansion_plan)
 
     publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
     _add_common_args(publish)

@@ -108,8 +108,22 @@ def test_control_row_approval_maps_to_retune_command(tmp_path: Path) -> None:
     ]
 
 
-def test_control_row_surface_expansion_is_reasoning_only(tmp_path: Path) -> None:
-    args = parse_args(["once", "--hypotheses-dir", str(tmp_path / "hypotheses")])
+def test_control_row_surface_expansion_maps_to_plan_command(tmp_path: Path) -> None:
+    args = parse_args(
+        [
+            "once",
+            "--hypotheses-dir",
+            str(tmp_path / "hypotheses"),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+            "--out-dir",
+            str(tmp_path / "ops"),
+            "--control-sheet-id",
+            "sheet-id",
+            "--control-google-credentials",
+            str(tmp_path / "credentials.json"),
+        ]
+    )
 
     command = _command_for_control_row(
         {
@@ -124,4 +138,11 @@ def test_control_row_surface_expansion_is_reasoning_only(tmp_path: Path) -> None
         args,
     )
 
-    assert command is None
+    assert command is not None
+    assert command[2:7] == [
+        "src.research.research_ops",
+        "surface-expansion-plan",
+        "--key",
+        "retune_plan:retune-me",
+        "--push-control",
+    ]
