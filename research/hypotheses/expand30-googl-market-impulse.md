@@ -2,12 +2,12 @@
 
 ## Config
 - id: `expand30-googl-market-impulse`
-- state: `retune`
-- decision: `retune`
+- state: `kill`
+- decision: `kill`
 - symbol_scope: `GOOGL`
 - strategy: `Market Impulse (Cross & Reclaim)`
 - max_stage: `M1`
-- last_run: `2026-04-22T16:27:31+0000`
+- last_run: `2026-04-24T18:01:51+0000`
 
 ## Thesis
 GOOGL is a liquid mega-cap candidate for transferring the existing Market Impulse cross-and-reclaim edge into a single-name open impulse test. The honest first pass is a bounded M1-only discovery run on the stock strategy surface, without retune or later-stage continuation.
@@ -27,16 +27,18 @@ GOOGL is a liquid mega-cap candidate for transferring the existing Market Impuls
 
 ## Agent Report
 ### Run
-`2026-04-22T112708` — strategy: `Market Impulse (Cross & Reclaim)`
+`2026-04-24T130141` — strategy: `Market Impulse (Cross & Reclaim)`
 
 ### Stages Executed
-`M2`
+`M1`
 
 ### Notes
-- M2: 0 candidates promoted
+- Bounded retune ran over the approved 5m / 8,21,34 Market Impulse surface.
+- M1 FAIL: pct_pos=40%<60%.
+- Prior M2 already promoted 0 candidates; retune did not recover stability.
 
 ### Decision
-`retune`
+`kill`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-googl-market-impulse/2026-04-22T112708`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-googl-market-impulse/2026-04-24T130141`
