@@ -124,6 +124,23 @@ Use Research Runner for the bounded execution surface. It delegates to
 ./.venv/bin/python -m src.research.research_runner retune-approved --hypothesis research/hypotheses/my-idea.md
 ```
 
+## Local Orchestrator Layer
+
+Use the local orchestrator when you want a bounded agent loop rather than a
+free-form agent. It consumes `research_ops next-actions`, runs only safe/dry-run
+commands, and writes a reasoning brief for the next human/Codex/OpenClaw
+checkpoint.
+
+```bash
+./.venv/bin/python -m src.research.local_orchestrator once --mode dry-run
+./.venv/bin/python -m src.research.local_orchestrator once --mode apply-safe
+./.venv/bin/python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
+```
+
+The orchestrator must not auto-run research execution, retune execution,
+catalog writes, board writes, code changes, or evidence repairs. It may plan
+them and emit a reasoning brief.
+
 ## Validation
 
 After code changes, run:
@@ -131,4 +148,5 @@ After code changes, run:
 ./.venv/bin/python -m pytest tests/ -q
 ./.venv/bin/python hypothesis_agent.py --hypothesis research/hypotheses/TEMPLATE.md --dry-run
 ./.venv/bin/python -m src.research.research_ops hot-start
+./.venv/bin/python -m src.research.local_orchestrator once --mode dry-run
 ```

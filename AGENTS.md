@@ -130,6 +130,16 @@ python -m src.research.research_runner retune-plan --hypothesis research/hypothe
 python -m src.research.research_runner retune-approved --hypothesis research/hypotheses/my-idea.md
 ```
 
+Use `src.research.local_orchestrator` for the local agent loop. It consumes
+`research_ops next-actions`, runs only safe/dry-run commands, and writes a
+reasoning brief for Codex/OpenClaw/human review before any gated action.
+
+```bash
+python -m src.research.local_orchestrator once --mode dry-run
+python -m src.research.local_orchestrator once --mode apply-safe
+python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
+```
+
 The workbook/CSV outputs under `data/results/research_ops/` are rebuildable
 summaries, not canonical truth. Canonical research evidence remains:
 `research/hypotheses/` plus `data/results/hypothesis_runs/`.
@@ -138,6 +148,7 @@ Mental model:
 - Mala research engine proves or kills ideas through M1-M5.
 - Research Ops keeps the lab notebook, backfills history, and proposes next actions.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
+- Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
 - Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
 - Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.

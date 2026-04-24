@@ -118,6 +118,19 @@ uv run python -m src.research.research_runner retune-approved --hypothesis resea
 `publish-pending` and `sync-board` are dry-run by default. Require explicit
 `--apply` before touching Google Sheets.
 
+Local orchestration is available through `src.research.local_orchestrator`:
+
+```bash
+uv run python -m src.research.local_orchestrator once --mode dry-run
+uv run python -m src.research.local_orchestrator once --mode apply-safe
+uv run python -m src.research.local_orchestrator daemon --mode apply-safe --interval-seconds 1800
+```
+
+The orchestrator consumes `next-actions`, runs only safe/dry-run commands, and
+writes a reasoning brief under `data/results/research_ops/orchestrator/`. It
+must stop for approval before research execution, retunes, catalog writes,
+board writes, and evidence repairs.
+
 ---
 
 ## Strategy Registry
