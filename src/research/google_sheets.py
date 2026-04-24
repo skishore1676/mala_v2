@@ -90,6 +90,29 @@ class GoogleSheetTableClient:
             .execute()
         )
 
+    def ensure_columns(self, columns: list[str]) -> list[str]:
+        """Append missing header columns to the right side of the sheet."""
+        headers = self._header_row()
+        existing = {header for header in headers if header}
+        missing = [column for column in columns if column not in existing]
+        if not missing:
+            return []
+
+        start_index = len(headers) + 1
+        end_index = start_index + len(missing) - 1
+        (
+            self.service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"{self.sheet_name}!{_column_letter(start_index)}1:{_column_letter(end_index)}1",
+                valueInputOption="USER_ENTERED",
+                body={"values": [missing]},
+            )
+            .execute()
+        )
+        return missing
+
     def overwrite_table(
         self,
         *,
@@ -149,6 +172,14 @@ class GoogleSheetTableClient:
         )
 
     def _header_column_map(self) -> dict[str, str]:
+        headers = self._header_row()
+        return {
+            str(header).strip(): _column_letter(index + 1)
+            for index, header in enumerate(headers)
+            if str(header).strip()
+        }
+
+    def _header_row(self) -> list[str]:
         result = (
             self.service.spreadsheets()
             .values()
@@ -159,12 +190,7 @@ class GoogleSheetTableClient:
             .execute()
         )
         values = result.get("values", [])
-        headers = values[0] if values else []
-        return {
-            str(header).strip(): _column_letter(index + 1)
-            for index, header in enumerate(headers)
-            if str(header).strip()
-        }
+        return [str(header).strip() for header in values[0]] if values else []
 
     def _build_service(self) -> Any:
         try:

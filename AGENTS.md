@@ -48,6 +48,7 @@ python -m pytest tests/ -v
 | `src/research/market_regime.py` | Market regime classifier (vix_band / spy_trend_20d / session_type) |
 | `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes per-candidate exit optimization artifacts |
 | `src/research/catalog.py` | Strategy_Catalog upsert (called on M5 promote, includes exit fields) |
+| `src/research/catalog_steward.py` | Advisory Strategy_Catalog + active_strategy review; writes local recommendations and optional steward Sheet annotations |
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
 | `src/newton/engine.py` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
 | `research/hypotheses/` | Hypothesis state machine files |
@@ -91,6 +92,11 @@ from src.strategy.factory import available_strategy_names
 ## How to start a workbench session
 
 Use `skills/research-workbench/SKILL.md` when onboarding an agent into hypothesis work.
+
+Use `skills/catalog-steward/SKILL.md` when reviewing Strategy_Catalog against
+active_strategy. That role is advisory: it can write local recommendation
+artifacts by default and may update only `steward_recommendation` /
+`steward_notes` in Strategy_Catalog when explicitly asked.
 
 **If the user has a new hypothesis:**
 1. Create `research/hypotheses/{slug}.md` from `TEMPLATE.md`
