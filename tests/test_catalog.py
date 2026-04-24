@@ -97,3 +97,41 @@ def test_upsert_strategy_catalog_writes_canonical_market_impulse_row(monkeypatch
     assert row["bias_template"] == "bearish_trend_intraday"
     assert row["lifecycle_status"] == "candidate"
     assert row["bhiksha_ready"] == "false"
+
+
+def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeypatch) -> None:
+    FakeSheetClient.instances.clear()
+    monkeypatch.setattr(catalog, "GoogleSheetTableClient", FakeSheetClient)
+
+    upsert_strategy_catalog(
+        catalog_key="spy-mi-short",
+        symbol="SPY",
+        strategy="Market Impulse (Cross & Reclaim)",
+        m5_best={
+            "ticker": "SPY",
+            "direction": "short",
+            "base_exp_r": 0.12345,
+            "holdout_win_rate": 0.61,
+            "holdout_trades": 42,
+            "mc_prob_positive_exp": 0.7321,
+            "execution_profile": "single_option",
+        },
+        spreadsheet_id="sheet-id",
+        credentials_path=Path("/tmp/service-account.json"),
+        exit_opt={
+            "thesis_exit_policy": "fixed_rr_underlying",
+            "thesis_exit_params": {
+                "stop_loss_underlying_pct": 0.0035,
+                "take_profit_underlying_r_multiple": 1.5,
+            },
+            "catastrophe_exit_params": {"hard_flat_time_et": "15:55", "stop_loss_pct": 0.35},
+        },
+    )
+
+    client = FakeSheetClient.instances[-1]
+    assert client.overwritten is not None
+    _, rows = client.overwritten
+    row = rows[0]
+    assert row["strategy_key"] == "market_impulse"
+    assert row["thesis_exit_policy"] == "fixed_rr_underlying"
+    assert row["bhiksha_ready"] == "true"
