@@ -8,7 +8,7 @@ The row lands with lifecycle_status=candidate; a human flips it to approved.
 Column schema matches the live sheet exactly:
     catalog_key, playbook_id, symbol, bias_template, strategy_key,
     strategy_family, direction, lifecycle_status, operator_status_override,
-    operator_notes, bionic_ready, first_validated_date, last_validated_date,
+    operator_notes, bhiksha_ready, first_validated_date, last_validated_date,
     validation_count, expectancy, confidence, signal_count,
     execution_robustness, thesis_exit_policy, playbook_summary_json
 
@@ -44,7 +44,7 @@ STRATEGY_CATALOG_HEADERS = [
     "lifecycle_status",
     "operator_status_override",
     "operator_notes",
-    "bionic_ready",
+    "bhiksha_ready",
     "first_validated_date",
     "last_validated_date",
     "validation_count",
@@ -91,6 +91,46 @@ _BIAS_TEMPLATE_MAP: dict[tuple[str, str], str] = {
     ("regime_router",                   "short"): "bearish_trend_intraday",
 }
 
+# ---------------------------------------------------------------------------
+# Bhiksha capability registry
+# ---------------------------------------------------------------------------
+# Keep these in sync with the bhiksha repo whenever you add a new strategy
+# class (src/bhiksha/strategy/*.py) or a new exit policy handler
+# (src/bhiksha/execution/thesis_exit.py).
+#
+# Update rule:
+#   • New strategy class in bhiksha  → add its `key` value to _BHIKSHA_STRATEGY_KEYS
+#   • New exit handler in bhiksha    → add the policy string to _BHIKSHA_EXIT_POLICIES
+# ---------------------------------------------------------------------------
+_BHIKSHA_STRATEGY_KEYS: frozenset[str] = frozenset({
+    "elastic_band_reversion",
+    "jerk_pivot_momentum",
+    "manual_breakout",
+    "manual_trigger",
+    "market_impulse",
+    "opening_drive_classifier",
+})
+
+_BHIKSHA_EXIT_POLICIES: frozenset[str] = frozenset({
+    "fixed_rr_underlying",
+    "trailing_vma_underlying",
+    "time_stop_underlying",
+    "hold_to_eod_underlying",
+    "ma_trailing_underlying",
+    "ma_crossover_underlying",
+    "atr_trailing_underlying",
+})
+
+
+def _is_bhiksha_ready(strategy_key: str, thesis_exit_policy: str | None) -> bool:
+    """Return True when both the strategy and exit policy are implemented in Bhiksha."""
+    if strategy_key not in _BHIKSHA_STRATEGY_KEYS:
+        return False
+    if thesis_exit_policy and thesis_exit_policy not in _BHIKSHA_EXIT_POLICIES:
+        return False
+    return True
+
+
 def _to_strategy_key(strategy_display_name: str) -> str:
     """Backward-compatible wrapper for older catalog tests/callers."""
     return to_strategy_key(strategy_display_name)
@@ -106,6 +146,7 @@ def _bias_template(strategy_key: str, direction: str) -> str:
 def _build_playbook_summary(
     m5_best: dict[str, Any],
     exit_opt: dict[str, Any] | None = None,
+    strategy_key: str = "",
 ) -> str:
     """Build the playbook_summary_json blob from M5 best row + optional exit optimization."""
     entry_params = {
@@ -128,12 +169,22 @@ def _build_playbook_summary(
         )
     }
 
+    thesis_exit_policy = (
+        exit_opt.get("thesis_exit_policy") if exit_opt
+        else str(m5_best.get("execution_profile", ""))
+    ) or ""
+    ready = _is_bhiksha_ready(strategy_key, thesis_exit_policy)
+
     blob: dict[str, Any] = {
         "bhiksha_compatibility": {
-            "bionic_ready": False,
+            "bhiksha_ready": ready,
             "has_optimized_thesis_exit": exit_opt is not None,
-            "supported": False,
-            "note": "mala_v2 candidate — pending bhiksha config review",
+            "supported": ready,
+            "note": (
+                "bhiksha strategy and exit policy both implemented"
+                if ready
+                else "mala_v2 candidate — pending bhiksha config review"
+            ),
         },
         "entry_params": entry_params,
         "vehicle_mapping": vehicle_mapping,
@@ -186,7 +237,11 @@ def upsert_strategy_catalog(
         "lifecycle_status":         "candidate",
         "operator_status_override": "",
         "operator_notes":           "",
-        "bionic_ready":             "false",
+        "bhiksha_ready":             "true" if _is_bhiksha_ready(
+                                        strategy_key,
+                                        exit_opt.get("thesis_exit_policy") if exit_opt
+                                        else str(m5_best.get("execution_profile", "")),
+                                    ) else "false",
         "first_validated_date":     today,
         "last_validated_date":      today,
         "validation_count":         1,
@@ -198,7 +253,7 @@ def upsert_strategy_catalog(
             exit_opt.get("thesis_exit_policy") if exit_opt
             else str(m5_best.get("execution_profile", ""))
         ),
-        "playbook_summary_json":    _build_playbook_summary(m5_best, exit_opt),
+        "playbook_summary_json":    _build_playbook_summary(m5_best, exit_opt, strategy_key),
     }
 
     existing = client.read_rows()
