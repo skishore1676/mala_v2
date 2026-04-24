@@ -38,6 +38,21 @@ Do not:
    ```
 4. Review the generated report under `research/reports/catalog_steward/`.
 
+## Codex CLI on oldmac
+
+When delegating this review to Codex CLI over SSH on oldmac, launch through a
+login shell so `~/.zprofile` exposes Node and the Codex binary:
+
+```bash
+ssh oldmac 'zsh -lc "cd ~/Documents/mala_v2 && codex exec \"Use the catalog-steward skill. Review the current sheets and produce artifact-only recommendations.\""'
+```
+
+For Sheet annotations, keep the ask explicit:
+
+```bash
+ssh oldmac 'zsh -lc "cd ~/Documents/mala_v2 && codex exec \"Use the catalog-steward skill. Run the steward with --push-sheet and report the generated artifact paths.\""'
+```
+
 ## Recommendation Vocabulary
 
 - `live`: add or keep live in `active_strategy`
