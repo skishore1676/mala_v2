@@ -20,6 +20,7 @@ from typing import Any
 
 from src.config import settings
 from src.research.research_ops import (
+    DEFAULT_DISPOSITIONS_PATH,
     DEFAULT_HYPOTHESES_DIR,
     DEFAULT_OUT_DIR,
     DEFAULT_RUNS_DIR,
@@ -294,6 +295,10 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--orchestrator-out-dir", default=str(DEFAULT_ORCH_DIR))
+    parser.add_argument(
+        "--dispositions-path",
+        default=str(DEFAULT_DISPOSITIONS_PATH),
+    )
     parser.add_argument("--google-credentials", default=settings.google_api_credentials_path)
     parser.add_argument("--catalog-google-credentials", default="")
     parser.add_argument("--catalog-sheet-id", default=settings.strategy_catalog_sheet_id)

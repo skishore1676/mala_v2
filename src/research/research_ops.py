@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HYPOTHESES_DIR = REPO_ROOT / "research" / "hypotheses"
 DEFAULT_RUNS_DIR = REPO_ROOT / "data" / "results" / "hypothesis_runs"
 DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
+DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
 
 STAGE_FILES = {
     "M1": ("M1_top.csv", "M1_aggregate.csv", "M1_detail.csv"),
@@ -97,6 +98,16 @@ class HotStartFinding:
     key: str
     detail: str
     next_action: str
+
+
+@dataclass(slots=True)
+class FindingDisposition:
+    created_at: str
+    status: str
+    key: str
+    category: str
+    reason: str
+    operator: str = ""
 
 
 @dataclass(slots=True)
@@ -182,11 +193,83 @@ def _relative(path: Path) -> str:
         return str(path)
 
 
+def read_dispositions(path: Path = DEFAULT_DISPOSITIONS_PATH) -> list[FindingDisposition]:
+    """Read the append-only finding disposition ledger."""
+    if not path.exists():
+        return []
+    rows: list[FindingDisposition] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rows.append(
+                FindingDisposition(
+                    created_at=str(payload.get("created_at", "")),
+                    status=str(payload.get("status", "")),
+                    key=str(payload.get("key", "")),
+                    category=str(payload.get("category", "")),
+                    reason=str(payload.get("reason", "")),
+                    operator=str(payload.get("operator", "")),
+                )
+            )
+    return rows
+
+
+def append_disposition(
+    *,
+    path: Path = DEFAULT_DISPOSITIONS_PATH,
+    key: str,
+    category: str = "",
+    status: str,
+    reason: str,
+    operator: str = "",
+) -> FindingDisposition:
+    disposition = FindingDisposition(
+        created_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
+        status=status,
+        key=key,
+        category=category,
+        reason=reason,
+        operator=operator,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(asdict(disposition), sort_keys=True) + "\n")
+    return disposition
+
+
+def _latest_disposition_by_target(
+    dispositions: list[FindingDisposition],
+) -> dict[tuple[str, str], FindingDisposition]:
+    latest: dict[tuple[str, str], FindingDisposition] = {}
+    for disposition in dispositions:
+        if not disposition.key:
+            continue
+        latest[(disposition.category, disposition.key)] = disposition
+    return latest
+
+
+def _finding_is_disposed(
+    finding: HotStartFinding,
+    dispositions: list[FindingDisposition],
+) -> bool:
+    latest = _latest_disposition_by_target(dispositions)
+    disposition = latest.get((finding.category, finding.key)) or latest.get(("", finding.key))
+    if disposition is None:
+        return False
+    return disposition.status in {"stale", "archived", "ignore"}
+
+
 def build_ledger(
     *,
     hypotheses_dir: Path = DEFAULT_HYPOTHESES_DIR,
     runs_dir: Path = DEFAULT_RUNS_DIR,
     strategy_catalog_rows: list[dict[str, Any]] | None = None,
+    dispositions: list[FindingDisposition] | None = None,
 ) -> ResearchLedger:
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     catalog_keys = {
@@ -282,6 +365,7 @@ def build_ledger(
         hypotheses=hypotheses,
         runs=runs,
         promoted=promoted,
+        dispositions=dispositions,
     )
     return ResearchLedger(
         generated_at=generated_at,
@@ -298,6 +382,7 @@ def build_hot_start_findings(
     runs: list[RunLedgerRow],
     promoted: list[PromotedLedgerRow],
     board_rows: list[dict[str, Any]] | None = None,
+    dispositions: list[FindingDisposition] | None = None,
 ) -> list[HotStartFinding]:
     findings: list[HotStartFinding] = []
     latest_by_hyp = {row.hypothesis_id: row for row in hypotheses}
@@ -378,7 +463,12 @@ def build_hot_start_findings(
                 )
             )
 
-    return sorted(findings, key=lambda item: (item.severity != "high", item.category, item.key))
+    filtered = [
+        finding
+        for finding in findings
+        if not _finding_is_disposed(finding, dispositions or [])
+    ]
+    return sorted(filtered, key=lambda item: (item.severity != "high", item.category, item.key))
 
 
 def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
@@ -443,7 +533,11 @@ def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
                 action_type="repair_run_summary",
                 key=finding.key,
                 reason=finding.detail,
-                suggested_command=f"# inspect or rerun reporting for {finding.key}",
+                suggested_command=(
+                    "python -m src.research.research_ops mark-stale "
+                    f"--category run_missing_summary --key {finding.key} "
+                    "--reason \"missing RUN_SUMMARY; old run; not used as evidence\""
+                ),
                 requires_approval="yes",
             )
         elif finding.category == "running_hypothesis":
@@ -461,7 +555,11 @@ def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
                 action_type="inspect_terminal",
                 key=finding.key,
                 reason=finding.detail,
-                suggested_command=f"# inspect research/hypotheses/{finding.key}.md before trusting terminal state",
+                suggested_command=(
+                    "python -m src.research.research_ops mark-stale "
+                    f"--category terminal_without_artifacts --key {finding.key} "
+                    "--reason \"terminal hypothesis has no artifacts; not used as evidence\""
+                ),
                 requires_approval="yes",
             )
 
@@ -711,10 +809,12 @@ def _board_client(args: argparse.Namespace) -> GoogleSheetTableClient:
 
 def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
     catalog_rows = _read_strategy_catalog_rows(args) if args.with_catalog else []
+    dispositions = read_dispositions(Path(args.dispositions_path))
     ledger = build_ledger(
         hypotheses_dir=Path(args.hypotheses_dir),
         runs_dir=Path(args.runs_dir),
         strategy_catalog_rows=catalog_rows,
+        dispositions=dispositions,
     )
     if args.with_board:
         board_rows = _read_board_rows(args)
@@ -723,6 +823,7 @@ def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
             runs=ledger.runs,
             promoted=ledger.promoted,
             board_rows=board_rows,
+            dispositions=dispositions,
         )
     return ledger
 
@@ -1094,10 +1195,54 @@ def cmd_sync_board(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mark_stale(args: argparse.Namespace) -> int:
+    disposition = append_disposition(
+        path=Path(args.dispositions_path),
+        key=args.key,
+        category=args.category,
+        status="stale",
+        reason=args.reason,
+        operator=args.operator,
+    )
+    print(f"DISPOSITION_PATH={Path(args.dispositions_path)}")
+    print(f"DISPOSITION_STATUS={disposition.status}")
+    print(f"DISPOSITION_CATEGORY={disposition.category}")
+    print(f"DISPOSITION_KEY={disposition.key}")
+    return 0
+
+
+def cmd_clear_disposition(args: argparse.Namespace) -> int:
+    disposition = append_disposition(
+        path=Path(args.dispositions_path),
+        key=args.key,
+        category=args.category,
+        status="cleared",
+        reason=args.reason,
+        operator=args.operator,
+    )
+    print(f"DISPOSITION_PATH={Path(args.dispositions_path)}")
+    print(f"DISPOSITION_STATUS={disposition.status}")
+    print(f"DISPOSITION_CATEGORY={disposition.category}")
+    print(f"DISPOSITION_KEY={disposition.key}")
+    return 0
+
+
+def cmd_dispositions(args: argparse.Namespace) -> int:
+    rows = [asdict(row) for row in read_dispositions(Path(args.dispositions_path))]
+    if args.format == "json":
+        print(json.dumps(rows, indent=2))
+    else:
+        _write_csv(Path(args.output), rows)
+        print(f"DISPOSITIONS_CSV={Path(args.output)}")
+    print(f"DISPOSITIONS={len(rows)}")
+    return 0
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--dispositions-path", default=str(DEFAULT_DISPOSITIONS_PATH))
     parser.add_argument("--google-credentials", default=settings.google_api_credentials_path)
     parser.add_argument("--catalog-google-credentials", default="")
     parser.add_argument("--catalog-sheet-id", default=settings.strategy_catalog_sheet_id)
@@ -1145,6 +1290,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     sync_board.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
     sync_board.add_argument("--output", default="", help="Optional CSV output path for the sync plan.")
     sync_board.set_defaults(func=cmd_sync_board)
+
+    mark_stale = subparsers.add_parser("mark-stale", help="Mark a finding key as stale without moving or deleting artifacts.")
+    _add_common_args(mark_stale)
+    mark_stale.add_argument("--key", required=True, help="Finding key, e.g. hypothesis/run_ts.")
+    mark_stale.add_argument("--category", default="", help="Optional exact finding category. Blank suppresses this key across categories.")
+    mark_stale.add_argument("--reason", required=True)
+    mark_stale.add_argument("--operator", default="")
+    mark_stale.set_defaults(func=cmd_mark_stale)
+
+    clear = subparsers.add_parser("clear-disposition", help="Clear a prior stale/archive disposition for a finding key.")
+    _add_common_args(clear)
+    clear.add_argument("--key", required=True)
+    clear.add_argument("--category", default="")
+    clear.add_argument("--reason", required=True)
+    clear.add_argument("--operator", default="")
+    clear.set_defaults(func=cmd_clear_disposition)
+
+    disp = subparsers.add_parser("dispositions", help="List finding dispositions.")
+    _add_common_args(disp)
+    disp.add_argument("--format", choices=["json", "csv"], default="json")
+    disp.add_argument("--output", default=str(DEFAULT_OUT_DIR / "dispositions.csv"))
+    disp.set_defaults(func=cmd_dispositions)
 
     return parser.parse_args(argv)
 

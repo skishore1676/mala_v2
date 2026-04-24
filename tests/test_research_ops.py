@@ -6,9 +6,12 @@ from pathlib import Path
 from src.research.research_ops import (
     _board_sync_plan,
     _catalog_publish_plan,
+    FindingDisposition,
+    append_disposition,
     build_hot_start_findings,
     build_ledger,
     build_next_actions,
+    read_dispositions,
     write_csv_tables,
     write_hot_start_report,
     write_workbook,
@@ -266,3 +269,71 @@ def test_board_sync_plan_maps_terminal_states_to_operator_columns(tmp_path: Path
     assert updates[0]["Agent_State"] == "PROMOTED"
     assert updates[0]["Current_Stage"] == "M5"
     assert updates[0]["Recommendation"] == "PROMOTE"
+
+
+def test_stale_disposition_suppresses_matching_hot_start_finding(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="idea", state="running", decision="")
+    ledger = build_ledger(
+        hypotheses_dir=hypotheses,
+        runs_dir=runs,
+        dispositions=[
+            FindingDisposition(
+                created_at="2026-04-24T00:00:00+00:00",
+                status="stale",
+                key="idea",
+                category="running_hypothesis",
+                reason="intentional test disposition",
+            )
+        ],
+    )
+
+    assert not [finding for finding in ledger.findings if finding.key == "idea"]
+
+
+def test_disposition_clear_restores_matching_finding(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="idea", state="running", decision="")
+    dispositions = [
+        FindingDisposition(
+            created_at="2026-04-24T00:00:00+00:00",
+            status="stale",
+            key="idea",
+            category="running_hypothesis",
+            reason="stale",
+        ),
+        FindingDisposition(
+            created_at="2026-04-24T01:00:00+00:00",
+            status="cleared",
+            key="idea",
+            category="running_hypothesis",
+            reason="bring it back",
+        ),
+    ]
+
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs, dispositions=dispositions)
+
+    assert [finding.key for finding in ledger.findings] == ["idea"]
+
+
+def test_append_and_read_dispositions_jsonl(tmp_path: Path) -> None:
+    path = tmp_path / "dispositions.jsonl"
+
+    append_disposition(
+        path=path,
+        key="idea/run",
+        category="run_missing_summary",
+        status="stale",
+        reason="old run",
+        operator="test",
+    )
+
+    rows = read_dispositions(path)
+    assert len(rows) == 1
+    assert rows[0].key == "idea/run"
+    assert rows[0].category == "run_missing_summary"
+    assert rows[0].status == "stale"

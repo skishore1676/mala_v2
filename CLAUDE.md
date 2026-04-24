@@ -91,6 +91,7 @@ uv run python -m src.research.research_ops hot-start
 uv run python -m src.research.research_ops next-actions
 uv run python -m src.research.research_ops publish-pending --dry-run
 uv run python -m src.research.research_ops sync-board --dry-run
+uv run python -m src.research.research_ops mark-stale --category run_missing_summary --key <hypothesis/run_ts> --reason "old run; not used as evidence"
 ```
 
 Default output:
@@ -117,6 +118,10 @@ uv run python -m src.research.research_runner retune-approved --hypothesis resea
 
 `publish-pending` and `sync-board` are dry-run by default. Require explicit
 `--apply` before touching Google Sheets.
+`mark-stale` is non-destructive: it appends to
+`research/reports/research_ops/finding_dispositions.jsonl` and suppresses the
+reviewed finding from future hot-start/next-action queues. Use
+`clear-disposition` to bring it back.
 
 Local orchestration is available through `src.research.local_orchestrator`:
 

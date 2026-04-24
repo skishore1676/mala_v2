@@ -92,6 +92,10 @@ its view from local Mala evidence:
 ./.venv/bin/python -m src.research.research_ops next-actions
 ./.venv/bin/python -m src.research.research_ops publish-pending --dry-run
 ./.venv/bin/python -m src.research.research_ops sync-board --dry-run
+./.venv/bin/python -m src.research.research_ops mark-stale \
+  --category run_missing_summary \
+  --key elastic-band-current-basket-discovery/2026-04-12T082350 \
+  --reason "missing RUN_SUMMARY; old run; not used as evidence"
 ```
 
 Outputs:
@@ -106,6 +110,7 @@ Interpretation:
 - `terminal_without_artifacts` means a hypothesis file is terminal but no run directory was found; inspect before trusting it.
 - `next-actions` turns those findings plus pending/retune hypotheses into a ranked operator queue.
 - `publish-pending` and `sync-board` are dry-run by default; use `--apply` only after explicit review.
+- `mark-stale` appends a non-destructive decision to `research/reports/research_ops/finding_dispositions.jsonl`; it suppresses that reviewed finding without deleting or moving artifacts.
 
 ## Research Runner Layer
 

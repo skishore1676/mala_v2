@@ -112,6 +112,12 @@ python -m src.research.research_ops next-actions
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
 python -m src.research.research_ops sync-board --dry-run
+
+# Non-destructively suppress reviewed stale findings from future queues
+python -m src.research.research_ops mark-stale \
+  --category run_missing_summary \
+  --key elastic-band-current-basket-discovery/2026-04-12T082350 \
+  --reason "missing RUN_SUMMARY; old run; not used as evidence"
 ```
 
 Use `src.research.research_runner` as the safe command surface for actual
@@ -143,6 +149,8 @@ python -m src.research.local_orchestrator daemon --mode apply-safe --interval-se
 The workbook/CSV outputs under `data/results/research_ops/` are rebuildable
 summaries, not canonical truth. Canonical research evidence remains:
 `research/hypotheses/` plus `data/results/hypothesis_runs/`.
+Finding dispositions are decision memory and live in
+`research/reports/research_ops/finding_dispositions.jsonl`.
 
 Mental model:
 - Mala research engine proves or kills ideas through M1-M5.
