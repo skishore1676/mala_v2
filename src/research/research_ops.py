@@ -56,6 +56,7 @@ CONTROL_SHEET_HEADERS = [
 
 CONTROL_OPERATOR_ACTIONS = {
     "",
+    "APPROVE_KILL",
     "APPROVE_RETUNE",
     "APPROVE_PUBLISH",
     "APPROVE_BOARD_SYNC",
@@ -829,8 +830,11 @@ def build_control_rows(
     for item in actions:
         existing = existing_by_id.get(action_id(item), {})
         operator_action = str(existing.get("operator_action", "")).strip().upper()
+        existing_status = str(existing.get("status", "") or "queued")
         if operator_action not in CONTROL_OPERATOR_ACTIONS:
-            operator_action = ""
+            status = f"invalid_operator_action:{operator_action}"
+        else:
+            status = existing_status
         rows.append(
             {
                 "action_id": action_id(item),
@@ -843,7 +847,7 @@ def build_control_rows(
                 "requires_approval": item.requires_approval,
                 "mutates_external_state": item.mutates_external_state,
                 "operator_action": operator_action,
-                "status": str(existing.get("status", "") or "queued"),
+                "status": status,
                 "brief_recommendation": str(existing.get("brief_recommendation", "")),
                 "brief_summary": str(existing.get("brief_summary", "")),
                 "brief_path": str(existing.get("brief_path", "")),

@@ -285,6 +285,38 @@ def test_build_control_rows_preserves_operator_action() -> None:
     assert rows[0]["last_report_path"] == "old.md"
 
 
+def test_build_control_rows_preserves_invalid_operator_action_with_status() -> None:
+    from src.research.research_ops import NextAction
+
+    actions = [
+        NextAction(
+            rank=1,
+            priority="medium",
+            action_type="retune_plan",
+            key="idea",
+            reason="needs decision",
+            suggested_command="cmd",
+            requires_approval="yes",
+            mutates_external_state="no",
+        )
+    ]
+
+    rows = build_control_rows(
+        actions=actions,
+        generated_at="2026-04-24 18:00:00 CDT",
+        existing_rows=[
+            {
+                "action_id": "retune_plan:idea",
+                "operator_action": "KILL",
+                "status": "queued",
+            }
+        ],
+    )
+
+    assert rows[0]["operator_action"] == "KILL"
+    assert rows[0]["status"] == "invalid_operator_action:KILL"
+
+
 def test_action_brief_recommends_retune_after_m2_exp_positive_instability(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
     runs = tmp_path / "data" / "results" / "hypothesis_runs"

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.research.research_runner import create_hypothesis_file
+from src.research.research_runner import create_hypothesis_file, kill_hypothesis_file
 
 
 def test_create_hypothesis_file_writes_standard_config(tmp_path: Path) -> None:
@@ -41,3 +41,26 @@ def test_create_hypothesis_file_refuses_unknown_strategy(tmp_path: Path) -> None
             notes=[],
             hypotheses_dir=tmp_path,
         )
+
+
+def test_kill_hypothesis_file_marks_state_without_deleting(tmp_path: Path) -> None:
+    path = create_hypothesis_file(
+        hypothesis_id="Kill Me",
+        title="Kill Me",
+        strategy="Market Impulse (Cross & Reclaim)",
+        symbol_scope="AMD",
+        max_stage="M1",
+        thesis="This edge did not survive.",
+        rules=[],
+        notes=[],
+        hypotheses_dir=tmp_path,
+    )
+
+    result = kill_hypothesis_file(path, reason="no positive configs")
+
+    assert result == path
+    assert path.exists()
+    text = path.read_text(encoding="utf-8")
+    assert "- state: `kill`" in text
+    assert "- decision: `kill`" in text
+    assert "- reason: no positive configs" in text

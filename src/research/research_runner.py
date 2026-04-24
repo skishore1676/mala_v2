@@ -11,6 +11,7 @@ import argparse
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.strategy.factory import available_strategy_names
@@ -183,6 +184,47 @@ def cmd_retune_approved(args: argparse.Namespace) -> int:
     )
 
 
+def kill_hypothesis_file(hypothesis: Path, *, reason: str = "") -> Path:
+    """Mark a hypothesis as killed without deleting its evidence."""
+    text = hypothesis.read_text(encoding="utf-8")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+0000")
+
+    def _replace_field(body: str, field: str, value: str) -> str:
+        pattern = rf"(- {field}:\s*)`[^`]*`"
+        replacement = rf"\1`{value}`"
+        if re.search(pattern, body):
+            return re.sub(pattern, replacement, body)
+        return body
+
+    text = _replace_field(text, "state", "kill")
+    text = _replace_field(text, "decision", "kill")
+    text = _replace_field(text, "last_run", now)
+    report_lines = [
+        "## Agent Report",
+        f"- decision: `kill`",
+        f"- updated_at: `{now}`",
+        "- source: `research_runner kill-approved`",
+    ]
+    if reason.strip():
+        report_lines.append(f"- reason: {reason.strip()}")
+    report = "\n".join(report_lines)
+    if "## Agent Report" in text:
+        text = re.sub(r"## Agent Report.*", report, text, flags=re.DOTALL)
+    else:
+        text = text.rstrip() + "\n\n" + report
+    hypothesis.write_text(text.rstrip() + "\n", encoding="utf-8")
+    return hypothesis
+
+
+def cmd_kill_approved(args: argparse.Namespace) -> int:
+    hypothesis = _resolve_hypothesis(args.hypothesis)
+    path = kill_hypothesis_file(hypothesis, reason=args.reason)
+    print(f"KILLED_HYPOTHESIS={path}")
+    print("STATE=kill")
+    print("DECISION=kill")
+    return 0
+
+
 def _add_hypothesis_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypothesis", required=True, help="Hypothesis path or id.")
     parser.add_argument("extra", nargs=argparse.REMAINDER, help="Extra args passed after '--' to hypothesis_agent.py.")
@@ -230,6 +272,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_hypothesis_arg(retune)
     retune.add_argument("--force-rerun", action="store_true")
     retune.set_defaults(func=cmd_retune_approved)
+
+    kill = subparsers.add_parser("kill-approved", help="Mark a hypothesis killed after explicit operator approval.")
+    kill.add_argument("--hypothesis", required=True, help="Hypothesis path or id.")
+    kill.add_argument("--reason", default="operator approved kill from Research_Control")
+    kill.set_defaults(func=cmd_kill_approved)
 
     return parser.parse_args(argv)
 

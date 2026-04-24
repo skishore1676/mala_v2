@@ -247,6 +247,17 @@ def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> l
             "--hypothesis",
             hypothesis_arg,
         ]
+    if operator_action == "APPROVE_KILL" and action.action_type in {"retune_plan", "run_m1"}:
+        hypothesis_path = Path(args.hypotheses_dir) / f"{action.key}.md"
+        hypothesis_arg = str(hypothesis_path) if hypothesis_path.exists() else action.key
+        return [
+            python,
+            "-m",
+            "src.research.research_runner",
+            "kill-approved",
+            "--hypothesis",
+            hypothesis_arg,
+        ]
     if operator_action == "MARK_STALE" and action.action_type in {"repair_run_summary", "inspect_terminal"}:
         category = "run_missing_summary" if action.action_type == "repair_run_summary" else "terminal_without_artifacts"
         return [

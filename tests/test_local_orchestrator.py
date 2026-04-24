@@ -108,6 +108,33 @@ def test_control_row_approval_maps_to_retune_command(tmp_path: Path) -> None:
     ]
 
 
+def test_control_row_approval_maps_to_kill_command(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "hypotheses"
+    _write_hypothesis(hypotheses, "retune-me")
+    args = parse_args(["once", "--hypotheses-dir", str(hypotheses)])
+
+    command = _command_for_control_row(
+        {
+            "operator_action": "APPROVE_KILL",
+            "rank": "1",
+            "priority": "medium",
+            "action_type": "retune_plan",
+            "key": "retune-me",
+            "reason": "operator chose to kill",
+            "suggested_command": "",
+        },
+        args,
+    )
+
+    assert command is not None
+    assert command[2:] == [
+        "src.research.research_runner",
+        "kill-approved",
+        "--hypothesis",
+        str(hypotheses / "retune-me.md"),
+    ]
+
+
 def test_control_row_surface_expansion_maps_to_plan_command(tmp_path: Path) -> None:
     args = parse_args(
         [

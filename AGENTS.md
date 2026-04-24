@@ -173,7 +173,7 @@ Mental model:
 - Digest reports summarize the daily/weekly operating state for humans and advisory agents.
 - Research Runner is the bounded command wrapper for creating/running approved hypotheses.
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
-- Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
+- Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_KILL`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`. Invalid nonblank actions are preserved and marked `invalid_operator_action:<value>` rather than silently cleared.
 - Strategy_Catalog contains only M5-promoted execution candidates for Bhiksha/operator review.
 - Catalog Steward ranks existing Strategy_Catalog candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.
