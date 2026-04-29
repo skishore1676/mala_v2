@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -135,3 +136,10 @@ def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeyp
     assert row["strategy_key"] == "market_impulse"
     assert row["thesis_exit_policy"] == "fixed_rr_underlying"
     assert row["bhiksha_ready"] == "true"
+    summary = json.loads(row["playbook_summary_json"])
+    assert summary["exit_controls"] == {
+        "use_algorithmic_exit": False,
+        "native_strategy_exit_policy": None,
+        "exit_stack": "thesis_exit_then_catastrophe",
+        "note": "Mala thesis exit is authoritative; native exits require explicit opt-in.",
+    }

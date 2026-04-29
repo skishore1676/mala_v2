@@ -195,6 +195,12 @@ def _build_playbook_summary(
         blob["thesis_exit_params"]      = exit_opt.get("thesis_exit_params", {})
         blob["catastrophe_exit_params"] = exit_opt.get("catastrophe_exit_params", {})
         blob["exit_candidate_policies"] = exit_opt.get("candidate_policies", [])
+        blob["exit_controls"] = {
+            "use_algorithmic_exit": False,
+            "native_strategy_exit_policy": None,
+            "exit_stack": "thesis_exit_then_catastrophe",
+            "note": "Mala thesis exit is authoritative; native exits require explicit opt-in.",
+        }
 
     return json.dumps(blob, default=str)
 
