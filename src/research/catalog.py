@@ -17,9 +17,10 @@ Source for each field (from M5 run):
     confidence          ← m5_best["holdout_win_rate"]
     signal_count        ← m5_best["holdout_trades"]
     execution_robustness← m5_best["mc_prob_positive_exp"]
-    thesis_exit_policy  ← m5_best["execution_profile"]
+    thesis_exit_policy  ← optimized thesis exit policy
     bias_template       ← _BIAS_TEMPLATE_MAP[(strategy_key, direction)]
-    playbook_summary_json ← entry_params + vehicle_mapping + mc_metrics
+    playbook_summary_json ← restricted Mala evidence only; runtime fields are
+                            marked operator_required
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.mala_handoff import MALA_HANDOFF_VERSION, derive_signal_window
 from src.research.strategy_keys import to_strategy_key
 
 # Must match the column order in the live Google Sheet exactly.
@@ -131,6 +133,11 @@ def _is_bhiksha_ready(strategy_key: str, thesis_exit_policy: str | None) -> bool
     return True
 
 
+def _can_compile_after_operator_review(strategy_key: str, thesis_exit_policy: str | None) -> bool:
+    """Return True when Bhiksha has code support after operator runtime config is supplied."""
+    return _is_bhiksha_ready(strategy_key, thesis_exit_policy)
+
+
 def _to_strategy_key(strategy_display_name: str) -> str:
     """Backward-compatible wrapper for older catalog tests/callers."""
     return to_strategy_key(strategy_display_name)
@@ -148,17 +155,19 @@ def _build_playbook_summary(
     exit_opt: dict[str, Any] | None = None,
     strategy_key: str = "",
 ) -> str:
-    """Build the playbook_summary_json blob from M5 best row + optional exit optimization."""
+    """Build restricted Mala-owned evidence for Strategy_Catalog.
+
+    Mala may publish strategy evidence and optimized underlying thesis exits.
+    Runtime option vehicle, execution window, premium budget, option stops and
+    targets, live/shadow mode, and conflict policy are operator/Bhiksha owned.
+    """
+    if not exit_opt:
+        raise ValueError("Strategy_Catalog publish requires a tested thesis exit artifact.")
     entry_params = {
         k: v for k, v in m5_best.items()
         if k not in _M5_NON_PARAM_COLS and v not in (None, "")
     }
-
-    vehicle_mapping = {
-        k: m5_best[k]
-        for k in ("structure", "dte", "delta_plan", "entry_window_et", "profit_take", "risk_rule")
-        if k in m5_best
-    }
+    signal_start, signal_end, derivation = derive_signal_window(strategy_key, entry_params)
 
     mc_metrics = {
         k: m5_best.get(k)
@@ -169,38 +178,78 @@ def _build_playbook_summary(
         )
     }
 
-    thesis_exit_policy = (
-        exit_opt.get("thesis_exit_policy") if exit_opt
-        else str(m5_best.get("execution_profile", ""))
-    ) or ""
-    ready = _is_bhiksha_ready(strategy_key, thesis_exit_policy)
+    thesis_exit_policy = str(exit_opt.get("thesis_exit_policy") or "")
+    can_compile_after_review = _can_compile_after_operator_review(strategy_key, thesis_exit_policy)
+    warnings = [
+        f"legacy_m5_execution_mapping_ignored:{field}"
+        for field in ("structure", "dte", "delta_plan", "entry_window_et", "profit_take", "risk_rule")
+        if m5_best.get(field) not in (None, "")
+    ]
+    if not signal_start and not signal_end:
+        warnings.append("strategy_signal_window_not_declared")
 
     blob: dict[str, Any] = {
+        "mala_handoff_version": MALA_HANDOFF_VERSION,
         "bhiksha_compatibility": {
-            "bhiksha_ready": ready,
-            "has_optimized_thesis_exit": exit_opt is not None,
-            "supported": ready,
+            "bhiksha_ready": False,
+            "can_compile_after_operator_review": can_compile_after_review,
+            "has_optimized_thesis_exit": True,
+            "supported_strategy_and_exit": can_compile_after_review,
             "note": (
-                "bhiksha strategy and exit policy both implemented"
-                if ready
-                else "mala_v2 candidate — pending bhiksha config review"
+                "Mala evidence only; operator runtime bridge config is required before Bhiksha live consumption."
             ),
         },
-        "entry_params": entry_params,
-        "vehicle_mapping": vehicle_mapping,
+        "strategy": {
+            "strategy_key": strategy_key,
+            "params": entry_params,
+            "signal_window_start_et": signal_start,
+            "signal_window_end_et": signal_end,
+            "signal_window_derivation": derivation,
+        },
+        "runtime_requirements": {
+            "option_vehicle": "operator_required",
+            "execution_window": "operator_required",
+            "max_premium_usd": "operator_required",
+            "option_premium_stop": "operator_required",
+            "option_premium_target": "operator_required",
+            "live_or_shadow": "operator_required",
+            "conflict_policy": "operator_required",
+        },
         "mc_metrics": mc_metrics,
+        "m5_evidence": {
+            "execution_profile_tested": m5_best.get("execution_profile", ""),
+            "stress_profile_tested": m5_best.get("stress_profile", ""),
+            "expectancy": m5_best.get("base_exp_r"),
+            "confidence": m5_best.get("holdout_win_rate"),
+            "signal_count": m5_best.get("holdout_trades"),
+            "execution_robustness": m5_best.get("mc_prob_positive_exp"),
+            "note": "M5 evidence is research/backtest evidence, not live option execution authorization.",
+        },
+        "validation": {
+            "status": "needs_operator_runtime_config",
+            "warnings": warnings,
+        },
+        "thesis_exit": {
+            "tested": True,
+            "anchor": exit_opt.get("thesis_exit_anchor", "underlying"),
+            "policy": thesis_exit_policy,
+            "policy_name": exit_opt.get("selected_policy_name", ""),
+            "params": exit_opt.get("thesis_exit_params", {}),
+            "metrics": exit_opt.get("selected_metrics", {}),
+            "catastrophe_exit_anchor": exit_opt.get("catastrophe_exit_anchor", "option_premium"),
+            "catastrophe_exit_params": exit_opt.get("catastrophe_exit_params", {}),
+            "note": "Underlying thesis exit was selected by Mala exit optimization; option premium handling remains operator/Bhiksha owned.",
+        },
     }
-
-    if exit_opt:
-        blob["thesis_exit_params"]      = exit_opt.get("thesis_exit_params", {})
-        blob["catastrophe_exit_params"] = exit_opt.get("catastrophe_exit_params", {})
-        blob["exit_candidate_policies"] = exit_opt.get("candidate_policies", [])
-        blob["exit_controls"] = {
-            "use_algorithmic_exit": False,
-            "native_strategy_exit_policy": None,
-            "exit_stack": "thesis_exit_then_catastrophe",
-            "note": "Mala thesis exit is authoritative; native exits require explicit opt-in.",
-        }
+    blob["thesis_exit_params"] = exit_opt.get("thesis_exit_params", {})
+    blob["catastrophe_exit_params"] = exit_opt.get("catastrophe_exit_params", {})
+    blob["exit_candidate_policies"] = exit_opt.get("candidate_policies", [])
+    blob["exit_controls"] = {
+        "use_algorithmic_exit": False,
+        "native_strategy_exit_policy": None,
+        "exit_stack": "thesis_exit_then_catastrophe",
+        "note": "Mala thesis exit is authoritative; native exits require explicit opt-in.",
+    }
 
     return json.dumps(blob, default=str)
 
@@ -231,6 +280,9 @@ def upsert_strategy_catalog(
     today = date.today().isoformat()
     strategy_key = _to_strategy_key(strategy)
     direction = str(m5_best.get("direction", "long"))
+    if not exit_opt:
+        raise ValueError(f"Refusing to publish {catalog_key}: tested thesis exit artifact is required.")
+    thesis_exit_policy = str(exit_opt.get("thesis_exit_policy") or "")
 
     row: dict[str, Any] = {
         "catalog_key":              catalog_key,
@@ -242,12 +294,8 @@ def upsert_strategy_catalog(
         "direction":                direction,
         "lifecycle_status":         "candidate",
         "operator_status_override": "",
-        "operator_notes":           "",
-        "bhiksha_ready":             "true" if _is_bhiksha_ready(
-                                        strategy_key,
-                                        exit_opt.get("thesis_exit_policy") if exit_opt
-                                        else str(m5_best.get("execution_profile", "")),
-                                    ) else "false",
+        "operator_notes":           "operator runtime bridge config required",
+        "bhiksha_ready":             "false",
         "first_validated_date":     today,
         "last_validated_date":      today,
         "validation_count":         1,
@@ -255,10 +303,7 @@ def upsert_strategy_catalog(
         "confidence":               round(float(m5_best.get("holdout_win_rate") or 0), 4),
         "signal_count":             int(m5_best.get("holdout_trades") or 0),
         "execution_robustness":     round(float(m5_best.get("mc_prob_positive_exp") or 0), 5),
-        "thesis_exit_policy":       (
-            exit_opt.get("thesis_exit_policy") if exit_opt
-            else str(m5_best.get("execution_profile", ""))
-        ),
+        "thesis_exit_policy":       thesis_exit_policy,
         "playbook_summary_json":    _build_playbook_summary(m5_best, exit_opt, strategy_key),
     }
 

@@ -1385,6 +1385,9 @@ def main() -> None:
                         continue
                     catalog_key = f"{h.id}__{_t.lower()}_{_d}"
                     exit_opt = m5_exit_opts.get(_candidate_key(row, param_keys))
+                    if not exit_opt:
+                        log(f"CATALOG_SKIP  {catalog_key}: missing tested thesis exit artifact")
+                        continue
                     try:
                         upsert_strategy_catalog(
                             catalog_key=catalog_key,

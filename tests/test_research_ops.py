@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.research.research_ops import (
     _board_sync_plan,
     _catalog_publish_plan,
+    _publish_catalog_rows,
     FindingDisposition,
     append_disposition,
     build_action_brief,
@@ -591,6 +593,65 @@ def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) 
 
     assert [row.catalog_key for row in _catalog_publish_plan(ledger=ledger, catalog_keys={"different"})] == ["idea__amd_short"]
     assert _catalog_publish_plan(ledger=ledger, catalog_keys={"idea__amd_short"}) == []
+
+
+def test_publish_catalog_rows_blocks_rows_without_exit_artifact(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="idea", state="completed", decision="promote")
+    run_dir = runs / "idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text("- decision: `promote`\n", encoding="utf-8")
+    selected = {
+        "catalog_key": "idea__amd_short",
+        "ticker": "AMD",
+        "direction": "short",
+        "strategy": "Market Impulse (Cross & Reclaim)",
+        "execution_profile": "single_option",
+        "recommendation_tier": "promote",
+        "exit_reliability": "none",
+        "selected_exit_policy": "",
+        "mc_prob_positive_exp": "0.99",
+        "mc_exp_r_p50": "0.4",
+        "base_exp_r": "0.5",
+        "holdout_trades": "110",
+        "holdout_win_rate": "0.55",
+        "entry_buffer_minutes": "5",
+        "entry_window_minutes": "45",
+    }
+    _write_csv(run_dir / "CATALOG_SELECTED.csv", [selected])
+    _write_csv(
+        run_dir / "M5_execution.csv",
+        [
+            {
+                **selected,
+                "stress_profile": "single_option",
+                "structure": "long_put",
+                "dte": "7-21",
+                "delta_plan": "0.35-0.55",
+                "entry_window_et": "09:45-14:30",
+                "profit_take": "50-90% premium",
+                "risk_rule": "hard stop at -35% premium",
+            }
+        ],
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs, strategy_catalog_rows=[])
+    rows = _catalog_publish_plan(ledger=ledger, catalog_keys=set())
+
+    results = _publish_catalog_rows(
+        rows=rows,
+        args=SimpleNamespace(
+            catalog_google_credentials="",
+            google_credentials="",
+            catalog_sheet_id="sheet-id",
+            catalog_sheet_name="Strategy_Catalog",
+        ),
+        dry_run=True,
+    )
+
+    assert results[0]["action"] == "blocked_missing_thesis_exit"
+    assert "backfill" in results[0]["block_reason"]
 
 
 def test_board_sync_plan_maps_terminal_states_to_operator_columns(tmp_path: Path) -> None:
