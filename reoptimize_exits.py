@@ -178,6 +178,18 @@ def _candidate_slug(row: dict[str, Any], param_keys: list[str]) -> str:
     return hashlib.sha1(payload.encode()).hexdigest()[:10]
 
 
+def _feature_cache_key(strategy_name: str, config: dict[str, Any]) -> str:
+    strategy = _build_strategy(strategy_name, config)
+    return "|".join(sorted(required_feature_union([strategy])))
+
+
+def _summary_merge_key(item: dict[str, Any]) -> str:
+    key = item.get("candidate_key", {})
+    if isinstance(key, dict) and key:
+        return json.dumps(key, sort_keys=True)
+    return str(item.get("artifact", ""))
+
+
 def _best_m5_row(m5_df: pl.DataFrame) -> dict[str, Any] | None:
     if m5_df.is_empty():
         return None
@@ -352,16 +364,20 @@ def main() -> None:
         log("DRY_RUN  no files written, no catalog upsert")
         return
 
-    # ── Load data ─────────────────────────────────────────────────────────────
-    # Use the first candidate's config for feature detection; most strategy
-    # families share the same Newton feature set across configs.
-    first_cand = _matching_promoted(m4_promoted, candidates[0], param_keys) or {}
-    first_config = {k: first_cand[k] for k in param_keys if k in first_cand}
-    frames = _load_enriched_frames(tickers, strategy, first_config, args.start, args.end)
+    # ── Data cache ────────────────────────────────────────────────────────────
+    # Candidates inside one run may require different Newton feature sets
+    # (e.g. Market Impulse 15m vs 1h regime columns). Load per exact strategy
+    # config so exit backfills do not reuse an incompatible enriched frame.
+    frame_cache: dict[tuple[str, str], pl.DataFrame] = {}
 
-    if not frames:
-        log("ERROR  no data loaded — check Parquet cache or re-run hypothesis_agent.py to warm it")
-        sys.exit(1)
+    def _frame_for_candidate(ticker: str, config: dict[str, Any]) -> pl.DataFrame | None:
+        cache_key = (ticker, _feature_cache_key(strategy, config))
+        if cache_key not in frame_cache:
+            frames = _load_enriched_frames([ticker], strategy, config, args.start, args.end)
+            if ticker not in frames:
+                return None
+            frame_cache[cache_key] = frames[ticker]
+        return frame_cache[cache_key]
 
     # ── Re-run exit optimizer ─────────────────────────────────────────────────
     exit_opts: dict[tuple[tuple[str, str], ...], ExitOptimizationResult] = {}
@@ -371,9 +387,6 @@ def main() -> None:
         ticker    = str(m5_best.get("ticker", ""))
         direction = str(m5_best.get("direction", ""))
 
-        if ticker not in frames:
-            log(f"SKIP  {ticker} {direction}  — no data frame")
-            continue
         if direction not in {"long", "short"}:
             log(f"SKIP  {ticker} {direction}  — combined direction skipped (not evaluable by exit optimizer)")
             continue
@@ -388,11 +401,12 @@ def main() -> None:
 
         try:
             s = _build_strategy(strategy, config)
-            # If this config needs different Newton features, re-enrich.
-            # For simplicity, try with the already-loaded frames first.
-            enriched = frames[ticker]
         except Exception as exc:
             log(f"SKIP  {ticker} {direction}  — strategy build error: {exc}")
+            continue
+        enriched = _frame_for_candidate(ticker, config)
+        if enriched is None:
+            log(f"SKIP  {ticker} {direction}  — no data frame")
             continue
 
         log(f"OPTIMIZING  {ticker} {direction}  strategy_key={strategy_key}")
@@ -439,7 +453,15 @@ def main() -> None:
 
     # ── Update m5_exit_optimizations.json ────────────────────────────────────
     summary_path = run_dir / "m5_exit_optimizations.json"
-    summary = [
+    existing_summary: list[dict[str, Any]] = []
+    if summary_path.exists():
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = []
+        if isinstance(payload, list):
+            existing_summary = [item for item in payload if isinstance(item, dict)]
+    rebuilt_summary = [
         {
             "candidate_key": dict(key),
             "artifact": (
@@ -451,8 +473,12 @@ def main() -> None:
         }
         for key, opt in exit_opts.items()
     ]
+    by_key = {_summary_merge_key(item): item for item in existing_summary}
+    for item in rebuilt_summary:
+        by_key[_summary_merge_key(item)] = item
+    summary = list(by_key.values())
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    log(f"SUMMARY  {summary_path}  ({rebuilt} candidates)")
+    log(f"SUMMARY  {summary_path}  ({rebuilt} rebuilt, {len(summary)} total candidates)")
 
     # ── Optional catalog upsert ───────────────────────────────────────────────
     if not args.catalog_write:

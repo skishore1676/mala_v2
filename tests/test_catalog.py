@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from src.research import catalog
 from src.research.catalog import upsert_strategy_catalog
 
@@ -68,36 +70,30 @@ def test_catalog_strategy_keys_match_canonical_surface_names() -> None:
     assert catalog._to_strategy_key("Regime Router (Kinematic + Compression)") == "regime_router"
 
 
-def test_upsert_strategy_catalog_writes_canonical_market_impulse_row(monkeypatch) -> None:
+def test_upsert_strategy_catalog_blocks_missing_thesis_exit(monkeypatch) -> None:
     FakeSheetClient.instances.clear()
     monkeypatch.setattr(catalog, "GoogleSheetTableClient", FakeSheetClient)
 
-    upsert_strategy_catalog(
-        catalog_key="spy-mi-short",
-        symbol="SPY",
-        strategy="Market Impulse (Cross & Reclaim)",
-        m5_best={
-            "ticker": "SPY",
-            "direction": "short",
-            "base_exp_r": 0.12345,
-            "holdout_win_rate": 0.61,
-            "holdout_trades": 42,
-            "mc_prob_positive_exp": 0.7321,
-            "execution_profile": "debit_spread_default",
-        },
-        spreadsheet_id="sheet-id",
-        credentials_path=Path("/tmp/service-account.json"),
-    )
+    with pytest.raises(ValueError, match="tested thesis exit"):
+        upsert_strategy_catalog(
+            catalog_key="spy-mi-short",
+            symbol="SPY",
+            strategy="Market Impulse (Cross & Reclaim)",
+            m5_best={
+                "ticker": "SPY",
+                "direction": "short",
+                "base_exp_r": 0.12345,
+                "holdout_win_rate": 0.61,
+                "holdout_trades": 42,
+                "mc_prob_positive_exp": 0.7321,
+                "execution_profile": "debit_spread_default",
+            },
+            spreadsheet_id="sheet-id",
+            credentials_path=Path("/tmp/service-account.json"),
+        )
 
     client = FakeSheetClient.instances[-1]
-    assert client.overwritten is not None
-    _, rows = client.overwritten
-    row = rows[0]
-    assert row["strategy_key"] == "market_impulse"
-    assert row["strategy_family"] == "market_impulse"
-    assert row["bias_template"] == "bearish_trend_intraday"
-    assert row["lifecycle_status"] == "candidate"
-    assert row["bhiksha_ready"] == "false"
+    assert client.overwritten is None
 
 
 def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeypatch) -> None:
@@ -116,6 +112,15 @@ def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeyp
             "holdout_trades": 42,
             "mc_prob_positive_exp": 0.7321,
             "execution_profile": "single_option",
+            "stress_profile": "single_option",
+            "entry_buffer_minutes": 5,
+            "entry_window_minutes": 45,
+            "structure": "long_put",
+            "dte": "7-21",
+            "delta_plan": "0.35-0.55",
+            "entry_window_et": "09:45-14:30",
+            "profit_take": "50-90% premium",
+            "risk_rule": "hard stop at -35% premium",
         },
         spreadsheet_id="sheet-id",
         credentials_path=Path("/tmp/service-account.json"),
@@ -135,8 +140,29 @@ def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeyp
     row = rows[0]
     assert row["strategy_key"] == "market_impulse"
     assert row["thesis_exit_policy"] == "fixed_rr_underlying"
-    assert row["bhiksha_ready"] == "true"
+    assert row["bhiksha_ready"] == "false"
+    assert row["operator_notes"] == "operator runtime bridge config required"
     summary = json.loads(row["playbook_summary_json"])
+    assert summary["mala_handoff_version"] == 1
+    assert "vehicle_mapping" not in summary
+    assert summary["strategy"]["signal_window_start_et"] == "09:35"
+    assert summary["strategy"]["signal_window_end_et"] == "10:15"
+    assert summary["runtime_requirements"] == {
+        "option_vehicle": "operator_required",
+        "execution_window": "operator_required",
+        "max_premium_usd": "operator_required",
+        "option_premium_stop": "operator_required",
+        "option_premium_target": "operator_required",
+        "live_or_shadow": "operator_required",
+        "conflict_policy": "operator_required",
+    }
+    assert summary["thesis_exit"]["tested"] is True
+    assert summary["thesis_exit"]["policy"] == "fixed_rr_underlying"
+    assert summary["validation"]["status"] == "needs_operator_runtime_config"
+    assert "legacy_m5_execution_mapping_ignored:entry_window_et" in summary["validation"]["warnings"]
+    assert "legacy_fields_ignored" not in summary
+    assert "50-90% premium" not in row["playbook_summary_json"]
+    assert "long_put" not in row["playbook_summary_json"]
     assert summary["exit_controls"] == {
         "use_algorithmic_exit": False,
         "native_strategy_exit_policy": None,

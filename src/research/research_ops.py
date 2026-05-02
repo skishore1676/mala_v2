@@ -2319,6 +2319,11 @@ def _publish_catalog_rows(
             "artifact_dir": row.artifact_dir,
             "action": "would_publish" if dry_run else "published",
         }
+        if not exit_opt:
+            result["action"] = "blocked_missing_thesis_exit"
+            result["block_reason"] = "Run exit optimization/backfill before Strategy_Catalog publish."
+            results.append(result)
+            continue
         if not dry_run:
             upsert_strategy_catalog(
                 catalog_key=row.catalog_key,
@@ -2633,7 +2638,8 @@ def cmd_publish_pending(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(results, indent=2))
     print(f"CATALOG_PENDING={len(rows)}")
-    print(f"CATALOG_PUBLISHED={0 if not args.apply else len(results)}")
+    published_count = sum(1 for item in results if item.get("action") == "published")
+    print(f"CATALOG_PUBLISHED={published_count}")
     print(f"DRY_RUN={'false' if args.apply else 'true'}")
     return 0
 

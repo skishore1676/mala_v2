@@ -69,6 +69,7 @@ from src.research.exit_optimizer import (
     write_exit_optimization_result,
 )
 from src.research.market_regime import MarketRegime, classify_range as _classify_regime_range
+from src.research.recommendation_tier import RecommendationThresholds, classify_recommendation_tier
 from src.research.search_space import build_search_configs, search_param_keys
 from src.research.stages import (
     aggregate_walk_forward,
@@ -699,16 +700,27 @@ def _catalog_recommendation_tier(
     row: dict[str, Any],
     exit_opt: ExitOptimizationResult | None,
 ) -> str:
-    mc_prob = float(row.get("mc_prob_positive_exp", 0) or 0)
-    holdout_trades = int(row.get("holdout_trades", 0) or 0)
-    if (
-        mc_prob >= MIN_MC_PROB_FOR_PROMOTE
-        and holdout_trades >= MIN_HOLDOUT_TRADES_FOR_PROMOTE
-    ):
-        return "promote"
-    if mc_prob >= MIN_MC_PROB_FOR_CATALOG:
-        return "shadow"
-    return "watch_only"
+    return _catalog_recommendation(row, exit_opt).tier
+
+
+def _catalog_recommendation(
+    row: dict[str, Any],
+    exit_opt: ExitOptimizationResult | None,
+):
+    return classify_recommendation_tier(
+        mc_prob_positive_exp=row.get("mc_prob_positive_exp"),
+        holdout_trades=row.get("holdout_trades"),
+        base_exp_r=row.get("base_exp_r"),
+        thesis_exit_tested=exit_opt is not None,
+        exit_trade_count=_exit_trade_count(exit_opt),
+        thresholds=RecommendationThresholds(
+            min_mc_prob_for_catalog=float(MIN_MC_PROB_FOR_CATALOG),
+            min_mc_prob_for_promote=float(MIN_MC_PROB_FOR_PROMOTE),
+            min_holdout_trades_for_promote=int(MIN_HOLDOUT_TRADES_FOR_PROMOTE),
+            min_holdout_trades_for_shadow=int(MIN_HOLDOUT_SIGNALS),
+            min_exit_trades_for_promote=int(MIN_EXIT_TRADES_FOR_BHIKSHA_READY),
+        ),
+    )
 
 
 def _write_catalog_selected(
@@ -724,13 +736,16 @@ def _write_catalog_selected(
         ticker = str(row["ticker"])
         direction = str(row["direction"])
         exit_opt = exit_opts.get(_candidate_key(row, param_keys))
+        recommendation = _catalog_recommendation(row, exit_opt)
         selected: dict[str, Any] = {
             "catalog_key": f"{hypothesis_id}__{ticker.lower()}_{direction}",
             "ticker": ticker,
             "direction": direction,
             "strategy": row.get("strategy"),
             "execution_profile": row.get("execution_profile"),
-            "recommendation_tier": _catalog_recommendation_tier(row, exit_opt),
+            "recommendation_tier": recommendation.tier,
+            "recommendation_tier_reason": recommendation.reason,
+            "recommendation_checks_json": json.dumps(recommendation.checks, sort_keys=True),
             "exit_reliability": _exit_reliability(exit_opt),
             "exit_trade_count": _exit_trade_count(exit_opt),
             "selected_exit_policy": exit_opt.selected_policy_name if exit_opt else "",
@@ -1385,6 +1400,9 @@ def main() -> None:
                         continue
                     catalog_key = f"{h.id}__{_t.lower()}_{_d}"
                     exit_opt = m5_exit_opts.get(_candidate_key(row, param_keys))
+                    if not exit_opt:
+                        log(f"CATALOG_SKIP  {catalog_key}: missing tested thesis exit artifact")
+                        continue
                     try:
                         upsert_strategy_catalog(
                             catalog_key=catalog_key,

@@ -1,0 +1,27 @@
+# Bhiksha operator bridge defaults v1.
+# Mala does not own these values. Bhiksha/operator review may override them per row.
+# Used by the future join/validation step as defaults when active_strategy leaves a field blank.
+
+schema_version: 1
+mode: shadow
+enabled: false
+option_structure_by_direction:
+  long: single_leg_call
+  short: single_leg_put
+execution_window_start_et: "09:30"
+execution_window_end_et: "16:00"
+max_trade_premium_usd: 500
+option_stop_pct: 0.35
+option_profit_target_enabled: true
+option_profit_target_pct: 0.35
+conflict_policy: one_open_position_per_symbol
+min_open_interest: 25
+max_bid_ask_spread_pct: 0.10
+dte_min: 5
+dte_max: 21
+delta_min: 0.15
+delta_max: 0.40
+notes: >-
+  Defaults reflect operator review assumptions as of 2026-05-02. Row-level
+  bridge values override these defaults. Keep this file aligned with any
+  Bhiksha-side default config before enabling v2 consumption.
