@@ -86,7 +86,7 @@ def _valid_configs(
     *,
     max_configs: int,
 ) -> list[dict[str, Any]]:
-    configs = _bounded_grid(space, max_configs=max_configs * 4)
+    configs = _bounded_spec_grid(search_spec, space, max_configs=max_configs * 16)
     valid: list[dict[str, Any]] = []
     seen: set[str] = set()
     for config in configs:
@@ -101,6 +101,50 @@ def _valid_configs(
     if len(valid) <= max_configs:
         return valid or [search_spec.prior_config()]
     return _sample_evenly(valid, max_configs=max_configs)
+
+
+def _bounded_spec_grid(
+    search_spec: StrategySearchSpec,
+    space: dict[str, list[Any]],
+    *,
+    max_configs: int,
+) -> list[dict[str, Any]]:
+    """Generate configs while skipping gated parameters as soon as they are inactive."""
+    ordered_parameters = [
+        parameter.name for parameter in search_spec.parameters if parameter.name in space
+    ]
+    if not ordered_parameters:
+        return [{}]
+
+    configs: list[dict[str, Any]] = []
+
+    def parameter_is_active(name: str, partial: dict[str, Any]) -> bool:
+        for condition in search_spec.constraints.gating_conditions:
+            if condition.parameter != name:
+                continue
+            if all(key in partial for key in condition.requires):
+                return condition.is_active(partial)
+        return True
+
+    def visit(index: int, partial: dict[str, Any]) -> None:
+        if len(configs) >= max_configs:
+            return
+        if index >= len(ordered_parameters):
+            configs.append(dict(partial))
+            return
+        name = ordered_parameters[index]
+        if not parameter_is_active(name, partial):
+            visit(index + 1, partial)
+            return
+        for value in space[name]:
+            partial[name] = value
+            visit(index + 1, partial)
+            partial.pop(name, None)
+            if len(configs) >= max_configs:
+                return
+
+    visit(0, {})
+    return configs
 
 
 def _bounded_grid(space: dict[str, list[Any]], *, max_configs: int) -> list[dict[str, Any]]:

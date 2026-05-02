@@ -31,6 +31,10 @@ def test_retune_search_space_is_narrower_than_discovery() -> None:
 
 def test_search_param_keys_come_from_strategy_surface() -> None:
     assert "entry_window_minutes" in search_param_keys("Market Impulse (Cross & Reclaim)")
+    keys = search_param_keys("Market Impulse Descendants")
+    assert "entry_mode" in keys
+    assert "max_vma_excursion_pct" in keys
+    assert "confirmation_window_bars" in keys
 
 
 def test_search_space_can_sample_single_config() -> None:
@@ -58,3 +62,30 @@ def test_fixed_search_mode_replays_parametric_strategy() -> None:
             "use_jerk_confirmation": True,
         }
     ]
+
+
+def test_market_impulse_descendant_search_space_is_bounded_and_mode_valid() -> None:
+    configs = build_search_configs(
+        "Market Impulse Descendants",
+        mode="discovery",
+        max_configs=32,
+    )
+
+    assert configs
+    assert len(configs) <= 32
+    modes = {config["entry_mode"] for config in configs}
+    assert modes <= {
+        "same_bar_shallow_reclaim",
+        "delayed_reclaim",
+        "close_location_reclaim",
+        "continuation_confirmation",
+    }
+    assert modes
+    for config in configs:
+        assert config["entry_buffer_minutes"] < config["entry_window_minutes"]
+        if config["entry_mode"] != "delayed_reclaim":
+            assert "reclaim_window_bars" not in config
+        if config["entry_mode"] != "continuation_confirmation":
+            assert "confirmation_type" not in config
+        if not config.get("use_volume_filter", False):
+            assert "min_relative_volume" not in config

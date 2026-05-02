@@ -6,12 +6,14 @@ from hypothesis_agent import (
     HypothesisState,
     _best_m5_row,
     _catalog_candidate_rows,
+    _candidate_key,
     _write_catalog_selected,
     _matching_promoted_candidate,
     parse_hypothesis,
     run_m1,
     write_run_summary,
 )
+from src.research.exit_optimizer import ExitOptimizationResult
 
 
 def test_matching_promoted_candidate_uses_same_row_as_best_m5_selection() -> None:
@@ -153,12 +155,27 @@ def test_write_catalog_selected_emits_tiers(tmp_path) -> None:
         ]
     )
 
+    selected_rows = _catalog_candidate_rows(m5)
+    exit_opts = {
+        _candidate_key(row, ["entry_window_minutes"]): ExitOptimizationResult(
+            generated_at="2026-05-02T00:00:00Z",
+            strategy_key="market_impulse",
+            symbol=row["ticker"],
+            direction=row["direction"],
+            selection_slice={},
+            selected_policy_name="fixed_rr",
+            thesis_exit_policy="fixed_rr",
+            selected_metrics={"trade_count": 50},
+        )
+        for row in selected_rows
+    }
+
     path = _write_catalog_selected(
         out_dir=tmp_path,
         hypothesis_id="idea",
         m5_df=m5,
         param_keys=["entry_window_minutes"],
-        exit_opts={},
+        exit_opts=exit_opts,
     )
 
     assert path is not None

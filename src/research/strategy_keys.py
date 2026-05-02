@@ -8,6 +8,11 @@ import re
 _DISPLAY_STRATEGY_KEYS: dict[str, str] = {
     "Elastic Band Reversion": "elastic_band_reversion",
     "Market Impulse (Cross & Reclaim)": "market_impulse",
+    "Market Impulse Descendants": "market_impulse",
+    "MI Shallow Spring": "market_impulse",
+    "MI Second Touch": "market_impulse",
+    "MI High Close Reclaim": "market_impulse",
+    "MI Push Through": "market_impulse",
     "Opening Drive Classifier": "opening_drive_classifier",
     "Opening Drive v2 (Short Continue)": "opening_drive_classifier",
     "Jerk-Pivot Momentum (tight)": "jerk_pivot_momentum",
