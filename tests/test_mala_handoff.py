@@ -7,6 +7,7 @@ from pathlib import Path
 from src.research.mala_handoff import (
     build_handoff_packets,
     derive_signal_window,
+    packet_to_csv_row,
     review_thesis_exit_metrics,
     write_handoff_outputs,
 )
@@ -34,13 +35,17 @@ def test_opening_drive_signal_window_is_authoritative_from_offsets() -> None:
 
 def test_mala_handoff_packet_keeps_runtime_fields_out_of_evidence(tmp_path: Path) -> None:
     run_dir = _write_market_impulse_run(tmp_path)
+    manifest_path = _write_capability_manifest(tmp_path)
 
-    packets = build_handoff_packets(runs_root=tmp_path)
+    packets = build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)
 
     assert len(packets) == 1
     packet = packets[0]
     assert packet.catalog_key == "market-impulse-test__iwm_long"
     assert packet.strategy.strategy_key == "market_impulse"
+    assert packet.strategy.strategy_variant == "cross_reclaim"
+    assert packet.bhiksha_capability.status == "supported"
+    assert packet.bhiksha_capability.bhiksha_ready is True
     assert packet.strategy.signal_window_start_et == "09:35"
     assert packet.strategy.signal_window_end_et == "10:15"
     assert packet.thesis_exit.tested is True
@@ -48,6 +53,45 @@ def test_mala_handoff_packet_keeps_runtime_fields_out_of_evidence(tmp_path: Path
     assert "runtime_requirements" not in packet.to_dict()
     assert not any(warning.startswith("legacy_m5_execution_mapping_ignored") for warning in packet.warnings)
     assert str(run_dir) == packet.provenance.run_dir
+
+
+def test_mala_handoff_marks_market_impulse_descendant_unsupported(tmp_path: Path) -> None:
+    _write_market_impulse_run(
+        tmp_path,
+        catalog_key="mi-desc-high-close-semiconductors-m1__amd_short",
+        ticker="AMD",
+        direction="short",
+        strategy="MI High Close Reclaim",
+        extra_params={
+            "entry_mode": "close_location_reclaim",
+            "min_close_location": "0.7",
+        },
+    )
+    manifest_path = _write_capability_manifest(tmp_path)
+
+    packet = build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)[0]
+    row = packet_to_csv_row(packet)
+
+    assert row["strategy_variant"] == "close_location_reclaim"
+    assert row["bhiksha_capability_status"] == "unsupported"
+    assert row["bhiksha_capability_reason"] == "runtime_adapter_not_implemented"
+    assert row["bhiksha_ready"] == "false"
+    assert "bhiksha_unsupported_variant:close_location_reclaim:runtime_adapter_not_implemented" in row["warnings"]
+
+
+def test_mala_handoff_missing_capability_manifest_fails_closed(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path)
+
+    packet = build_handoff_packets(
+        runs_root=tmp_path,
+        bhiksha_capabilities_path=tmp_path / "missing-capabilities.yaml",
+    )[0]
+    row = packet_to_csv_row(packet)
+
+    assert row["strategy_variant"] == "cross_reclaim"
+    assert row["bhiksha_capability_status"] == "unknown_manifest"
+    assert row["bhiksha_capability_reason"] == "bhiksha_capability_manifest_missing"
+    assert row["bhiksha_ready"] == "false"
 
 
 def test_handoff_outputs_do_not_publish_vehicle_mapping_as_truth(tmp_path: Path) -> None:
@@ -113,17 +157,26 @@ def test_review_thesis_exit_metrics_are_ordered_and_rounded() -> None:
     }
 
 
-def _write_market_impulse_run(root: Path) -> Path:
+def _write_market_impulse_run(
+    root: Path,
+    *,
+    catalog_key: str = "market-impulse-test__iwm_long",
+    ticker: str = "IWM",
+    direction: str = "long",
+    strategy: str = "Market Impulse (Cross & Reclaim)",
+    extra_params: dict[str, str] | None = None,
+) -> Path:
     run_dir = root / "market-impulse-test" / "2026-04-15T000000"
     run_dir.mkdir(parents=True)
+    params = extra_params or {}
     _write_csv(
         run_dir / "CATALOG_SELECTED.csv",
         [
             {
-                "catalog_key": "market-impulse-test__iwm_long",
-                "ticker": "IWM",
-                "direction": "long",
-                "strategy": "Market Impulse (Cross & Reclaim)",
+                "catalog_key": catalog_key,
+                "ticker": ticker,
+                "direction": direction,
+                "strategy": strategy,
                 "execution_profile": "single_option",
                 "recommendation_tier": "shadow",
                 "exit_reliability": "thin",
@@ -138,6 +191,7 @@ def _write_market_impulse_run(root: Path) -> Path:
                 "entry_window_minutes": "45",
                 "regime_timeframe": "15m",
                 "vwma_periods": "5,13,21",
+                **params,
             }
         ],
     )
@@ -145,13 +199,14 @@ def _write_market_impulse_run(root: Path) -> Path:
         run_dir / "M5_execution.csv",
         [
             {
-                "ticker": "IWM",
-                "strategy": "Market Impulse (Cross & Reclaim)",
-                "direction": "long",
+                "ticker": ticker,
+                "strategy": strategy,
+                "direction": direction,
                 "entry_buffer_minutes": "5",
                 "entry_window_minutes": "45",
                 "regime_timeframe": "15m",
                 "vwma_periods": "5,13,21",
+                **params,
                 "execution_profile": "single_option",
                 "stress_profile": "single_option",
                 "holdout_trades": "49",
@@ -173,15 +228,16 @@ def _write_market_impulse_run(root: Path) -> Path:
             [
                 {
                     "candidate_key": {
-                        "ticker": "IWM",
-                        "strategy": "Market Impulse (Cross & Reclaim)",
-                        "direction": "long",
+                        "ticker": ticker,
+                        "strategy": strategy,
+                        "direction": direction,
                         "entry_buffer_minutes": "5",
                         "entry_window_minutes": "45",
                         "regime_timeframe": "15m",
                         "vwma_periods": "5,13,21",
+                        **params,
                     },
-                    "artifact": "m5_exit_optimization_iwm_long_abc.json",
+                    "artifact": f"m5_exit_optimization_{ticker.lower()}_{direction}_abc.json",
                     "selected_policy_name": "fixed_rr_underlying:0.0050x2.00",
                     "selected_metrics": {"trade_count": 24},
                 }
@@ -189,7 +245,7 @@ def _write_market_impulse_run(root: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    (run_dir / "m5_exit_optimization_iwm_long_abc.json").write_text(
+    (run_dir / f"m5_exit_optimization_{ticker.lower()}_{direction}_abc.json").write_text(
         json.dumps(
             {
                 "selected_policy_name": "fixed_rr_underlying:0.0050x2.00",
@@ -212,3 +268,26 @@ def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _write_capability_manifest(root: Path) -> Path:
+    path = root / "bhiksha_capabilities_v1.yaml"
+    path.write_text(
+        """
+version: 1
+supported_thesis_exit_policies:
+  - fixed_rr_underlying
+strategies:
+  market_impulse:
+    default_variant: cross_reclaim
+    variants:
+      cross_reclaim:
+        status: supported
+      close_location_reclaim:
+        status: unsupported
+        reason: runtime_adapter_not_implemented
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    return path

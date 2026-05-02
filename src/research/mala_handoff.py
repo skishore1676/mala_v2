@@ -21,6 +21,12 @@ from typing import Any
 import yaml
 
 from src.config import settings
+from src.research.bhiksha_capabilities import (
+    BhikshaCapabilityResult,
+    derive_strategy_variant,
+    evaluate_bhiksha_capability,
+    load_capability_manifest,
+)
 from src.research.google_sheets import GoogleSheetTableClient
 from src.research.recommendation_tier import RecommendationThresholds, classify_recommendation_tier
 from src.research.strategy_keys import to_strategy_key
@@ -100,6 +106,7 @@ _REVIEW_METRIC_ORDER = [
 class MalaStrategyEvidence:
     strategy_key: str
     strategy_name: str
+    strategy_variant: str
     symbol: str
     direction: str
     params: dict[str, Any]
@@ -150,12 +157,22 @@ class HandoffProvenance:
 
 
 @dataclass(frozen=True)
+class MalaBhikshaCapabilityEvidence:
+    strategy_variant: str
+    status: str
+    reason: str
+    manifest_version: int | None
+    bhiksha_ready: bool
+
+
+@dataclass(frozen=True)
 class MalaHandoffPacket:
     mala_handoff_version: int
     catalog_key: str
     strategy: MalaStrategyEvidence
     evidence: MalaM5Evidence
     thesis_exit: MalaThesisExitEvidence
+    bhiksha_capability: MalaBhikshaCapabilityEvidence
     provenance: HandoffProvenance
     warnings: list[str] = field(default_factory=list)
 
@@ -168,11 +185,13 @@ def build_handoff_packets(
     runs_root: str | Path = DEFAULT_RUNS_ROOT,
     latest_only: bool = True,
     include_watch_only: bool = True,
+    bhiksha_capabilities_path: str | Path | None = None,
 ) -> list[MalaHandoffPacket]:
     selected = discover_selected_rows(runs_root=runs_root, latest_only=latest_only)
+    capability_manifest = load_capability_manifest(bhiksha_capabilities_path)
     packets: list[MalaHandoffPacket] = []
     for item in selected:
-        packet = build_handoff_packet(item.run_dir, item.selected)
+        packet = build_handoff_packet(item.run_dir, item.selected, capability_manifest=capability_manifest)
         if not include_watch_only and packet.evidence.recommendation_tier == "watch_only":
             continue
         packets.append(packet)
@@ -205,7 +224,12 @@ def discover_selected_rows(*, runs_root: str | Path, latest_only: bool = True) -
     return list(latest.values())
 
 
-def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoffPacket:
+def build_handoff_packet(
+    run_dir: Path,
+    selected: dict[str, str],
+    *,
+    capability_manifest: dict[str, Any] | None = None,
+) -> MalaHandoffPacket:
     m5_row = matching_m5_row(run_dir, selected)
     exit_opt = exit_opt_for_selected(run_dir, selected)
     params = strategy_params_from_rows(m5_row=m5_row, selected=selected)
@@ -213,6 +237,12 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
     strategy_key = to_strategy_key(strategy_name)
     symbol = str(m5_row.get("ticker") or selected.get("ticker") or "").upper()
     direction = str(m5_row.get("direction") or selected.get("direction") or "").lower()
+    strategy_variant = derive_strategy_variant(
+        strategy_key=strategy_key,
+        strategy_name=strategy_name,
+        strategy_params=params,
+        manifest=capability_manifest,
+    )
     signal_start, signal_end, derivation = derive_signal_window(strategy_key, params)
     catalog_key = str(selected.get("catalog_key") or f"{run_dir.parent.name}__{symbol.lower()}_{direction}")
     warnings = packet_warnings(
@@ -231,6 +261,16 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
         exit_trade_count=thesis_exit.trade_count,
         thresholds=_recommendation_thresholds(),
     )
+    capability = evaluate_bhiksha_capability(
+        strategy_key=strategy_key,
+        strategy_name=strategy_name,
+        strategy_params=params,
+        thesis_exit_policy=thesis_exit.policy,
+        thesis_exit_tested=thesis_exit.tested,
+        recommendation_tier=recommendation.tier,
+        manifest=capability_manifest,
+    )
+    warnings.extend(capability_warnings(capability))
     source_files = [
         _display_path(run_dir / "CATALOG_SELECTED.csv"),
         _display_path(run_dir / "M5_execution.csv"),
@@ -246,6 +286,7 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
         strategy=MalaStrategyEvidence(
             strategy_key=strategy_key,
             strategy_name=strategy_name,
+            strategy_variant=strategy_variant,
             symbol=symbol,
             direction=direction,
             params=params,
@@ -270,6 +311,13 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
             note="M5 evidence is research/backtest evidence, not live option execution authorization.",
         ),
         thesis_exit=thesis_exit,
+        bhiksha_capability=MalaBhikshaCapabilityEvidence(
+            strategy_variant=capability.strategy_variant,
+            status=capability.status,
+            reason=capability.reason,
+            manifest_version=capability.manifest_version,
+            bhiksha_ready=capability.bhiksha_ready,
+        ),
         provenance=HandoffProvenance(
             hypothesis_id=run_dir.parent.name,
             catalog_key=catalog_key,
@@ -368,6 +416,14 @@ def packet_warnings(
     if selected.get("recommendation_tier") == "watch_only":
         warnings.append("watch_only_candidate_not_catalog_ready")
     return warnings
+
+
+def capability_warnings(capability: BhikshaCapabilityResult) -> list[str]:
+    if capability.status == "supported":
+        return []
+    if capability.status == "unknown_manifest":
+        return [capability.reason]
+    return [f"bhiksha_unsupported_variant:{capability.strategy_variant}:{capability.reason}"]
 
 
 def matching_m5_row(run_dir: Path, selected: dict[str, str]) -> dict[str, str]:
@@ -513,7 +569,11 @@ def handoff_csv_fieldnames() -> list[str]:
         "direction",
         "strategy_key",
         "strategy_name",
+        "strategy_variant",
         "strategy_params_json",
+        "bhiksha_capability_status",
+        "bhiksha_capability_reason",
+        "bhiksha_ready",
         "signal_window_et",
         "signal_window_derivation",
         "recommendation_tier",
@@ -545,7 +605,11 @@ def packet_to_csv_row(packet: MalaHandoffPacket) -> dict[str, Any]:
         "direction": packet.strategy.direction,
         "strategy_key": packet.strategy.strategy_key,
         "strategy_name": packet.strategy.strategy_name,
+        "strategy_variant": packet.bhiksha_capability.strategy_variant,
         "strategy_params_json": json.dumps(packet.strategy.params, sort_keys=True),
+        "bhiksha_capability_status": packet.bhiksha_capability.status,
+        "bhiksha_capability_reason": packet.bhiksha_capability.reason,
+        "bhiksha_ready": str(packet.bhiksha_capability.bhiksha_ready).lower(),
         "signal_window_et": _format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et),
         "signal_window_derivation": packet.strategy.signal_window_derivation,
         "recommendation_tier": packet.evidence.recommendation_tier,
@@ -593,8 +657,8 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
         "",
         "This file is Mala-owned evidence only. Runtime option vehicle, execution window, premium budget, option stops/targets, live/shadow mode, and conflict policy are operator/Bhiksha-owned and intentionally excluded.",
         "",
-        "| catalog_key | symbol | strategy | signal_window_et | tier | reason | expectancy | thesis_exit | warnings |",
-        "|---|---|---|---|---|---|---:|---|---|",
+        "| catalog_key | symbol | strategy | variant | Bhiksha | signal_window_et | tier | reason | expectancy | thesis_exit | warnings |",
+        "|---|---|---|---|---|---|---|---|---:|---|---|",
     ]
     for packet in packets:
         lines.append(
@@ -604,6 +668,8 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
                     _md(packet.catalog_key),
                     _md(f"{packet.strategy.symbol} {packet.strategy.direction}"),
                     _md(packet.strategy.strategy_key),
+                    _md(packet.bhiksha_capability.strategy_variant),
+                    _md(packet.bhiksha_capability.status),
                     _md(_format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et)),
                     _md(packet.evidence.recommendation_tier),
                     _md(packet.evidence.recommendation_tier_reason),
@@ -830,12 +896,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sheet-id", default="", help="Google spreadsheet ID or URL. Defaults to STRATEGY_CATALOG_SHEET_ID.")
     parser.add_argument("--google-credentials", default="", help="Google service-account JSON path. Defaults to GOOGLE_API_CREDENTIALS_PATH.")
     parser.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
+    parser.add_argument(
+        "--bhiksha-capabilities",
+        default="",
+        help="Path to Bhiksha-owned capability manifest. Defaults to BHIKSHA_CAPABILITIES_PATH or sibling/oldmac checkout.",
+    )
     args = parser.parse_args(argv)
 
     packets = build_handoff_packets(
         runs_root=args.runs_root,
         latest_only=not args.all_runs,
         include_watch_only=not args.promote_shadow_only,
+        bhiksha_capabilities_path=args.bhiksha_capabilities or None,
     )
     out_dir = Path(args.out_dir) if args.out_dir else default_output_dir()
     paths = write_handoff_outputs(packets, out_dir)
