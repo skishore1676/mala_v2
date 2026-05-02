@@ -18,8 +18,11 @@ from pathlib import Path
 import re
 from typing import Any
 
+import yaml
+
 from src.config import settings
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.recommendation_tier import RecommendationThresholds, classify_recommendation_tier
 from src.research.strategy_keys import to_strategy_key
 
 
@@ -68,6 +71,8 @@ _SELECTED_NON_PARAM_COLS = {
     "strategy",
     "execution_profile",
     "recommendation_tier",
+    "recommendation_tier_reason",
+    "recommendation_checks_json",
     "exit_reliability",
     "exit_trade_count",
     "selected_exit_policy",
@@ -107,6 +112,8 @@ class MalaStrategyEvidence:
 class MalaM5Evidence:
     m5_passed: bool
     recommendation_tier: str
+    recommendation_tier_reason: str
+    recommendation_checks: dict[str, Any]
     m5_execution_profile: str
     m5_stress_profile: str
     expectancy: float | None
@@ -165,10 +172,10 @@ def build_handoff_packets(
     selected = discover_selected_rows(runs_root=runs_root, latest_only=latest_only)
     packets: list[MalaHandoffPacket] = []
     for item in selected:
-        recommendation = str(item.selected.get("recommendation_tier") or "")
-        if not include_watch_only and recommendation == "watch_only":
+        packet = build_handoff_packet(item.run_dir, item.selected)
+        if not include_watch_only and packet.evidence.recommendation_tier == "watch_only":
             continue
-        packets.append(build_handoff_packet(item.run_dir, item.selected))
+        packets.append(packet)
     return sorted(packets, key=lambda packet: (packet.catalog_key, packet.provenance.run_dir))
 
 
@@ -216,6 +223,14 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
         signal_end=signal_end,
     )
     thesis_exit = thesis_exit_evidence(selected=selected, exit_opt=exit_opt)
+    recommendation = classify_recommendation_tier(
+        mc_prob_positive_exp=selected.get("mc_prob_positive_exp") or m5_row.get("mc_prob_positive_exp"),
+        holdout_trades=selected.get("holdout_trades") or m5_row.get("holdout_trades"),
+        base_exp_r=selected.get("base_exp_r") or m5_row.get("base_exp_r"),
+        thesis_exit_tested=thesis_exit.tested,
+        exit_trade_count=thesis_exit.trade_count,
+        thresholds=_recommendation_thresholds(),
+    )
     source_files = [
         _display_path(run_dir / "CATALOG_SELECTED.csv"),
         _display_path(run_dir / "M5_execution.csv"),
@@ -240,7 +255,9 @@ def build_handoff_packet(run_dir: Path, selected: dict[str, str]) -> MalaHandoff
         ),
         evidence=MalaM5Evidence(
             m5_passed=True,
-            recommendation_tier=str(selected.get("recommendation_tier") or ""),
+            recommendation_tier=recommendation.tier,
+            recommendation_tier_reason=recommendation.reason,
+            recommendation_checks=recommendation.checks,
             m5_execution_profile=str(m5_row.get("execution_profile") or selected.get("execution_profile") or ""),
             m5_stress_profile=str(m5_row.get("stress_profile") or ""),
             expectancy=_float_or_none(selected.get("base_exp_r") or m5_row.get("base_exp_r")),
@@ -500,6 +517,8 @@ def handoff_csv_fieldnames() -> list[str]:
         "signal_window_et",
         "signal_window_derivation",
         "recommendation_tier",
+        "recommendation_tier_reason",
+        "recommendation_checks_json",
         "expectancy",
         "confidence",
         "signal_count",
@@ -530,6 +549,8 @@ def packet_to_csv_row(packet: MalaHandoffPacket) -> dict[str, Any]:
         "signal_window_et": _format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et),
         "signal_window_derivation": packet.strategy.signal_window_derivation,
         "recommendation_tier": packet.evidence.recommendation_tier,
+        "recommendation_tier_reason": packet.evidence.recommendation_tier_reason,
+        "recommendation_checks_json": json.dumps(packet.evidence.recommendation_checks, sort_keys=True),
         "expectancy": _format_optional(packet.evidence.expectancy),
         "confidence": _format_optional(packet.evidence.confidence),
         "signal_count": _format_optional(packet.evidence.signal_count),
@@ -572,8 +593,8 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
         "",
         "This file is Mala-owned evidence only. Runtime option vehicle, execution window, premium budget, option stops/targets, live/shadow mode, and conflict policy are operator/Bhiksha-owned and intentionally excluded.",
         "",
-        "| catalog_key | symbol | strategy | signal_window_et | tier | expectancy | thesis_exit | warnings |",
-        "|---|---|---|---|---|---:|---|---|",
+        "| catalog_key | symbol | strategy | signal_window_et | tier | reason | expectancy | thesis_exit | warnings |",
+        "|---|---|---|---|---|---|---:|---|---|",
     ]
     for packet in packets:
         lines.append(
@@ -585,6 +606,7 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
                     _md(packet.strategy.strategy_key),
                     _md(_format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et)),
                     _md(packet.evidence.recommendation_tier),
+                    _md(packet.evidence.recommendation_tier_reason),
                     _md(_format_optional(packet.evidence.expectancy)),
                     _md(packet.thesis_exit.policy or ""),
                     _md("<br>".join(packet.warnings)),
@@ -779,6 +801,23 @@ def _round_review_value(value: Any) -> Any:
 
 def _md(value: Any) -> str:
     return str(value or "").replace("|", "\\|")
+
+
+def _recommendation_thresholds() -> RecommendationThresholds:
+    config_path = REPO_ROOT / "config" / "hypothesis_defaults.yaml"
+    try:
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        config = {}
+    catalog = config.get("catalog", {}) if isinstance(config, dict) else {}
+    m4 = config.get("m4", {}) if isinstance(config, dict) else {}
+    return RecommendationThresholds(
+        min_mc_prob_for_catalog=float(catalog.get("min_mc_prob_for_catalog", 0.70)),
+        min_mc_prob_for_promote=float(catalog.get("min_mc_prob_for_promote", 0.95)),
+        min_holdout_trades_for_promote=int(catalog.get("min_holdout_trades_for_promote", 80)),
+        min_holdout_trades_for_shadow=int(m4.get("min_holdout_signals", 15)),
+        min_exit_trades_for_promote=int(catalog.get("min_exit_trades_for_bhiksha_ready", 40)),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
