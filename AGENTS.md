@@ -184,7 +184,7 @@ Mental model:
 3. Run `--dry-run` first to confirm config count and data availability
 4. Run M1 first — gate: ≥50 OOS signals, ≥3 windows, ≥60% positive, exp_r>0
 5. Continue gate-by-gate. M1→M2 proves cost-stability. M3 proves OOS walk-forward. M4 proves holdout. M5 proves execution robustness.
-6. After M5: exit optimizer runs automatically — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
+6. After M5: exit optimizer runs automatically for every selected evidence row, including `watch_only` rows — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
 8. On M5 promote: Strategy_Catalog row is written with all 20 columns filled from M5 data + exit optimization results. `bhiksha_ready` is derived from Bhiksha-supported strategy keys and thesis exit policies in `src/research/catalog.py`.
 9. After a research batch, run `python -m src.research.research_ops backfill` and read `data/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.

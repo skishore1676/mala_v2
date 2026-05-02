@@ -680,6 +680,11 @@ def _catalog_candidate_rows(
     return rows
 
 
+def _exit_optimization_candidate_rows(m5_df: pl.DataFrame) -> list[dict[str, Any]]:
+    """Return every row that can appear in Mala evidence and needs a thesis exit."""
+    return _catalog_candidate_rows(m5_df)
+
+
 def _exit_trade_count(exit_opt: ExitOptimizationResult | None) -> int | None:
     if exit_opt is None:
         return None
@@ -1602,7 +1607,7 @@ def main() -> None:
 
     # ── Exit optimization (M5-plus) ───────────────────────────────────────────
     if not m5_df.is_empty() and not m4_promoted.is_empty():
-        for m5_best in _catalog_candidate_rows(m5_df, min_mc_prob=MIN_MC_PROB_FOR_CATALOG):
+        for m5_best in _exit_optimization_candidate_rows(m5_df):
             best_cand = _matching_promoted_candidate(m4_promoted, m5_best, param_keys)
             if not best_cand:
                 continue

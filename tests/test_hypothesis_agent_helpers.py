@@ -7,6 +7,7 @@ from hypothesis_agent import (
     _best_m5_row,
     _catalog_candidate_rows,
     _candidate_key,
+    _exit_optimization_candidate_rows,
     _write_catalog_selected,
     _matching_promoted_candidate,
     parse_hypothesis,
@@ -123,6 +124,31 @@ def test_catalog_candidate_rows_pick_one_target_profile_per_ticker_direction() -
         ("QQQ", "single_option"),
     ]
     assert [r["ticker"] for r in _catalog_candidate_rows(m5, min_mc_prob=0.78)] == ["QQQ"]
+
+
+def test_exit_optimization_candidate_rows_include_watch_only_evidence() -> None:
+    m5 = pl.DataFrame(
+        [
+            {
+                "ticker": "AMD",
+                "strategy": "Market Impulse",
+                "direction": "short",
+                "execution_profile": "single_option",
+                "mc_prob_positive_exp": 0.45,
+            },
+            {
+                "ticker": "QQQ",
+                "strategy": "Market Impulse",
+                "direction": "short",
+                "execution_profile": "single_option",
+                "mc_prob_positive_exp": 0.82,
+            },
+        ]
+    )
+
+    selected = _exit_optimization_candidate_rows(m5)
+
+    assert [row["ticker"] for row in selected] == ["AMD", "QQQ"]
 
 
 def test_write_catalog_selected_emits_tiers(tmp_path) -> None:
