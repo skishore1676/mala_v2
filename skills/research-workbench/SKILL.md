@@ -1,6 +1,6 @@
 ---
 name: research-workbench
-description: Use when working in mala_v2 on trading hypotheses, existing strategy evaluation, M1-M5 research runs, result interpretation, or Strategy_Catalog promotion. Follow the local hypothesis workbench loop and keep deployment plumbing out of scope.
+description: Use when working in mala_v2 on trading hypotheses, existing strategy evaluation, M1-M5 research runs, result interpretation, or Mala_Evidence_v1 handoff publication. Follow the local hypothesis workbench loop and keep live execution plumbing out of scope.
 ---
 
 # Research Workbench
@@ -17,15 +17,16 @@ Do:
 - write or update one hypothesis markdown file
 - interpret artifacts under `data/results/hypothesis_runs/`
 - use market-regime tags as observational evidence, not as gates
-- use `CATALOG_SELECTED.csv` as the concise selected-candidate readout
+- use `CATALOG_SELECTED.csv` as the local selected-candidate readout
+- use `Mala_Evidence_v1` as the human-reviewable handoff evidence sheet
 - treat `m5_exit_optimizations.json` plus the per-candidate `m5_exit_optimization_<ticker>_<direction>_<hash>.json` files as the Bhiksha-facing exit research artifacts
 - remember that 1-minute runs apply execution guardrails from `config/hypothesis_defaults.yaml`
 - run `src.research.research_ops` after batches when you need the master ledger, hot-start findings, or next-action cleanup list
-- allow the optional `Strategy_Catalog` write only after M5 `promote`
+- publish Mala-owned evidence with `src.research.mala_handoff`; do not guess Bhiksha runtime fields
 
 Do not:
 - add Bhiksha/session payload/live execution plumbing
-- reintroduce nightly scouts, review queues, or Google Sheet control towers
+- reintroduce legacy Strategy_Catalog blobs, nightly scouts, or hidden runtime defaults
 - bypass M1-M5 gates when claiming a promoted candidate
 - edit `.env` with secrets
 
@@ -70,7 +71,7 @@ The agent owns the stage protocol; the human should not need to remember it.
 - do not treat a v1 result as validated in v2 until it passes this workbench
 - after M5 promote, expect exit optimization to evaluate each promoted catalog candidate and write `m5_exit_optimizations.json`
 - inspect `market_regime_key`, `vix_band`, `spy_trend_20d`, and `session_type` when interpreting detail artifacts
-- write to Strategy_Catalog only after M5 `promote`
+- after M5 promote, rebuild/publish `Mala_Evidence_v1` rather than writing legacy Strategy_Catalog rows
 
 ## Evidence Rules
 
@@ -79,7 +80,8 @@ The agent owns the stage protocol; the human should not need to remember it.
 - `completed` means M5 produced execution mappings and `decision: promote`.
 - Market regime can explain where an edge lives, but it must not rescue a failed gate.
 - Exit optimization is research output for execution readiness; Bhiksha translation stays outside v2.
-- The sheet writer should create `lifecycle_status=candidate`; human approval happens outside the workbench.
+- `Mala_Evidence_v1` is read-only Mala evidence. Runtime defaults live in `Operator_Defaults_v1`; authorization lives in `active_strategy`.
+- `recommendation_tier` is a review signal, not live authorization. `promote` requires tested thesis exit, positive expectancy, strong Monte Carlo confidence, enough holdout trades, and enough exit-trade evidence. `shadow` is evidence-backed but not live-ready. `watch_only` is evidence-only.
 
 ## Research Ops Layer
 
@@ -113,6 +115,7 @@ Outputs:
 
 Interpretation:
 - `catalog_publish_pending` means an M5 selected candidate is absent from Strategy_Catalog; dedupe before publishing.
+- Prefer `mala_handoff` for the current Bhiksha handoff. Legacy `Strategy_Catalog` findings may be stale migration noise unless explicitly requested.
 - `board_state_stale` means an operator-facing sheet row no longer matches Mala's local state.
 - `run_missing_summary` means a run has stage artifacts but lacks a summary; repair or rerun reporting before relying on it as evidence.
 - `terminal_without_artifacts` means a hypothesis file is terminal but no run directory was found; inspect before trusting it.
@@ -171,6 +174,7 @@ After code changes, run:
 ```bash
 ./.venv/bin/python -m pytest tests/ -q
 ./.venv/bin/python hypothesis_agent.py --hypothesis research/hypotheses/TEMPLATE.md --dry-run
+./.venv/bin/python -m src.research.mala_handoff
 ./.venv/bin/python -m src.research.research_ops hot-start
 ./.venv/bin/python -m src.research.local_orchestrator once --mode dry-run
 ```
