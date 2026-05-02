@@ -20,6 +20,7 @@ from src.newton.transforms import (
     FeatureTransform,
     JerkTransform,
     MarketImpulseTransform,
+    RelativeVolumeTransform,
     VelocityTransform,
     VolumeMaTransform,
     VpocTransform,
@@ -53,6 +54,8 @@ class PhysicsEngine:
             "jerk[:periods_back]",
             "market_impulse[:timeframe]",
             "market_impulse_vwma_<short>_<medium>_<long>",
+            "relative_volume:<period>",
+            "relative_volume_<period>",
         ]
 
     def enrich(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -73,6 +76,7 @@ class PhysicsEngine:
             if transform.name in required_features or set(required_features) & transform.output_columns
         ]
         candidates.extend(self._kinematic_transforms_for_features(required_features))
+        candidates.extend(self._relative_volume_transforms_for_features(required_features))
         candidates.extend(self._market_impulse_transforms_for_features(required_features))
         return self._resolve_transforms(candidates)
 
@@ -204,6 +208,18 @@ class PhysicsEngine:
             )
         return transforms
 
+    def _relative_volume_transforms_for_features(
+        self,
+        required_features: set[str],
+    ) -> list[FeatureTransform]:
+        transforms: list[FeatureTransform] = []
+        for feature in sorted(required_features):
+            match = _RELATIVE_VOLUME_RE.fullmatch(feature)
+            if not match:
+                continue
+            transforms.append(RelativeVolumeTransform(period=int(match.group("period"))))
+        return transforms
+
     def _build_registry(self) -> dict[str, FeatureTransform]:
         transforms: list[FeatureTransform] = [
             VelocityTransform(),
@@ -272,6 +288,9 @@ class PhysicsEngine:
                     vwma_periods=tuple(settings.vwma_periods),
                     timeframe=spec_match.group("timeframe") or "5m",
                 )
+            relative_volume_match = _RELATIVE_VOLUME_SPEC_RE.fullmatch(item)
+            if relative_volume_match:
+                return RelativeVolumeTransform(period=int(relative_volume_match.group("period")))
             try:
                 return self._registry[item]
             except KeyError as exc:
@@ -309,6 +328,8 @@ _MARKET_IMPULSE_VMA_RE = re.compile(
 _MARKET_IMPULSE_VWMA_SPEC_RE = re.compile(
     r"^market_impulse_vwma_(?P<short>\d+)_(?P<medium>\d+)_(?P<long>\d+)$"
 )
+_RELATIVE_VOLUME_RE = re.compile(r"^relative_volume_(?P<period>\d+)$")
+_RELATIVE_VOLUME_SPEC_RE = re.compile(r"^relative_volume:(?P<period>\d+)$")
 _KINEMATIC_SPEC_RE = re.compile(
     r"^(?P<kind>velocity|acceleration|jerk)(?::(?P<periods_back>\d+))?$"
 )

@@ -7,7 +7,7 @@
 - symbol_scope: `SPY`
 - strategy: `Opening Drive Classifier`
 - max_stage: `M1`
-- last_run: `2026-04-12T12:15:10+0000`
+- last_run: `2026-04-25T20:52:51+0000`
 
 ## Thesis
 SPY tends to continue its opening drive direction after the first 15-20 minutes
@@ -25,16 +25,16 @@ pipeline and gate machinery work end-to-end.
 
 ## Agent Report
 ### Run
-`2026-04-12T071502` — strategy: `Opening Drive Classifier`
+`2026-04-25T155151` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
 `M1`
 
 ### Notes
-- M1 FAIL: signals=15<50; windows=1<3
+- M1 FAIL: signals=16<50; windows=1<3
 
 ### Decision
 `retune`
 
 ### Artifacts
-`/Users/suman/kg_env/projects/mala_v2/data/results/hypothesis_runs/spy-opening-drive-m1-smoke/2026-04-12T071502`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/spy-opening-drive-m1-smoke/2026-04-25T155151`

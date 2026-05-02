@@ -44,6 +44,8 @@ def test_available_strategy_names_includes_research_candidates() -> None:
     assert "Jerk-Pivot Momentum (tight)" in names
     assert "Opening Drive v2 (Short Continue)" in names
     assert "Market Impulse (Cross & Reclaim)" in names
+    assert "Market Impulse Descendants" in names
+    assert "MI Shallow Spring" in names
 
 
 def test_build_market_impulse_with_timeframe_override() -> None:
@@ -69,6 +71,23 @@ def test_market_impulse_strategy_config_uses_canonical_fields() -> None:
         "vma_length": 12,
         "regime_timeframe": "30m",
         "vwma_periods": [8, 21, 34],
+        "entry_mode": "cross_reclaim",
+        "max_vma_excursion_pct": None,
+        "max_vma_excursion_atr": None,
+        "min_reclaim_margin_pct": 0.0,
+        "min_close_location": None,
+        "reclaim_window_bars": 3,
+        "min_bars_after_pierce": 1,
+        "require_regime_persistent": True,
+        "confirmation_window_bars": 2,
+        "confirmation_type": "break_reclaim_high_low",
+        "confirmation_margin_pct": 0.0,
+        "use_volume_filter": False,
+        "relative_volume_period": 20,
+        "min_relative_volume": None,
+        "max_panic_relative_volume": None,
+        "use_gap_context": False,
+        "use_sector_confirmation": False,
     }
 
 
@@ -117,6 +136,28 @@ def test_market_impulse_rejects_invalid_vwma_period_surface() -> None:
         assert "strictly increasing" in str(exc)
     else:
         raise AssertionError("Expected invalid vwma_periods to raise ValueError")
+
+
+def test_market_impulse_descendants_build_defaults_and_overrides() -> None:
+    strategy = build_strategy(
+        "Market Impulse Descendants",
+        {"entry_mode": "delayed_reclaim", "reclaim_window_bars": 5},
+    )
+
+    assert isinstance(strategy, MarketImpulseStrategy)
+    assert strategy.name == "MI Second Touch"
+    assert strategy.entry_mode == "delayed_reclaim"
+    assert strategy.reclaim_window_bars == 5
+    assert strategy.evaluation_mode == "directional"
+
+
+def test_market_impulse_named_descendant_alias_builds_mode() -> None:
+    strategy = build_strategy("MI Push Through", {"confirmation_type": "vma_margin"})
+
+    assert isinstance(strategy, MarketImpulseStrategy)
+    assert strategy.name == "MI Push Through"
+    assert strategy.entry_mode == "continuation_confirmation"
+    assert strategy.confirmation_type == "vma_margin"
 
 
 def test_required_feature_union_combines_strategy_dependencies() -> None:

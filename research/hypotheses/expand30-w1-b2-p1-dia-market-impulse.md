@@ -2,12 +2,12 @@
 
 ## Config
 - id: `expand30-w1-b2-p1-dia-market-impulse`
-- state: `retune`
-- decision: `retune`
+- state: `kill`
+- decision: `kill`
 - symbol_scope: `DIA`
 - strategy: `Market Impulse (Cross & Reclaim)`
 - max_stage: `M1`
-- last_run: `2026-04-22T15:43:33+0000`
+- last_run: `2026-04-25T17:54:39+0000`
 
 ## Thesis
 DIA is a liquid index ETF candidate for testing whether the existing Market Impulse cross-and-reclaim behavior transfers to broader index structure. The honest first pass is a bounded M1-only discovery run on the existing strategy surface.
@@ -26,17 +26,7 @@ DIA is a liquid index ETF candidate for testing whether the existing Market Impu
 - No retune and no M2+ continuation in this packet.
 
 ## Agent Report
-### Run
-`2026-04-22T104311` — strategy: `Market Impulse (Cross & Reclaim)`
-
-### Stages Executed
-`M2`
-
-### Notes
-- M2: 0 candidates promoted
-
-### Decision
-`retune`
-
-### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p1-dia-market-impulse/2026-04-22T104311`
+- decision: `kill`
+- updated_at: `2026-04-25T17:54:39+0000`
+- source: `research_runner kill-approved`
+- reason: operator approved kill from Research_Control

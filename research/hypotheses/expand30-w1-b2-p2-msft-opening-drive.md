@@ -7,7 +7,7 @@
 - symbol_scope: `MSFT`
 - strategy: `Opening Drive Classifier`
 - max_stage: `M1`
-- last_run: `2026-04-22T16:50:29+0000`
+- last_run: `2026-04-24T23:36:10+0000`
 
 ## Thesis
 Apply the existing Opening Drive Classifier to MSFT as a config-only transfer test for same-session continuation after an opening directional drive. The honest mapping is continuation-only using current opening-drive, acceleration, optional jerk, directional-mass, and volume filters already exposed by mala_v2.
@@ -26,7 +26,7 @@ Apply the existing Opening Drive Classifier to MSFT as a config-only transfer te
 
 ## Agent Report
 ### Run
-`2026-04-22T114939` — strategy: `Opening Drive Classifier`
+`2026-04-24T183520` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
 `M1`
@@ -38,4 +38,4 @@ Apply the existing Opening Drive Classifier to MSFT as a config-only transfer te
 `retune`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p2-msft-opening-drive/2026-04-22T114939`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p2-msft-opening-drive/2026-04-24T183520`

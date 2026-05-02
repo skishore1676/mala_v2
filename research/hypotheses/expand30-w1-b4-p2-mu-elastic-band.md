@@ -2,12 +2,12 @@
 
 ## Config
 - id: `expand30-w1-b4-p2-mu-elastic-band`
-- state: `retune`
-- decision: `retune`
+- state: `running`
+- decision: `promote_to_m2`
 - symbol_scope: `MU`
 - strategy: `Elastic Band Reversion`
 - max_stage: `M1`
-- last_run: `2026-04-24T13:44:14+0000`
+- last_run: `2026-04-25T19:27:39+0000`
 
 ## Thesis
 MU may mean-revert after intraday overextensions away from 4-hour VPOC when short-term kinematics show exhaustion, making it a plausible high-beta semiconductor transfer target for Elastic Band.
@@ -25,16 +25,16 @@ MU may mean-revert after intraday overextensions away from 4-hour VPOC when shor
 
 ## Agent Report
 ### Run
-`2026-04-24T084315` — strategy: `Elastic Band Reversion`
+`2026-04-25T142618` — strategy: `Elastic Band Reversion`
 
 ### Stages Executed
-`M2`
+`M1`
 
 ### Notes
-- M2: 0 candidates promoted
+- M1 PASS: pct_pos=80%  exp_r=+0.0586  signals=752  windows=5
 
 ### Decision
-`retune`
+`promote_to_m2`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p2-mu-elastic-band/2026-04-24T084315`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p2-mu-elastic-band/2026-04-25T142618`

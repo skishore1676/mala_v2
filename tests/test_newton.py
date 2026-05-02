@@ -8,7 +8,7 @@ import pytest
 
 from src.newton.engine import PhysicsEngine
 from src.newton.resampler import TimeframeResampler
-from src.newton.transforms import JerkTransform, MarketImpulseTransform
+from src.newton.transforms import JerkTransform, MarketImpulseTransform, RelativeVolumeTransform
 from src.strategy.base import required_feature_union
 from src.strategy.market_impulse import MarketImpulseStrategy
 
@@ -323,6 +323,8 @@ def test_market_impulse_strategy_declares_pipeline_resolvable_features() -> None
 
     assert strategy.required_features.issubset(result.columns)
     assert "vma_10_5m" in result.columns
+    assert "close_location" in result.columns
+    assert "vma_excursion_pct" in result.columns
 
 
 def test_market_impulse_strategy_can_request_alternate_regime_timeframe() -> None:
@@ -365,4 +367,47 @@ def test_market_impulse_strategy_can_request_alternate_vwma_stack() -> None:
     assert "vwma_13" in result.columns
     assert "vwma_21" in result.columns
     assert "vwma_34" not in result.columns
+    assert strategy.required_features.issubset(result.columns)
+
+
+def test_relative_volume_transform_uses_simple_volume_ma_ratio() -> None:
+    df = pl.DataFrame(
+        {
+            "open": [1.0, 1.0, 1.0],
+            "high": [1.0, 1.0, 1.0],
+            "low": [1.0, 1.0, 1.0],
+            "close": [1.0, 1.0, 1.0],
+            "volume": [100.0, 100.0, 200.0],
+        }
+    )
+    engine = PhysicsEngine(transforms=[RelativeVolumeTransform(period=2)])
+    result = engine.enrich(df)
+
+    assert "relative_volume_2" in result.columns
+    np.testing.assert_almost_equal(result["relative_volume_2"].to_list()[2], 200.0 / 150.0)
+
+
+def test_descendant_market_impulse_strategy_declares_resolvable_features() -> None:
+    timestamps = [datetime(2025, 1, 2, 14, 30) + timedelta(minutes=i) for i in range(40)]
+    df = pl.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": np.linspace(100, 102, 40),
+            "high": np.linspace(100.1, 102.1, 40),
+            "low": np.linspace(99.9, 101.9, 40),
+            "close": np.linspace(100, 102, 40),
+            "volume": np.linspace(1000.0, 2000.0, 40),
+        }
+    )
+    strategy = MarketImpulseStrategy(
+        entry_mode="same_bar_shallow_reclaim",
+        max_vma_excursion_pct=0.001,
+        use_volume_filter=True,
+        min_relative_volume=1.1,
+    )
+    engine = PhysicsEngine()
+    result = engine.enrich_for_features(df, required_feature_union([strategy]))
+
+    assert "vma_excursion_pct" in result.columns
+    assert "relative_volume_20" in result.columns
     assert strategy.required_features.issubset(result.columns)

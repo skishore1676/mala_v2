@@ -110,6 +110,33 @@ def _build_market_impulse(params: dict[str, Any] | None = None) -> BaseStrategy:
     return MarketImpulseStrategy(**(defaults | (params or {})))
 
 
+def _build_market_impulse_descendants(params: dict[str, Any] | None = None) -> BaseStrategy:
+    defaults = {
+        "entry_buffer_minutes": 3,
+        "entry_window_minutes": 60,
+        "regime_timeframe": "5m",
+        "entry_mode": "same_bar_shallow_reclaim",
+        "max_vma_excursion_pct": 0.001,
+    }
+    return MarketImpulseStrategy(**(defaults | (params or {})))
+
+
+def _build_market_impulse_mode(
+    entry_mode: str,
+    defaults: dict[str, Any] | None = None,
+) -> StrategyBuilder:
+    def builder(params: dict[str, Any] | None = None) -> BaseStrategy:
+        base = {
+            "entry_buffer_minutes": 3,
+            "entry_window_minutes": 60,
+            "regime_timeframe": "5m",
+            "entry_mode": entry_mode,
+        }
+        return MarketImpulseStrategy(**(base | (defaults or {}) | (params or {})))
+
+    return builder
+
+
 _NAMED_BUILDERS: dict[str, StrategyBuilder] = {
     "Elastic Band Reversion": _build_elastic,
     "Kinematic Ladder": _build_kinematic,
@@ -119,6 +146,23 @@ _NAMED_BUILDERS: dict[str, StrategyBuilder] = {
     "Opening Drive v2 (Short Continue)": _build_opening_drive_v2,
     "Jerk-Pivot Momentum (tight)": _build_jerk_pivot_tight,
     "Market Impulse (Cross & Reclaim)": _build_market_impulse,
+    "Market Impulse Descendants": _build_market_impulse_descendants,
+    "MI Shallow Spring": _build_market_impulse_mode(
+        "same_bar_shallow_reclaim",
+        {"max_vma_excursion_pct": 0.001},
+    ),
+    "MI Second Touch": _build_market_impulse_mode(
+        "delayed_reclaim",
+        {"max_vma_excursion_pct": 0.002, "reclaim_window_bars": 3},
+    ),
+    "MI High Close Reclaim": _build_market_impulse_mode(
+        "close_location_reclaim",
+        {"min_close_location": 0.7},
+    ),
+    "MI Push Through": _build_market_impulse_mode(
+        "continuation_confirmation",
+        {"confirmation_window_bars": 2},
+    ),
 }
 
 

@@ -2,12 +2,12 @@
 
 ## Config
 - id: `expand30-w1-b4-p3-tlt-elastic-band`
-- state: `retune`
-- decision: `retune`
+- state: `kill`
+- decision: `kill`
 - symbol_scope: `TLT`
 - strategy: `Elastic Band Reversion`
 - max_stage: `M1`
-- last_run: `2026-04-22T14:11:21+0000`
+- last_run: `2026-04-25T19:44:13+0000`
 
 ## Thesis
 TLT may offer config-only Elastic Band mean-reversion opportunities when intraday price stretches far from 4-hour VPOC and short-term kinematics show exhaustion, making rates-sensitive ETF overextensions a plausible transfer test from the existing basket.
@@ -27,16 +27,16 @@ TLT may offer config-only Elastic Band mean-reversion opportunities when intrada
 
 ## Agent Report
 ### Run
-`2026-04-22T090744` — strategy: `Elastic Band Reversion`
+`2026-04-25T144246` — strategy: `Elastic Band Reversion`
 
 ### Stages Executed
-`M2`
+`M1`
 
 ### Notes
-- M2: 0 candidates promoted
+- M1 FAIL: no positive configs found
 
 ### Decision
-`retune`
+`kill`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p3-tlt-elastic-band/2026-04-22T090744`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p3-tlt-elastic-band/2026-04-25T144246`

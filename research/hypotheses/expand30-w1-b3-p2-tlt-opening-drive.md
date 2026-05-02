@@ -7,7 +7,7 @@
 - symbol_scope: `TLT`
 - strategy: `Opening Drive Classifier`
 - max_stage: `M1`
-- last_run: `2026-04-22T18:20:44+0000`
+- last_run: `2026-04-25T19:11:11+0000`
 
 ## Thesis
 TLT may carry a tradable opening-drive continuation or failure pattern even as a macro ETF, especially when the first auction sets a directional move that persists through the early session.
@@ -26,7 +26,7 @@ TLT may carry a tradable opening-drive continuation or failure pattern even as a
 
 ## Agent Report
 ### Run
-`2026-04-22T131949` — strategy: `Opening Drive Classifier`
+`2026-04-25T141018` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
 `M1`
@@ -38,4 +38,4 @@ TLT may carry a tradable opening-drive continuation or failure pattern even as a
 `retune`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p2-tlt-opening-drive/2026-04-22T131949`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p2-tlt-opening-drive/2026-04-25T141018`

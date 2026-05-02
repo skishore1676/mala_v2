@@ -186,6 +186,35 @@ class VolumeMaTransform(FeatureTransform):
 
 
 @dataclass(frozen=True, slots=True)
+class RelativeVolumeTransform(FeatureTransform):
+    period: int
+    name: str = "relative_volume"
+    depends_on: tuple[str, ...] = ()
+    required_input_columns: set[str] = frozenset({"volume"})
+
+    @property
+    def spec(self) -> str:
+        return f"{self.name}:{self.period}"
+
+    @property
+    def output_columns(self) -> set[str]:
+        return {f"relative_volume_{self.period}"}
+
+    def apply(self, df: pl.DataFrame) -> pl.DataFrame:
+        ma_col = f"_relative_volume_ma_{self.period}"
+        return (
+            df.with_columns(pl.col("volume").rolling_mean(window_size=self.period).alias(ma_col))
+            .with_columns(
+                pl.when(pl.col(ma_col) > 0)
+                .then(pl.col("volume") / pl.col(ma_col))
+                .otherwise(None)
+                .alias(f"relative_volume_{self.period}")
+            )
+            .drop(ma_col)
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DirectionalMassTransform(FeatureTransform):
     volume_ma_period: int
     name: str = "directional_mass"
@@ -278,6 +307,8 @@ class MarketImpulseTransform(FeatureTransform):
             f"vma_{self.vma_length}",
             "impulse_regime",
             "impulse_stage",
+            "close_location",
+            "vma_excursion_pct",
             f"vma_{self.vma_length}_{tag}",
             f"impulse_regime_{tag}",
             f"impulse_stage_{tag}",
@@ -303,6 +334,12 @@ class MarketImpulseTransform(FeatureTransform):
             vma_length=self.vma_length,
             vwma_periods=self.vwma_periods,
             suffix="",
+        )
+        market_df = market_df.with_columns(
+            [
+                _close_location_expr().alias("close_location"),
+                _vma_excursion_pct_expr(f"vma_{self.vma_length}").alias("vma_excursion_pct"),
+            ]
         )
 
         tag = timeframe_tag(self.timeframe)
@@ -336,3 +373,22 @@ class MarketImpulseTransform(FeatureTransform):
 
 def transform_names(transforms: Iterable[FeatureTransform]) -> list[str]:
     return [transform.spec for transform in transforms]
+
+
+def _close_location_expr() -> pl.Expr:
+    bar_range = pl.col("high") - pl.col("low")
+    return (
+        pl.when(bar_range > 0)
+        .then((pl.col("close") - pl.col("low")) / bar_range)
+        .otherwise(pl.lit(0.5))
+    )
+
+
+def _vma_excursion_pct_expr(vma_col: str) -> pl.Expr:
+    long_depth = pl.max_horizontal(pl.col(vma_col) - pl.col("low"), pl.lit(0.0))
+    short_height = pl.max_horizontal(pl.col("high") - pl.col(vma_col), pl.lit(0.0))
+    return (
+        pl.when(pl.col(vma_col) > 0)
+        .then(pl.max_horizontal(long_depth, short_height) / pl.col(vma_col))
+        .otherwise(None)
+    )

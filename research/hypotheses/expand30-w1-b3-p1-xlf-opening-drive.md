@@ -7,7 +7,7 @@
 - symbol_scope: `XLF`
 - strategy: `Opening Drive Classifier`
 - max_stage: `M1`
-- last_run: `2026-04-22T17:50:34+0000`
+- last_run: `2026-04-24T23:45:49+0000`
 
 ## Thesis
 XLF may transfer the opening-drive continuation edge into a non-tech sector ETF, testing whether early-session directional follow-through is broad enough to survive outside the prior tech-heavy packet set.
@@ -26,7 +26,7 @@ XLF may transfer the opening-drive continuation edge into a non-tech sector ETF,
 
 ## Agent Report
 ### Run
-`2026-04-22T124944` — strategy: `Opening Drive Classifier`
+`2026-04-24T184507` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
 `M1`
@@ -38,4 +38,4 @@ XLF may transfer the opening-drive continuation edge into a non-tech sector ETF,
 `retune`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p1-xlf-opening-drive/2026-04-22T124944`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p1-xlf-opening-drive/2026-04-24T184507`

@@ -2,12 +2,12 @@
 
 ## Config
 - id: `expand30-w1-b4-p1-panw-jerk-pivot`
-- state: `retune`
-- decision: `retune`
+- state: `running`
+- decision: `promote_to_m2`
 - symbol_scope: `PANW`
 - strategy: `Jerk-Pivot Momentum (tight)`
 - max_stage: `M1`
-- last_run: `2026-04-22T13:20:28+0000`
+- last_run: `2026-04-25T00:17:55+0000`
 
 ## Thesis
 PANW may extend the jerk-pivot family into tactical security software if local jerk inflections near VPOC can isolate tradeable momentum continuation or exhaustion on a liquid single-name software profile.
@@ -26,16 +26,16 @@ PANW may extend the jerk-pivot family into tactical security software if local j
 
 ## Agent Report
 ### Run
-`2026-04-22T081910` — strategy: `Jerk-Pivot Momentum (tight)`
+`2026-04-24T191658` — strategy: `Jerk-Pivot Momentum (tight)`
 
 ### Stages Executed
 `M1`
 
 ### Notes
-- M1 FAIL: pct_pos=40%<60%
+- M1 PASS: pct_pos=60%  exp_r=+0.0651  signals=136  windows=5
 
 ### Decision
-`retune`
+`promote_to_m2`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p1-panw-jerk-pivot/2026-04-22T081910`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p1-panw-jerk-pivot/2026-04-24T191658`

@@ -8,7 +8,7 @@
 - strategy: `Kinematic Ladder`
 - max_stage: `M5`
 - max_configs: `48`
-- last_run: `2026-04-12T23:37:29+0000`
+- last_run: `2026-04-25T20:09:21+0000`
 
 ## Thesis
 Intraday continuation is strongest when higher-level velocity and acceleration establish regime bias and lower-level velocity, acceleration, and jerk confirm the trigger. The ladder should find symbol/direction pockets where momentum is persistent rather than noisy.
@@ -27,16 +27,16 @@ Intraday continuation is strongest when higher-level velocity and acceleration e
 
 ## Agent Report
 ### Run
-`2026-04-12T183516` — strategy: `Kinematic Ladder`
+`2026-04-25T145920` — strategy: `Kinematic Ladder`
 
 ### Stages Executed
 `M1`
 
 ### Notes
-- M1 FAIL: signals=36<50; windows=2<3
+- M1 FAIL: signals=15<50; windows=1<3
 
 ### Decision
 `retune`
 
 ### Artifacts
-`/Users/suman/kg_env/projects/mala_v2/data/results/hypothesis_runs/kinematic-ladder-current-basket-discovery/2026-04-12T183516`
+`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/kinematic-ladder-current-basket-discovery/2026-04-25T145920`
