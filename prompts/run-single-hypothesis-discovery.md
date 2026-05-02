@@ -9,7 +9,7 @@ The human will provide the hypothesis file path after this prompt. If no hypothe
 
 ## Steps
 
-1. Read CLAUDE.md and skills/research-workbench/SKILL.md.
+1. Read agent.md and skills/research-workbench/SKILL.md.
 2. Read the provided hypothesis file.
 3. Dry-run first to confirm data availability and config count:
    ```bash
@@ -41,7 +41,7 @@ The human will provide the hypothesis file path after this prompt. If no hypothe
    - CATALOG_SELECTED recommendation_tier and exit_reliability
    - Selected exit policy and parameters, with trade-count caveats
    - Regime breakdown: does the edge concentrate in specific vix_band or spy_trend_20d?
-   - Recommendation: promote to Strategy_Catalog, shadow, retune, or kill
+   - Recommendation: publish to Mala_Evidence_v1, shadow, retune, or kill
 8. In your final chat response, summarize the decision and give the absolute path to `FINDINGS_REPORT.md`.
 
 ## Rules

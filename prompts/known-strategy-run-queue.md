@@ -26,4 +26,4 @@ Notes:
 - Use `sonnet` for all full M1-M5 runs.
 - Use `haiku` only for post-run summarization when no commands or code edits are needed.
 - Do not start the next hypothesis until the current one writes `FINDINGS_REPORT.md`.
-- If Claude finds a code bug, pause the queue and fix the workbench before continuing.
+- If the agent finds a code bug, pause the queue and fix the workbench before continuing.

@@ -9,7 +9,7 @@ Hypothesis file: research/hypotheses/market-impulse-all-basket-discovery.md
 
 ## Steps
 
-1. Read CLAUDE.md and skills/research-workbench/SKILL.md.
+1. Read agent.md and skills/research-workbench/SKILL.md.
 2. Read the hypothesis file above.
 3. Dry-run first to confirm data availability and config count:
    ```
@@ -39,7 +39,7 @@ Hypothesis file: research/hypotheses/market-impulse-all-basket-discovery.md
    - Expectancy, confidence, signal_count, execution_robustness from M5
    - Selected exit policy and parameters
    - Regime breakdown: does the edge concentrate in specific vix_band or spy_trend_20d?
-   - Recommendation: promote to Strategy_Catalog, retune, or kill
+   - Recommendation: publish to Mala_Evidence_v1, retune, or kill
 8. In your final chat response, summarize the decision and give the absolute path to `FINDINGS_REPORT.md`.
 
 ## Rules

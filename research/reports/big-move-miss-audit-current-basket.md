@@ -3,7 +3,7 @@
 **Generated:** 2026-04-15  
 **Scope:** SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA  
 **Evidence base:** All basket-discovery and guardrail hypothesis run artifacts as of 2026-04-12. Raw OHLCV parquet files are not available (see §1). All inferences are artifact-only.  
-**Prompt source:** `research/prompts/claude-big-move-and-exit-research.md`
+**Prompt source:** `research/prompts/agent-big-move-and-exit-research.md`
 
 ---
 

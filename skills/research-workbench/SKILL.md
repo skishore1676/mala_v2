@@ -33,7 +33,7 @@ Do not:
 ## First Files
 
 Read only what the task needs, in this order:
-1. `CLAUDE.md`
+1. `agent.md`
 2. `research/hypotheses/TEMPLATE.md`
 3. `src/strategy/factory.py`
 4. the requested hypothesis file, if one exists
@@ -114,7 +114,7 @@ Outputs:
 - `data/results/research_ops/csv/*.csv`
 
 Interpretation:
-- `catalog_publish_pending` means an M5 selected candidate is absent from Strategy_Catalog; dedupe before publishing.
+- `catalog_publish_pending` is legacy research-ops wording; for current handoff work, verify whether the candidate appears in `Mala_Evidence_v1` and dedupe before publishing.
 - Prefer `mala_handoff` for the current Bhiksha handoff. Legacy `Strategy_Catalog` findings may be stale migration noise unless explicitly requested.
 - `board_state_stale` means an operator-facing sheet row no longer matches Mala's local state.
 - `run_missing_summary` means a run has stage artifacts but lacks a summary; repair or rerun reporting before relying on it as evidence.

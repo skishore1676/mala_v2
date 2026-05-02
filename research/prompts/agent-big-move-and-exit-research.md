@@ -1,8 +1,8 @@
-# Claude Handoff: Big Move Miss Audit + Exit Expansion Feasibility
+# Agent Handoff: Big Move Miss Audit + Exit Expansion Feasibility
 
 You are working in `/Users/suman/code/mala_v2`.
 
-Read `/Users/suman/code/mala_v2/AGENTS.md` first. Follow the research-only workflow. Do not write to Google Sheets. Do not make broad code changes unless the report proves a small infrastructure change is required and you clearly document it.
+Read `/Users/suman/code/mala_v2/agent.md` first. Follow the research-only workflow. Do not write to Google Sheets. Do not make broad code changes unless the report proves a small infrastructure change is required and you clearly document it.
 
 ## Current Truth
 
@@ -100,7 +100,7 @@ win_rate only as context
 
 - Every factual claim must cite the file or artifact it came from.
 - Do not use v1 results as validation.
-- Do not write to `Strategy_Catalog`.
+- Do not write to Google Sheets or legacy `Strategy_Catalog`.
 - Do not change hypothesis states unless you actually ran the corresponding workflow.
 - End with a short verdict:
 
