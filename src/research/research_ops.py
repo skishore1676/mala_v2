@@ -19,9 +19,21 @@ from typing import Any
 
 from src.config import settings
 from src.research.catalog import upsert_strategy_catalog
+from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
 from src.research.google_sheets import GoogleSheetTableClient
 from src.research.research_runner import create_hypothesis_file
 from src.research.search_space import build_search_configs, search_param_keys
+from src.research.shadow_campaign import (
+    DEFAULT_ACTIVE_STRATEGY_SHEET_NAME,
+    DEFAULT_EVIDENCE_SHEET_NAME,
+    DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME,
+    ShadowActivationConfig,
+    apply_active_strategy_rows,
+    apply_operator_defaults_patch,
+    build_shadow_activation_packet,
+    build_shadow_daily_report,
+    read_sheet_rows,
+)
 from src.research.time_utils import sheet_timestamp
 from src.strategy.factory import available_strategy_names
 
@@ -33,6 +45,8 @@ DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
 DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
 DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
 DEFAULT_INTAKE_SHEET_NAME = "Research_Intake"
+DEFAULT_SHADOW_CAMPAIGN_DIR = REPO_ROOT / "data" / "results" / "shadow_campaign"
+DEFAULT_LIVE_FEEDBACK_DIR = REPO_ROOT / "data" / "live_feedback"
 
 CONTROL_SHEET_HEADERS = [
     "action_id",
@@ -2732,6 +2746,109 @@ def cmd_dispositions(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shadow_activation_packet(args: argparse.Namespace) -> int:
+    evidence_rows, active_rows, defaults_rows = read_sheet_rows(
+        spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+        credentials_path=args.google_credentials,
+        evidence_sheet_name=args.evidence_sheet_name,
+        active_strategy_sheet_name=args.active_strategy_sheet_name,
+        operator_defaults_sheet_name=args.operator_defaults_sheet_name,
+    )
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "shadow_campaign" / "activation" / stamp
+    artifacts = build_shadow_activation_packet(
+        evidence_rows=evidence_rows,
+        active_strategy_rows=active_rows,
+        out_dir=out_dir,
+        config=ShadowActivationConfig(
+            min_execution_robustness=args.min_execution_robustness,
+            experiment_min_execution_robustness=args.experiment_min_execution_robustness,
+            min_signal_count=args.min_signal_count,
+            max_trade_premium_usd=args.max_trade_premium_usd,
+            dte_min=args.dte_min,
+            dte_max=args.dte_max,
+            delta_min=args.delta_min,
+            delta_max=args.delta_max,
+            max_bid_ask_spread_pct=args.max_bid_ask_spread_pct,
+            min_open_interest=args.min_open_interest,
+        ),
+        include_experiments=args.include_experiments,
+    )
+    applied_active = 0
+    applied_defaults = 0
+    if args.apply_active_strategy:
+        merged = apply_active_strategy_rows(
+            spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+            credentials_path=args.google_credentials,
+            active_strategy_sheet_name=args.active_strategy_sheet_name,
+            existing_rows=active_rows,
+            recommended_rows=artifacts.active_strategy_rows,
+            disable_non_recommended=args.disable_non_recommended,
+        )
+        applied_active = len(merged)
+    if args.apply_operator_defaults:
+        updates = apply_operator_defaults_patch(
+            spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+            credentials_path=args.google_credentials,
+            operator_defaults_sheet_name=args.operator_defaults_sheet_name,
+            defaults_rows=defaults_rows,
+            patch_rows=artifacts.defaults_patch_rows,
+        )
+        applied_defaults = len(updates)
+    print(f"SHADOW_ACTIVATION_REPORT={artifacts.packet_md}")
+    print(f"SHADOW_ACTIVATION_CSV={artifacts.packet_csv}")
+    print(f"ACTIVE_STRATEGY_ROWS_CSV={artifacts.active_strategy_csv}")
+    print(f"OPERATOR_DEFAULTS_PATCH_CSV={artifacts.defaults_patch_csv}")
+    print(f"SHADOW_RECOMMENDED={len(artifacts.recommended_rows)}")
+    print(f"ACTIVE_STRATEGY_APPLIED_ROWS={applied_active}")
+    print(f"OPERATOR_DEFAULTS_APPLIED_ROWS={applied_defaults}")
+    print(f"DRY_RUN={'false' if args.apply_active_strategy or args.apply_operator_defaults else 'true'}")
+    return 0
+
+
+def cmd_shadow_daily_report(args: argparse.Namespace) -> int:
+    evidence_rows: list[dict[str, Any]] = []
+    if args.with_evidence:
+        if not (args.sheet_id or args.catalog_sheet_id):
+            raise SystemExit("--sheet-id or --catalog-sheet-id is required with --with-evidence")
+        evidence_rows, _, _ = read_sheet_rows(
+            spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+            credentials_path=args.google_credentials,
+            evidence_sheet_name=args.evidence_sheet_name,
+            active_strategy_sheet_name=args.active_strategy_sheet_name,
+            operator_defaults_sheet_name=args.operator_defaults_sheet_name,
+        )
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "shadow_campaign" / "daily"
+    artifacts = build_shadow_daily_report(
+        feedback_root=Path(args.feedback_root),
+        evidence_rows=evidence_rows,
+        out_dir=out_dir,
+        active_plan_id=args.active_plan_id or None,
+    )
+    print(f"SHADOW_DAILY_REPORT={artifacts.report_md}")
+    print(f"SHADOW_DAILY_SCORECARD={artifacts.scorecard_csv}")
+    print(f"FEEDBACK_BUNDLES={artifacts.bundle_count}")
+    print(f"OBSERVATIONS={artifacts.observation_count}")
+    print(f"ISSUES={artifacts.issue_count}")
+    return 0
+
+
+def cmd_bhiksha_plumbing_triage(args: argparse.Namespace) -> int:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "bhiksha_plumbing_triage" / stamp
+    artifacts = build_bhiksha_plumbing_triage(
+        db_path=Path(args.db_path),
+        logs_dir=Path(args.logs_dir),
+        out_dir=out_dir,
+        lookback_days=args.lookback_days,
+    )
+    print(f"BHIKSHA_PLUMBING_TRIAGE_REPORT={artifacts.report_md}")
+    print(f"BHIKSHA_PLUMBING_ISSUE_CSV={artifacts.issue_csv}")
+    print(f"BHIKSHA_PLUMBING_DAY_CSV={artifacts.day_csv}")
+    print(f"BHIKSHA_PLUMBING_TRADE_BLOCK_CSV={artifacts.trade_block_csv}")
+    return 0
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
@@ -2856,6 +2973,58 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     disp.add_argument("--format", choices=["json", "csv"], default="json")
     disp.add_argument("--output", default=str(DEFAULT_OUT_DIR / "dispositions.csv"))
     disp.set_defaults(func=cmd_dispositions)
+
+    shadow_activation = subparsers.add_parser(
+        "shadow-activation-packet",
+        help="Build a reviewable active_strategy shadow activation packet from Mala_Evidence_v1.",
+    )
+    _add_common_args(shadow_activation)
+    shadow_activation.add_argument("--sheet-id", default="", help="Spreadsheet URL or ID; defaults to --catalog-sheet-id / STRATEGY_CATALOG_SHEET_ID.")
+    shadow_activation.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
+    shadow_activation.add_argument("--active-strategy-sheet-name", default=DEFAULT_ACTIVE_STRATEGY_SHEET_NAME)
+    shadow_activation.add_argument("--operator-defaults-sheet-name", default=DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME)
+    shadow_activation.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    shadow_activation.add_argument("--min-execution-robustness", type=float, default=0.75)
+    shadow_activation.add_argument("--experiment-min-execution-robustness", type=float, default=0.65)
+    shadow_activation.add_argument("--min-signal-count", type=int, default=20)
+    shadow_activation.add_argument("--max-trade-premium-usd", type=float, default=2000.0)
+    shadow_activation.add_argument("--dte-min", type=int, default=7)
+    shadow_activation.add_argument("--dte-max", type=int, default=21)
+    shadow_activation.add_argument("--delta-min", type=float, default=0.15)
+    shadow_activation.add_argument("--delta-max", type=float, default=0.35)
+    shadow_activation.add_argument("--max-bid-ask-spread-pct", type=float, default=0.08)
+    shadow_activation.add_argument("--min-open-interest", type=int, default=100)
+    shadow_activation.add_argument("--include-experiments", action="store_true", help="Allow 0.65-0.75 MC robustness rows as explicit experiments when other gates pass.")
+    shadow_activation.add_argument("--apply-active-strategy", action="store_true", help="Overwrite active_strategy with merged shadow rows. Omit for dry-run packet only.")
+    shadow_activation.add_argument("--apply-operator-defaults", action="store_true", help="Patch Operator_Defaults_v1 option constraints. Omit for dry-run packet only.")
+    shadow_activation.add_argument("--disable-non-recommended", action="store_true", help="When applying active_strategy, disable currently enabled rows that are not in the current shadow packet.")
+    shadow_activation.set_defaults(func=cmd_shadow_activation_packet)
+
+    shadow_daily = subparsers.add_parser(
+        "shadow-daily-report",
+        help="Summarize Bhiksha session feedback bundles for the shadow campaign.",
+    )
+    _add_common_args(shadow_daily)
+    shadow_daily.add_argument("--feedback-root", default=str(DEFAULT_LIVE_FEEDBACK_DIR))
+    shadow_daily.add_argument("--active-plan-id", default="")
+    shadow_daily.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    shadow_daily.add_argument("--with-evidence", action="store_true", help="Join Mala_Evidence_v1 metrics into the scorecard.")
+    shadow_daily.add_argument("--sheet-id", default="", help="Spreadsheet URL or ID; defaults to --catalog-sheet-id / STRATEGY_CATALOG_SHEET_ID.")
+    shadow_daily.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
+    shadow_daily.add_argument("--active-strategy-sheet-name", default=DEFAULT_ACTIVE_STRATEGY_SHEET_NAME)
+    shadow_daily.add_argument("--operator-defaults-sheet-name", default=DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME)
+    shadow_daily.set_defaults(func=cmd_shadow_daily_report)
+
+    plumbing = subparsers.add_parser(
+        "bhiksha-plumbing-triage",
+        help="Build a historical Bhiksha plumbing report from events.db and runtime logs.",
+    )
+    _add_common_args(plumbing)
+    plumbing.add_argument("--db-path", default="../bhiksha/bhiksha.db")
+    plumbing.add_argument("--logs-dir", default="../bhiksha/artifacts/playbook/runtime")
+    plumbing.add_argument("--lookback-days", type=int, default=21)
+    plumbing.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    plumbing.set_defaults(func=cmd_bhiksha_plumbing_triage)
 
     return parser.parse_args(argv)
 
