@@ -22,6 +22,7 @@ from src.research.catalog import upsert_strategy_catalog
 from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.provider_volume_parity import build_provider_volume_parity_report
 from src.research.research_runner import create_hypothesis_file
 from src.research.search_space import build_search_configs, search_param_keys
 from src.research.shadow_campaign import (
@@ -2869,6 +2870,22 @@ def cmd_bhiksha_signal_ev(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_provider_volume_parity(args: argparse.Namespace) -> int:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "provider_volume_parity" / stamp
+    artifacts = build_provider_volume_parity_report(
+        divergence_dir=Path(args.divergence_dir),
+        out_dir=out_dir,
+        session=args.session,
+        relative_volume_window=args.relative_volume_window,
+    )
+    print(f"PROVIDER_VOLUME_PARITY_REPORT={artifacts.report_md}")
+    print(f"PROVIDER_VOLUME_WINDOW_CSV={artifacts.volume_window_csv}")
+    print(f"PROVIDER_RELATIVE_VOLUME_CSV={artifacts.relative_volume_csv}")
+    print(f"PROVIDER_FEATURE_PARITY_CSV={artifacts.feature_csv}")
+    return 0
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
@@ -3059,6 +3076,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     signal_ev.add_argument("--replay-warmup-days", type=int, default=7)
     signal_ev.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
     signal_ev.set_defaults(func=cmd_bhiksha_signal_ev)
+
+    volume_parity = subparsers.add_parser(
+        "provider-volume-parity",
+        help="Summarize Schwab-vs-Polygon volume parity from Bhiksha divergence CSVs.",
+    )
+    _add_common_args(volume_parity)
+    volume_parity.add_argument("--divergence-dir", default="../bhiksha/artifacts/provider_divergence")
+    volume_parity.add_argument("--session", choices=["all", "regular", "extended"], default="regular")
+    volume_parity.add_argument("--relative-volume-window", type=int, default=20)
+    volume_parity.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    volume_parity.set_defaults(func=cmd_provider_volume_parity)
 
     return parser.parse_args(argv)
 

@@ -387,6 +387,28 @@ def test_relative_volume_transform_uses_simple_volume_ma_ratio() -> None:
     np.testing.assert_almost_equal(result["relative_volume_2"].to_list()[2], 200.0 / 150.0)
 
 
+def test_aggregated_relative_volume_transform_uses_volume_sum_ratio() -> None:
+    df = pl.DataFrame(
+        {
+            "open": [1.0] * 6,
+            "high": [1.0] * 6,
+            "low": [1.0] * 6,
+            "close": [1.0] * 6,
+            "volume": [100.0, 100.0, 200.0, 300.0, 500.0, 800.0],
+        }
+    )
+    engine = PhysicsEngine()
+    result = engine.enrich_for_features(df, {"relative_volume_sum_3_over_ma_2"})
+
+    assert "relative_volume_sum_3_over_ma_2" in result.columns
+    # 3-bar sums at indices 4 and 5 are 1000 and 1600; their 2-period mean at
+    # index 5 is 1300.
+    np.testing.assert_almost_equal(
+        result["relative_volume_sum_3_over_ma_2"].to_list()[5],
+        1600.0 / 1300.0,
+    )
+
+
 def test_descendant_market_impulse_strategy_declares_resolvable_features() -> None:
     timestamps = [datetime(2025, 1, 2, 14, 30) + timedelta(minutes=i) for i in range(40)]
     df = pl.DataFrame(

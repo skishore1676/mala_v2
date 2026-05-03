@@ -215,6 +215,52 @@ class RelativeVolumeTransform(FeatureTransform):
 
 
 @dataclass(frozen=True, slots=True)
+class AggregatedRelativeVolumeTransform(FeatureTransform):
+    sum_window: int
+    ma_period: int
+    name: str = "aggregated_relative_volume"
+    depends_on: tuple[str, ...] = ()
+    required_input_columns: set[str] = frozenset({"volume"})
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sum_window", max(1, int(self.sum_window)))
+        object.__setattr__(self, "ma_period", max(2, int(self.ma_period)))
+
+    @property
+    def spec(self) -> str:
+        return f"{self.name}:{self.sum_window}:{self.ma_period}"
+
+    @property
+    def output_columns(self) -> set[str]:
+        return {aggregated_relative_volume_column_name(self.sum_window, self.ma_period)}
+
+    def apply(self, df: pl.DataFrame) -> pl.DataFrame:
+        numerator_col = f"_volume_sum_{self.sum_window}"
+        ma_col = f"_volume_sum_{self.sum_window}_ma_{self.ma_period}"
+        output_col = aggregated_relative_volume_column_name(self.sum_window, self.ma_period)
+        volume_sum = (
+            pl.col("volume")
+            if self.sum_window == 1
+            else pl.col("volume").rolling_sum(window_size=self.sum_window)
+        )
+        return (
+            df.with_columns(volume_sum.alias(numerator_col))
+            .with_columns(pl.col(numerator_col).rolling_mean(window_size=self.ma_period).alias(ma_col))
+            .with_columns(
+                pl.when(pl.col(ma_col) > 0)
+                .then(pl.col(numerator_col) / pl.col(ma_col))
+                .otherwise(None)
+                .alias(output_col)
+            )
+            .drop([numerator_col, ma_col])
+        )
+
+
+def aggregated_relative_volume_column_name(sum_window: int, ma_period: int) -> str:
+    return f"relative_volume_sum_{int(sum_window)}_over_ma_{int(ma_period)}"
+
+
+@dataclass(frozen=True, slots=True)
 class DirectionalMassTransform(FeatureTransform):
     volume_ma_period: int
     name: str = "directional_mass"

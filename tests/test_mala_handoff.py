@@ -79,6 +79,25 @@ def test_mala_handoff_marks_market_impulse_descendant_unsupported(tmp_path: Path
     assert "bhiksha_unsupported_variant:close_location_reclaim:runtime_adapter_not_implemented" in row["warnings"]
 
 
+def test_mala_handoff_blocks_market_impulse_volume_filter_runtime_gap(tmp_path: Path) -> None:
+    _write_market_impulse_run(
+        tmp_path,
+        extra_params={
+            "use_volume_filter": "true",
+            "min_relative_volume": "1.2",
+        },
+    )
+    manifest_path = _write_capability_manifest(tmp_path)
+
+    packet = build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)[0]
+    row = packet_to_csv_row(packet)
+
+    assert row["strategy_variant"] == "cross_reclaim"
+    assert row["bhiksha_capability_status"] == "unsupported"
+    assert row["bhiksha_capability_reason"] == "unsupported_runtime_param:use_volume_filter"
+    assert row["bhiksha_ready"] == "false"
+
+
 def test_mala_handoff_missing_capability_manifest_fails_closed(tmp_path: Path) -> None:
     _write_market_impulse_run(tmp_path)
 

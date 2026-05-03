@@ -3,7 +3,10 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import polars as pl
 
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 
@@ -149,6 +152,71 @@ def test_same_bar_replay_reports_missing_cached_bars(tmp_path: Path) -> None:
     assert signals[0]["mala_same_bar_replay_status"] == "missing_bars"
 
 
+def test_same_bar_replay_compares_runtime_features_to_mala_bar(tmp_path: Path) -> None:
+    db_path = tmp_path / "bhiksha.db"
+    _create_db(db_path)
+    deployment_id = "strategy_market_impulse_amd_long_shadow_row_1"
+    _insert_event(
+        db_path,
+        "2026-05-01T13:30:00+00:00",
+        "startup_config",
+        {
+            "active_plan": {
+                "deployments": [
+                    {
+                        "deployment_id": deployment_id,
+                        "symbol": "AMD",
+                        "strategy": {
+                            "key": "market_impulse",
+                            "params": {
+                                "direction": "long",
+                                "entry_buffer_minutes": 3,
+                                "entry_window_minutes": 60,
+                                "regime_timeframe": "5m",
+                            },
+                        },
+                        "source": {
+                            "metadata": {
+                                "direction": "long",
+                                "playbook_summary": {
+                                    "mala_evidence": {"signal_window_et": "09:33-10:30"}
+                                },
+                            }
+                        },
+                    }
+                ]
+            }
+        },
+    )
+    _insert_event(
+        db_path,
+        "2026-05-01T13:36:05+00:00",
+        "signal_decision",
+        {
+            "deployment_id": deployment_id,
+            "symbol": "AMD",
+            "timestamp": "2026-05-01T13:36:00+00:00",
+            "signal": True,
+            "direction": "long",
+            "features": {"close": 100.0, "volume": 900.0},
+        },
+    )
+    _write_cached_bars(tmp_path / "cache", symbol="AMD")
+
+    artifacts = build_bhiksha_signal_ev_report(
+        db_path=db_path,
+        out_dir=tmp_path / "out",
+        same_bar_replay=True,
+        data_dir=tmp_path / "cache",
+    )
+
+    signals = list(csv.DictReader(artifacts.signal_csv.open()))
+    assert signals[0]["mala_same_bar_replay_status"] != "missing_bars"
+    assert signals[0]["mala_same_bar_feature_compared"] == "2"
+    assert signals[0]["mala_same_bar_feature_mismatch_count"] == "1"
+    assert signals[0]["mala_same_bar_feature_worst"] == "volume"
+
+
 def _create_db(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -244,3 +312,24 @@ def _insert_trade_session(db_path: Path, deployment_id: str) -> None:
                 "{}",
             ),
         )
+
+
+def _write_cached_bars(base_dir: Path, *, symbol: str) -> None:
+    start = datetime(2026, 5, 1, 13, 30, tzinfo=timezone.utc)
+    timestamps = [start + timedelta(minutes=idx) for idx in range(40)]
+    closes = [100.0 + idx * 0.01 for idx in range(40)]
+    closes[6] = 100.0
+    frame = pl.DataFrame(
+        {
+            "timestamp": timestamps,
+            "ticker": [symbol] * len(timestamps),
+            "open": closes,
+            "high": [close + 0.1 for close in closes],
+            "low": [close - 0.1 for close in closes],
+            "close": closes,
+            "volume": [1000.0] * len(timestamps),
+        }
+    )
+    path = base_dir / symbol / "2026-05-01.parquet"
+    path.parent.mkdir(parents=True)
+    frame.write_parquet(path)

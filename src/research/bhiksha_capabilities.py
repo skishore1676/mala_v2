@@ -127,6 +127,14 @@ def evaluate_bhiksha_capability(
 
     status = str(variant_config.get("status") or "unsupported").strip().lower()
     reason = str(variant_config.get("reason") or "").strip()
+    parameter_gap = _runtime_parameter_gap(
+        strategy_key=strategy_key,
+        strategy_variant=variant,
+        strategy_params=strategy_params,
+    )
+    if parameter_gap:
+        status = "unsupported"
+        reason = parameter_gap
     if thesis_exit_policy:
         supported_policies = {
             str(policy).strip()
@@ -155,3 +163,40 @@ def _blocked(variant: str, version: int | None, reason: str) -> BhikshaCapabilit
         manifest_version=version,
         bhiksha_ready=False,
     )
+
+
+def _runtime_parameter_gap(
+    *,
+    strategy_key: str,
+    strategy_variant: str,
+    strategy_params: dict[str, Any],
+) -> str:
+    if strategy_key == "market_impulse" and strategy_variant == "cross_reclaim":
+        if _truthy(strategy_params.get("use_volume_filter")):
+            return "unsupported_runtime_param:use_volume_filter"
+        has_relative_threshold = any(
+            _has_value(strategy_params.get(key))
+            for key in ("min_relative_volume", "max_panic_relative_volume")
+        )
+        if has_relative_threshold and not _explicit_false(strategy_params.get("use_volume_filter")):
+            return "unsupported_runtime_param:relative_volume_filter"
+    return ""
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y"}
+
+
+def _has_value(value: Any) -> bool:
+    if value in (None, ""):
+        return False
+    return str(value).strip().lower() not in {"none", "null", "nan"}
+
+
+def _explicit_false(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value is False
+    return str(value).strip().lower() in {"0", "false", "no", "n"}

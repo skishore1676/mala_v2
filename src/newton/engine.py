@@ -15,6 +15,7 @@ from loguru import logger
 from src.config import settings
 from src.newton.transforms import (
     AccelerationTransform,
+    AggregatedRelativeVolumeTransform,
     DirectionalMassTransform,
     EmaStackTransform,
     FeatureTransform,
@@ -56,6 +57,8 @@ class PhysicsEngine:
             "market_impulse_vwma_<short>_<medium>_<long>",
             "relative_volume:<period>",
             "relative_volume_<period>",
+            "aggregated_relative_volume:<sum_window>:<ma_period>",
+            "relative_volume_sum_<sum_window>_over_ma_<ma_period>",
         ]
 
     def enrich(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -77,6 +80,7 @@ class PhysicsEngine:
         ]
         candidates.extend(self._kinematic_transforms_for_features(required_features))
         candidates.extend(self._relative_volume_transforms_for_features(required_features))
+        candidates.extend(self._aggregated_relative_volume_transforms_for_features(required_features))
         candidates.extend(self._market_impulse_transforms_for_features(required_features))
         return self._resolve_transforms(candidates)
 
@@ -220,6 +224,23 @@ class PhysicsEngine:
             transforms.append(RelativeVolumeTransform(period=int(match.group("period"))))
         return transforms
 
+    def _aggregated_relative_volume_transforms_for_features(
+        self,
+        required_features: set[str],
+    ) -> list[FeatureTransform]:
+        transforms: list[FeatureTransform] = []
+        for feature in sorted(required_features):
+            match = _AGGREGATED_RELATIVE_VOLUME_RE.fullmatch(feature)
+            if not match:
+                continue
+            transforms.append(
+                AggregatedRelativeVolumeTransform(
+                    sum_window=int(match.group("sum_window")),
+                    ma_period=int(match.group("ma_period")),
+                )
+            )
+        return transforms
+
     def _build_registry(self) -> dict[str, FeatureTransform]:
         transforms: list[FeatureTransform] = [
             VelocityTransform(),
@@ -291,6 +312,12 @@ class PhysicsEngine:
             relative_volume_match = _RELATIVE_VOLUME_SPEC_RE.fullmatch(item)
             if relative_volume_match:
                 return RelativeVolumeTransform(period=int(relative_volume_match.group("period")))
+            aggregated_relative_volume_match = _AGGREGATED_RELATIVE_VOLUME_SPEC_RE.fullmatch(item)
+            if aggregated_relative_volume_match:
+                return AggregatedRelativeVolumeTransform(
+                    sum_window=int(aggregated_relative_volume_match.group("sum_window")),
+                    ma_period=int(aggregated_relative_volume_match.group("ma_period")),
+                )
             try:
                 return self._registry[item]
             except KeyError as exc:
@@ -330,6 +357,12 @@ _MARKET_IMPULSE_VWMA_SPEC_RE = re.compile(
 )
 _RELATIVE_VOLUME_RE = re.compile(r"^relative_volume_(?P<period>\d+)$")
 _RELATIVE_VOLUME_SPEC_RE = re.compile(r"^relative_volume:(?P<period>\d+)$")
+_AGGREGATED_RELATIVE_VOLUME_RE = re.compile(
+    r"^relative_volume_sum_(?P<sum_window>\d+)_over_ma_(?P<ma_period>\d+)$"
+)
+_AGGREGATED_RELATIVE_VOLUME_SPEC_RE = re.compile(
+    r"^aggregated_relative_volume:(?P<sum_window>\d+):(?P<ma_period>\d+)$"
+)
 _KINEMATIC_SPEC_RE = re.compile(
     r"^(?P<kind>velocity|acceleration|jerk)(?::(?P<periods_back>\d+))?$"
 )

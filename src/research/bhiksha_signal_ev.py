@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import inspect
 import json
+import math
 import sqlite3
 from collections import Counter, defaultdict
 from contextlib import closing
@@ -26,6 +27,7 @@ import polars as pl
 from src.chronos.storage import LocalStorage
 from src.config import DATA_DIR
 from src.newton.engine import PhysicsEngine
+from src.newton.transforms import acceleration_column_name, jerk_column_name, velocity_column_name
 from src.strategy.factory import build_strategy
 
 
@@ -564,6 +566,11 @@ def _same_bar_replay(
         "mala_same_bar_replay_strategy": "",
         "mala_same_bar_replay_bars": "",
         "mala_same_bar_replay_error": "",
+        "mala_same_bar_feature_compared": "",
+        "mala_same_bar_feature_mismatch_count": "",
+        "mala_same_bar_feature_max_pct_diff": "",
+        "mala_same_bar_feature_worst": "",
+        "mala_same_bar_feature_diffs": "",
     }
     if replay_cache is None:
         return base
@@ -602,6 +609,11 @@ def _same_bar_replay(
                 "mala_same_bar_replay_strategy": strategy_name,
                 "mala_same_bar_replay_bars": str(frame.height),
             }
+        feature_replay = _same_bar_feature_replay(
+            payload_features=payload.get("features") if isinstance(payload.get("features"), dict) else {},
+            bar=bar.row(0, named=True),
+            params=params,
+        )
         signal = bool(bar.select(pl.col("signal").fill_null(False)).item(0, 0))
         direction = ""
         if "signal_direction" in bar.columns:
@@ -616,13 +628,83 @@ def _same_bar_replay(
             "mala_same_bar_replay_direction": direction,
             "mala_same_bar_replay_strategy": strategy_name,
             "mala_same_bar_replay_bars": str(frame.height),
-        }
+        } | feature_replay
     except Exception as exc:
         return base | {
             "mala_same_bar_replay_status": "replay_error",
             "mala_same_bar_replay_strategy": strategy_name,
             "mala_same_bar_replay_error": str(exc)[:240],
         }
+
+
+def _same_bar_feature_replay(
+    *,
+    payload_features: dict[str, Any],
+    bar: dict[str, Any],
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    comparisons: list[dict[str, Any]] = []
+    for runtime_key, runtime_value in sorted(payload_features.items()):
+        runtime_number = _finite_float(runtime_value)
+        if runtime_number is None:
+            continue
+        replay_key = _replay_feature_key(runtime_key, bar, params)
+        if replay_key is None:
+            continue
+        replay_number = _finite_float(bar.get(replay_key))
+        if replay_number is None:
+            continue
+        diff = runtime_number - replay_number
+        pct = _pct_diff(runtime_number, replay_number)
+        comparisons.append(
+            {
+                "runtime_feature": runtime_key,
+                "mala_feature": replay_key,
+                "runtime": round(runtime_number, 6),
+                "mala": round(replay_number, 6),
+                "diff": round(diff, 6),
+                "pct": round(pct, 6),
+            }
+        )
+    mismatches = [item for item in comparisons if abs(float(item["diff"])) > 1e-9]
+    worst = max(comparisons, key=lambda item: float(item["pct"]), default=None)
+    return {
+        "mala_same_bar_feature_compared": str(len(comparisons)),
+        "mala_same_bar_feature_mismatch_count": str(len(mismatches)),
+        "mala_same_bar_feature_max_pct_diff": "" if worst is None else str(worst["pct"]),
+        "mala_same_bar_feature_worst": "" if worst is None else str(worst["runtime_feature"]),
+        "mala_same_bar_feature_diffs": _compact_json(comparisons),
+    }
+
+
+def _replay_feature_key(runtime_key: str, bar: dict[str, Any], params: dict[str, Any]) -> str | None:
+    if runtime_key in bar:
+        return runtime_key
+    periods_back = int(_first_float(params.get("kinematic_periods_back"), 1) or 1)
+    aliases = {
+        "velocity": velocity_column_name(periods_back),
+        "accel": acceleration_column_name(periods_back),
+        "acceleration": acceleration_column_name(periods_back),
+        "jerk": jerk_column_name(periods_back),
+    }
+    candidate = aliases.get(runtime_key)
+    if candidate in bar:
+        return candidate
+    return None
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _pct_diff(a: float, b: float) -> float:
+    if a == 0 and b == 0:
+        return 0.0
+    return abs(a - b) / max(abs(a), abs(b), 1e-12)
 
 
 def _nearest_signal(
