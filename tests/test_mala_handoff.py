@@ -94,6 +94,41 @@ def test_mala_handoff_missing_capability_manifest_fails_closed(tmp_path: Path) -
     assert row["bhiksha_ready"] == "false"
 
 
+def test_mala_handoff_accepts_verified_runtime_capability_manifest(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path)
+    manifest_path = tmp_path / "bhiksha_runtime_capabilities_v2.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "generated_at": "2026-05-03T13:25:13Z",
+                "supported_thesis_exit_policies": ["fixed_rr_underlying"],
+                "strategies": {
+                    "market_impulse": {
+                        "default_variant": "cross_reclaim",
+                        "variants": {
+                            "cross_reclaim": {
+                                "status": "supported",
+                                "reason": "runtime_verified",
+                                "verification_status": "verified",
+                            }
+                        },
+                    }
+                },
+                "verification": {"status": "passed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    packet = build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)[0]
+    row = packet_to_csv_row(packet)
+
+    assert row["bhiksha_capability_status"] == "supported"
+    assert row["bhiksha_capability_reason"] == "runtime_verified"
+    assert row["bhiksha_ready"] == "true"
+
+
 def test_handoff_outputs_do_not_publish_vehicle_mapping_as_truth(tmp_path: Path) -> None:
     _write_market_impulse_run(tmp_path)
     packets = build_handoff_packets(runs_root=tmp_path)

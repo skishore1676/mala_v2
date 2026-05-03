@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,10 @@ import yaml
 CAPABILITY_MANIFEST_ENV = "BHIKSHA_CAPABILITIES_PATH"
 _LOCAL_DEFAULT = Path("/Users/suman/code/bhiksha/config/capabilities/bhiksha_capabilities_v1.yaml")
 _OLDMAC_DEFAULT = Path.home() / "Documents" / "bhiksha" / "config" / "capabilities" / "bhiksha_capabilities_v1.yaml"
+_LOCAL_RUNTIME_DEFAULT = Path("/Users/suman/code/bhiksha/artifacts/capabilities/bhiksha_runtime_capabilities_v2.json")
+_OLDMAC_RUNTIME_DEFAULT = (
+    Path.home() / "Documents" / "bhiksha" / "artifacts" / "capabilities" / "bhiksha_runtime_capabilities_v2.json"
+)
 
 _MARKET_IMPULSE_NAME_VARIANTS = {
     "market impulse (cross & reclaim)": "cross_reclaim",
@@ -36,6 +41,10 @@ def default_capability_manifest_path() -> Path:
     configured = os.getenv(CAPABILITY_MANIFEST_ENV)
     if configured:
         return Path(configured).expanduser()
+    if _LOCAL_RUNTIME_DEFAULT.exists():
+        return _LOCAL_RUNTIME_DEFAULT
+    if _OLDMAC_RUNTIME_DEFAULT.exists():
+        return _OLDMAC_RUNTIME_DEFAULT
     if _LOCAL_DEFAULT.exists():
         return _LOCAL_DEFAULT
     return _OLDMAC_DEFAULT
@@ -44,8 +53,9 @@ def default_capability_manifest_path() -> Path:
 def load_capability_manifest(path: str | Path | None = None) -> dict[str, Any] | None:
     resolved = Path(path).expanduser() if path is not None else default_capability_manifest_path()
     try:
-        payload = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
-    except (FileNotFoundError, OSError, yaml.YAMLError):
+        raw = resolved.read_text(encoding="utf-8")
+        payload = json.loads(raw) if resolved.suffix.lower() == ".json" else yaml.safe_load(raw) or {}
+    except (FileNotFoundError, OSError, json.JSONDecodeError, yaml.YAMLError):
         return None
     if not isinstance(payload, dict):
         return None
