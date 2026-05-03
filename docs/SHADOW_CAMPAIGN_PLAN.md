@@ -82,8 +82,9 @@ After market close on oldmac:
 1. Sync/compile the active plan from Google Sheets.
 2. Run Bhiksha review to create observation packets and export them to Mala.
 3. Run Mala `research_ops shadow-daily-report`.
-4. Review the daily report and create fixes for runtime mismatches.
-5. Do not tune strategies until plumbing defects are resolved.
+4. Run Mala `research_ops bhiksha-signal-ev` against Bhiksha SQLite.
+5. Review both reports and create fixes for runtime mismatches.
+6. Do not tune strategies until plumbing defects are resolved.
 
 Command outline:
 
@@ -96,6 +97,10 @@ cd ~/Documents/bhiksha
 
 cd ~/Documents/mala_v2
 ./.venv/bin/python -m src.research.research_ops shadow-daily-report --with-evidence
+./.venv/bin/python -m src.research.research_ops bhiksha-signal-ev \
+  --db-path ../bhiksha/bhiksha.db \
+  --lookback-days 21 \
+  --same-bar-replay
 ```
 
 ## Daily Report Questions
@@ -109,6 +114,22 @@ cd ~/Documents/mala_v2
 - Were there lifecycle, cancellation, provider, or runtime issues?
 - Did replay find the same recent setup shape?
 - What fixes are required before the next session?
+
+## Signal and EV Audit
+
+`bhiksha-signal-ev` answers the two promotion-blocking questions from runtime
+truth:
+
+- Did Bhiksha fire through the Mala-sourced deployment, in the expected
+  direction, inside the Mala signal window?
+- Did a trade plan appear near the true signal timestamp?
+- Did the selected option produce realized premium PnL and option-stop-R in the
+  same family as the Mala expectancy attached to that deployment?
+
+Without `--same-bar-replay`, the audit is a compiled-runtime concordance check.
+With `--same-bar-replay`, it independently reruns the Mala strategy on cached
+1-minute bars for each Bhiksha true-signal bar. Missing cached bars should be
+treated as a data-backfill gap, not as a strategy mismatch.
 
 ## Phase 2: Strategy Overlay Review
 

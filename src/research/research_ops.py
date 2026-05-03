@@ -20,6 +20,7 @@ from typing import Any
 from src.config import settings
 from src.research.catalog import upsert_strategy_catalog
 from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
+from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 from src.research.google_sheets import GoogleSheetTableClient
 from src.research.research_runner import create_hypothesis_file
 from src.research.search_space import build_search_configs, search_param_keys
@@ -2849,6 +2850,25 @@ def cmd_bhiksha_plumbing_triage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bhiksha_signal_ev(args: argparse.Namespace) -> int:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "bhiksha_signal_ev" / stamp
+    artifacts = build_bhiksha_signal_ev_report(
+        db_path=Path(args.db_path),
+        out_dir=out_dir,
+        lookback_days=args.lookback_days,
+        max_signal_lag_minutes=args.max_signal_lag_minutes,
+        same_bar_replay=args.same_bar_replay,
+        data_dir=Path(args.data_dir) if args.data_dir else None,
+        replay_warmup_days=args.replay_warmup_days,
+    )
+    print(f"BHIKSHA_SIGNAL_EV_REPORT={artifacts.report_md}")
+    print(f"BHIKSHA_SIGNAL_EV_TRADES_CSV={artifacts.trade_csv}")
+    print(f"BHIKSHA_SIGNAL_EV_DEPLOYMENTS_CSV={artifacts.deployment_csv}")
+    print(f"BHIKSHA_SIGNAL_EV_SIGNALS_CSV={artifacts.signal_csv}")
+    return 0
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
@@ -3025,6 +3045,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     plumbing.add_argument("--lookback-days", type=int, default=21)
     plumbing.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
     plumbing.set_defaults(func=cmd_bhiksha_plumbing_triage)
+
+    signal_ev = subparsers.add_parser(
+        "bhiksha-signal-ev",
+        help="Join Bhiksha signals/trades to Mala active-plan evidence and realized option EV.",
+    )
+    _add_common_args(signal_ev)
+    signal_ev.add_argument("--db-path", default="../bhiksha/bhiksha.db")
+    signal_ev.add_argument("--lookback-days", type=int, default=21)
+    signal_ev.add_argument("--max-signal-lag-minutes", type=int, default=5)
+    signal_ev.add_argument("--same-bar-replay", action="store_true", help="Independently rerun Mala strategy params on cached bars for each Bhiksha signal bar.")
+    signal_ev.add_argument("--data-dir", default="", help="Mala cached bar directory; defaults to repo data/.")
+    signal_ev.add_argument("--replay-warmup-days", type=int, default=7)
+    signal_ev.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    signal_ev.set_defaults(func=cmd_bhiksha_signal_ev)
 
     return parser.parse_args(argv)
 

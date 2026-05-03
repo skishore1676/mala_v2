@@ -6,7 +6,9 @@ BHIKSHA_ROOT="${BHIKSHA_ROOT:-$HOME/Documents/bhiksha}"
 MALA_PYTHON="${MALA_PYTHON:-$MALA_ROOT/.venv/bin/python}"
 BHIKSHA_PYTHON="${BHIKSHA_PYTHON:-$BHIKSHA_ROOT/.venv/bin/python}"
 ACTIVE_PLAN_PATH="${ACTIVE_PLAN_PATH:-$BHIKSHA_ROOT/artifacts/playbook/active_plan.json}"
+BHIKSHA_DB_PATH="${BHIKSHA_DB_PATH:-$BHIKSHA_ROOT/bhiksha.db}"
 TRADING_DAYS="${TRADING_DAYS:-3}"
+SIGNAL_EV_LOOKBACK_DAYS="${SIGNAL_EV_LOOKBACK_DAYS:-21}"
 
 if [[ ! -x "$MALA_PYTHON" ]]; then
   echo "Missing Mala python: $MALA_PYTHON" >&2
@@ -34,3 +36,7 @@ fi
 
 cd "$MALA_ROOT"
 "$MALA_PYTHON" -m src.research.research_ops shadow-daily-report --with-evidence
+"$MALA_PYTHON" -m src.research.research_ops bhiksha-signal-ev \
+  --db-path "$BHIKSHA_DB_PATH" \
+  --lookback-days "$SIGNAL_EV_LOOKBACK_DAYS" \
+  --same-bar-replay
