@@ -94,7 +94,10 @@ cd ~/Documents/mala_v2
 ```
 
 The wrapper filters the daily report to today's active plan by default and
-enables Bhiksha counterfactual replay. Override with `ACTIVE_PLAN_ID=...` or
+refreshes the Mala Polygon cache for active-plan symbols before replay so
+same-bar and counterfactual checks can evaluate the current session. It also
+enables Bhiksha counterfactual replay. Override with `ACTIVE_PLAN_ID=...`,
+`POLYGON_CACHE_BACKFILL_DAYS=...`, `SHADOW_SKIP_POLYGON_BACKFILL=1`, or
 `SIGNAL_EV_COUNTERFACTUAL=0` only for a specific triage run.
 
 Expanded command outline:
