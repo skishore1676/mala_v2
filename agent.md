@@ -120,6 +120,7 @@ python -m src.research.research_ops process-intake --apply
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
 python -m src.research.research_ops sync-board --dry-run
+python -m src.research.research_ops provider-validate-m6 --run-dir data/results/hypothesis_runs/<hypothesis>/<run_ts>
 python -m src.research.research_ops push-control \
   --control-sheet-id 1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0 \
   --control-sheet-name Research_Control
@@ -177,6 +178,7 @@ Mental model:
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
 - Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_KILL`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`. Invalid nonblank actions are preserved and marked `invalid_operator_action:<value>` rather than silently cleared.
 - `Mala_Evidence_v1` is Mala-owned, read-only evidence: tested strategy params, signal window, recommendation tier, thesis exit evidence, and Bhiksha capability labels.
+- M6 provider validation is advisory post-M5 evidence: it writes `M6_provider_validation.csv`, `M6_feature_parity.csv`, and `M6_PROVIDER_REVIEW.md`; `mala_handoff` adds only provider status/risk/overlap/report columns to `Mala_Evidence_v1`.
 - Bhiksha owns runtime capability in `config/capabilities/bhiksha_capabilities_v1.yaml`; Mala consumes that manifest and marks unsupported variants as not `bhiksha_ready`.
 - `active_strategy` is the operator authorization layer. A row is only executable when the operator authorizes it and Bhiksha confirms the strategy variant is supported.
 - Legacy `Strategy_Catalog` paths exist for compatibility and migration history, but new handoff review should start from `Mala_Evidence_v1`.
@@ -191,8 +193,9 @@ Mental model:
 5. Continue gate-by-gate. M1→M2 proves cost-stability. M3 proves OOS walk-forward. M4 proves holdout. M5 proves execution robustness.
 6. After M5: exit optimizer runs automatically for every selected evidence row, including `watch_only` rows — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
-8. After M5: publish reviewable evidence with `python -m src.research.mala_handoff`. `bhiksha_ready` is derived from tested thesis exits, recommendation tier, and the Bhiksha-owned capability manifest.
-9. After a research batch, run `python -m src.research.research_ops backfill` and read `data/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
+8. After M5: run `python -m src.research.research_ops provider-validate-m6 --run-dir <run_dir>` when provider parity artifacts are available. This is advisory and does not replace M1-M5.
+9. After M5/M6: publish reviewable evidence with `python -m src.research.mala_handoff`. `bhiksha_ready` is derived from tested thesis exits, recommendation tier, and the Bhiksha-owned capability manifest; provider validation fields are review metadata.
+10. After a research batch, run `python -m src.research.research_ops backfill` and read `data/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
 
 **Reading regime slices post-run:**
 Look at `M4_holdout.csv` columns `vix_band`, `spy_trend_20d`, `session_type`, `market_regime_key` to answer:

@@ -7,6 +7,7 @@ from pathlib import Path
 from src.research.mala_handoff import (
     build_handoff_packets,
     derive_signal_window,
+    handoff_csv_fieldnames,
     packet_to_csv_row,
     review_thesis_exit_metrics,
     write_handoff_outputs,
@@ -146,6 +147,46 @@ def test_mala_handoff_accepts_verified_runtime_capability_manifest(tmp_path: Pat
     assert row["bhiksha_capability_status"] == "supported"
     assert row["bhiksha_capability_reason"] == "runtime_verified"
     assert row["bhiksha_ready"] == "true"
+
+
+def test_mala_handoff_joins_m6_provider_fields_when_present(tmp_path: Path) -> None:
+    run_dir = _write_market_impulse_run(tmp_path)
+    _write_csv(
+        run_dir / "M6_provider_validation.csv",
+        [
+            {
+                "catalog_key": "market-impulse-test__iwm_long",
+                "provider_validation_status": "provider_watch",
+                "provider_feature_risk": "yellow",
+                "provider_signal_overlap": "0.91",
+                "provider_trade_count_ratio": "0.87",
+                "provider_expectancy_ratio": "0.8",
+                "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+            }
+        ],
+    )
+    (run_dir / "M6_PROVIDER_REVIEW.md").write_text("# M6 Provider Review\n", encoding="utf-8")
+
+    row = packet_to_csv_row(build_handoff_packets(runs_root=tmp_path)[0])
+
+    assert row["provider_validation_status"] == "provider_watch"
+    assert row["provider_feature_risk"] == "yellow"
+    assert row["provider_signal_overlap"] == "0.91"
+    assert row["provider_validation_report"].endswith("M6_PROVIDER_REVIEW.md")
+    assert "provider_trade_count_ratio" not in handoff_csv_fieldnames()
+    assert "provider_expectancy_ratio" not in handoff_csv_fieldnames()
+
+
+def test_mala_handoff_missing_m6_file_is_advisory_unknown(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path)
+
+    row = packet_to_csv_row(build_handoff_packets(runs_root=tmp_path)[0])
+
+    assert row["provider_validation_status"] == "provider_unknown"
+    assert row["provider_feature_risk"] == ""
+    assert row["provider_signal_overlap"] == ""
+    assert row["provider_validation_report"] == ""
+    assert row["bhiksha_ready"] in {"true", "false"}
 
 
 def test_handoff_outputs_do_not_publish_vehicle_mapping_as_truth(tmp_path: Path) -> None:

@@ -28,6 +28,12 @@ from src.research.bhiksha_capabilities import (
     load_capability_manifest,
 )
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.provider_validation_m6 import (
+    M6_PROVIDER_REVIEW_MD,
+    M6_PROVIDER_VALIDATION_CSV,
+    M6ProviderValidation,
+    load_m6_provider_validation,
+)
 from src.research.recommendation_tier import RecommendationThresholds, classify_recommendation_tier
 from src.research.strategy_keys import to_strategy_key
 
@@ -166,6 +172,14 @@ class MalaBhikshaCapabilityEvidence:
 
 
 @dataclass(frozen=True)
+class MalaProviderValidationEvidence:
+    status: str
+    feature_risk: str
+    signal_overlap: str
+    report: str
+
+
+@dataclass(frozen=True)
 class MalaHandoffPacket:
     mala_handoff_version: int
     catalog_key: str
@@ -173,6 +187,7 @@ class MalaHandoffPacket:
     evidence: MalaM5Evidence
     thesis_exit: MalaThesisExitEvidence
     bhiksha_capability: MalaBhikshaCapabilityEvidence
+    provider_validation: MalaProviderValidationEvidence
     provenance: HandoffProvenance
     warnings: list[str] = field(default_factory=list)
 
@@ -245,6 +260,7 @@ def build_handoff_packet(
     )
     signal_start, signal_end, derivation = derive_signal_window(strategy_key, params)
     catalog_key = str(selected.get("catalog_key") or f"{run_dir.parent.name}__{symbol.lower()}_{direction}")
+    provider_validation = provider_validation_for_selected(run_dir, catalog_key)
     warnings = packet_warnings(
         selected=selected,
         m5_row=m5_row,
@@ -279,6 +295,10 @@ def build_handoff_packet(
         source_files.append(_display_path(run_dir / "m5_exit_optimizations.json"))
     if exit_opt and exit_opt.get("_artifact_path"):
         source_files.append(_display_path(Path(exit_opt["_artifact_path"])))
+    if (run_dir / M6_PROVIDER_VALIDATION_CSV).exists():
+        source_files.append(_display_path(run_dir / M6_PROVIDER_VALIDATION_CSV))
+    if (run_dir / M6_PROVIDER_REVIEW_MD).exists():
+        source_files.append(_display_path(run_dir / M6_PROVIDER_REVIEW_MD))
 
     return MalaHandoffPacket(
         mala_handoff_version=MALA_HANDOFF_VERSION,
@@ -318,6 +338,7 @@ def build_handoff_packet(
             manifest_version=capability.manifest_version,
             bhiksha_ready=capability.bhiksha_ready,
         ),
+        provider_validation=provider_validation,
         provenance=HandoffProvenance(
             hypothesis_id=run_dir.parent.name,
             catalog_key=catalog_key,
@@ -326,6 +347,16 @@ def build_handoff_packet(
             generated_at=datetime.now(UTC).isoformat(),
         ),
         warnings=warnings,
+    )
+
+
+def provider_validation_for_selected(run_dir: Path, catalog_key: str) -> MalaProviderValidationEvidence:
+    validation = load_m6_provider_validation(run_dir).get(catalog_key, M6ProviderValidation())
+    return MalaProviderValidationEvidence(
+        status=validation.provider_validation_status,
+        feature_risk=validation.provider_feature_risk,
+        signal_overlap=validation.provider_signal_overlap,
+        report=validation.provider_validation_report,
     )
 
 
@@ -574,6 +605,10 @@ def handoff_csv_fieldnames() -> list[str]:
         "bhiksha_capability_status",
         "bhiksha_capability_reason",
         "bhiksha_ready",
+        "provider_validation_status",
+        "provider_feature_risk",
+        "provider_signal_overlap",
+        "provider_validation_report",
         "signal_window_et",
         "signal_window_derivation",
         "recommendation_tier",
@@ -610,6 +645,10 @@ def packet_to_csv_row(packet: MalaHandoffPacket) -> dict[str, Any]:
         "bhiksha_capability_status": packet.bhiksha_capability.status,
         "bhiksha_capability_reason": packet.bhiksha_capability.reason,
         "bhiksha_ready": str(packet.bhiksha_capability.bhiksha_ready).lower(),
+        "provider_validation_status": packet.provider_validation.status,
+        "provider_feature_risk": packet.provider_validation.feature_risk,
+        "provider_signal_overlap": packet.provider_validation.signal_overlap,
+        "provider_validation_report": packet.provider_validation.report,
         "signal_window_et": _format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et),
         "signal_window_derivation": packet.strategy.signal_window_derivation,
         "recommendation_tier": packet.evidence.recommendation_tier,
@@ -657,8 +696,8 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
         "",
         "This file is Mala-owned evidence only. Runtime option vehicle, execution window, premium budget, option stops/targets, live/shadow mode, and conflict policy are operator/Bhiksha-owned and intentionally excluded.",
         "",
-        "| catalog_key | symbol | strategy | variant | Bhiksha | signal_window_et | tier | reason | expectancy | thesis_exit | warnings |",
-        "|---|---|---|---|---|---|---|---|---:|---|---|",
+        "| catalog_key | symbol | strategy | variant | Bhiksha | Provider | signal_window_et | tier | reason | expectancy | thesis_exit | warnings |",
+        "|---|---|---|---|---|---|---|---|---|---:|---|---|",
     ]
     for packet in packets:
         lines.append(
@@ -670,6 +709,7 @@ def render_handoff_markdown(packets: list[MalaHandoffPacket]) -> str:
                     _md(packet.strategy.strategy_key),
                     _md(packet.bhiksha_capability.strategy_variant),
                     _md(packet.bhiksha_capability.status),
+                    _md(packet.provider_validation.status),
                     _md(_format_window(packet.strategy.signal_window_start_et, packet.strategy.signal_window_end_et)),
                     _md(packet.evidence.recommendation_tier),
                     _md(packet.evidence.recommendation_tier_reason),

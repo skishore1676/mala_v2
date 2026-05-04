@@ -22,6 +22,10 @@ from src.research.catalog import upsert_strategy_catalog
 from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 from src.research.google_sheets import GoogleSheetTableClient
+from src.research.provider_validation_m6 import (
+    build_m6_provider_validation,
+    discover_latest_m5_run_dirs,
+)
 from src.research.provider_volume_parity import build_provider_volume_parity_report
 from src.research.research_runner import create_hypothesis_file
 from src.research.search_space import build_search_configs, search_param_keys
@@ -2886,6 +2890,44 @@ def cmd_provider_volume_parity(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_provider_validate_m6(args: argparse.Namespace) -> int:
+    run_dirs = [Path(args.run_dir)] if args.run_dir else discover_latest_m5_run_dirs(args.runs_dir)
+    provider_relative_volume_csv = args.provider_relative_volume_csv or _latest_provider_artifact(
+        args.out_dir,
+        "provider_relative_volume_parity.csv",
+    )
+    provider_feature_parity_csv = args.provider_feature_parity_csv or _latest_provider_artifact(
+        args.out_dir,
+        "provider_feature_parity.csv",
+    )
+    artifacts = build_m6_provider_validation(
+        run_dirs=run_dirs,
+        provider_relative_volume_csv=provider_relative_volume_csv,
+        provider_feature_parity_csv=provider_feature_parity_csv,
+        provider_replay_csv=args.provider_replay_csv or None,
+    )
+    print(f"M6_RUN_DIRS={len(artifacts.run_dirs)}")
+    for path in artifacts.provider_validation_csvs:
+        print(f"M6_PROVIDER_VALIDATION_CSV={path}")
+    for path in artifacts.feature_parity_csvs:
+        print(f"M6_FEATURE_PARITY_CSV={path}")
+    for path in artifacts.review_markdowns:
+        print(f"M6_PROVIDER_REVIEW={path}")
+    print(f"PROVIDER_RELATIVE_VOLUME_CSV={provider_relative_volume_csv or ''}")
+    print(f"PROVIDER_FEATURE_PARITY_CSV={provider_feature_parity_csv or ''}")
+    print(f"PROVIDER_REPLAY_CSV={args.provider_replay_csv or ''}")
+    return 0
+
+
+def _latest_provider_artifact(out_dir: str | Path, filename: str) -> str:
+    roots = [
+        Path(out_dir) / "provider_volume_parity",
+        REPO_ROOT / "data" / "results" / "provider_volume_parity",
+    ]
+    paths = sorted(path for root in roots for path in root.glob(f"*/{filename}"))
+    return str(paths[-1]) if paths else ""
+
+
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--hypotheses-dir", default=str(DEFAULT_HYPOTHESES_DIR))
     parser.add_argument("--runs-dir", default=str(DEFAULT_RUNS_DIR))
@@ -3087,6 +3129,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     volume_parity.add_argument("--relative-volume-window", type=int, default=20)
     volume_parity.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
     volume_parity.set_defaults(func=cmd_provider_volume_parity)
+
+    provider_validate = subparsers.add_parser(
+        "provider-validate-m6",
+        help="Write advisory M6 provider-validation artifacts into M5 run dirs.",
+    )
+    _add_common_args(provider_validate)
+    provider_validate.add_argument("--run-dir", default="", help="One M5 run dir. Omit to process latest M5 run dirs.")
+    provider_validate.add_argument(
+        "--provider-relative-volume-csv",
+        default="",
+        help="provider_relative_volume_parity.csv. Defaults to latest data/results/research_ops/provider_volume_parity run.",
+    )
+    provider_validate.add_argument(
+        "--provider-feature-parity-csv",
+        default="",
+        help="provider_feature_parity.csv. Defaults to latest data/results/research_ops/provider_volume_parity run.",
+    )
+    provider_validate.add_argument(
+        "--provider-replay-csv",
+        default="",
+        help="Optional volume_mismatch_replay_by_row.csv or catalog_volume_sensitivity_by_row.csv for signal overlap.",
+    )
+    provider_validate.set_defaults(func=cmd_provider_validate_m6)
 
     return parser.parse_args(argv)
 
