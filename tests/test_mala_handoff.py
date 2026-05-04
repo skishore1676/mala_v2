@@ -9,6 +9,7 @@ from src.research.mala_handoff import (
     derive_signal_window,
     handoff_csv_fieldnames,
     packet_to_csv_row,
+    publish_provider_validation_columns,
     review_thesis_exit_metrics,
     write_handoff_outputs,
 )
@@ -187,6 +188,70 @@ def test_mala_handoff_missing_m6_file_is_advisory_unknown(tmp_path: Path) -> Non
     assert row["provider_signal_overlap"] == ""
     assert row["provider_validation_report"] == ""
     assert row["bhiksha_ready"] in {"true", "false"}
+
+
+def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> None:
+    run_dir = _write_market_impulse_run(tmp_path)
+    _write_csv(
+        run_dir / "M6_provider_validation.csv",
+        [
+            {
+                "catalog_key": "market-impulse-test__iwm_long",
+                "provider_validation_status": "provider_watch",
+                "provider_feature_risk": "yellow",
+                "provider_signal_overlap": "0.91",
+                "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+            }
+        ],
+    )
+    packets = build_handoff_packets(runs_root=tmp_path)
+    client = _FakeEvidenceClient(
+        [
+            {
+                "row_index": 2,
+                "catalog_key": "market-impulse-test__iwm_long",
+                "bhiksha_ready": "true",
+                "thesis_exit_tested": "true",
+                "thesis_exit_policy": "fixed_rr_underlying",
+                "provider_validation_status": "",
+                "provider_feature_risk": "",
+                "provider_signal_overlap": "",
+                "provider_validation_report": "",
+            }
+        ]
+    )
+
+    result = publish_provider_validation_columns(
+        packets,
+        spreadsheet_id="sheet",
+        credentials_path=tmp_path / "creds.json",
+        evidence_client=client,
+    )
+
+    assert result == {
+        "provider_rows": 1,
+        "updated_rows": 1,
+        "missing_catalog_keys": [],
+        "added_columns": [],
+    }
+    assert client.updated_columns == [
+        "provider_validation_status",
+        "provider_feature_risk",
+        "provider_signal_overlap",
+        "provider_validation_report",
+    ]
+    assert client.updated_rows == [
+        {
+            "row_index": 2,
+            "provider_validation_status": "provider_watch",
+            "provider_feature_risk": "yellow",
+            "provider_signal_overlap": "0.91",
+            "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+        }
+    ]
+    assert "bhiksha_ready" not in client.updated_rows[0]
+    assert "thesis_exit_tested" not in client.updated_rows[0]
+    assert "thesis_exit_policy" not in client.updated_rows[0]
 
 
 def test_handoff_outputs_do_not_publish_vehicle_mapping_as_truth(tmp_path: Path) -> None:
@@ -386,3 +451,30 @@ strategies:
         encoding="utf-8",
     )
     return path
+
+
+class _FakeEvidenceClient:
+    def __init__(self, rows: list[dict[str, str | int]]) -> None:
+        self.rows = rows
+        self.updated_rows: list[dict[str, str | int]] = []
+        self.updated_columns: list[str] = []
+
+    def ensure_sheet_exists(self) -> None:
+        return None
+
+    def ensure_columns(self, columns: list[str]) -> list[str]:
+        return []
+
+    def read_rows(self, *, range_suffix: str = "A1:Z1000") -> list[dict[str, str | int]]:
+        assert range_suffix == "A1:ZZ5000"
+        return self.rows
+
+    def batch_update_rows(
+        self,
+        *,
+        rows: list[dict[str, str | int]],
+        columns: list[str],
+    ) -> dict[str, object]:
+        self.updated_rows = rows
+        self.updated_columns = columns
+        return {"updated": len(rows)}

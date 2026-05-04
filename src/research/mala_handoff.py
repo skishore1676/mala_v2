@@ -97,6 +97,13 @@ _SELECTED_NON_PARAM_COLS = {
 
 DEFAULT_EVIDENCE_SHEET_NAME = "Mala_Evidence_v1"
 
+M6_PROVIDER_FIELDNAMES = [
+    "provider_validation_status",
+    "provider_feature_risk",
+    "provider_signal_overlap",
+    "provider_validation_report",
+]
+
 _REVIEW_METRIC_ORDER = [
     "expectancy",
     "profit_factor",
@@ -578,8 +585,9 @@ def publish_review_tabs(
     spreadsheet_id: str,
     credentials_path: str | Path,
     evidence_sheet_name: str = DEFAULT_EVIDENCE_SHEET_NAME,
+    evidence_client: GoogleSheetTableClient | None = None,
 ) -> dict[str, int]:
-    evidence_client = GoogleSheetTableClient(
+    evidence_client = evidence_client or GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=evidence_sheet_name,
         credentials_path=Path(credentials_path),
@@ -588,6 +596,66 @@ def publish_review_tabs(
     evidence_client.overwrite_table(headers=handoff_csv_fieldnames(), rows=evidence_rows)
     return {
         "evidence_rows": len(evidence_rows),
+    }
+
+
+def publish_provider_validation_columns(
+    packets: list[MalaHandoffPacket],
+    *,
+    spreadsheet_id: str,
+    credentials_path: str | Path,
+    evidence_sheet_name: str = DEFAULT_EVIDENCE_SHEET_NAME,
+    evidence_client: GoogleSheetTableClient | None = None,
+) -> dict[str, Any]:
+    """Publish only M6 provider review columns into existing evidence rows.
+
+    M6 is post-M5 advisory evidence. It must not regenerate or overwrite
+    readiness, thesis-exit, recommendation, or strategy fields in
+    Mala_Evidence_v1. Rows are matched by catalog_key and missing rows are
+    reported for a separate full handoff review.
+    """
+    evidence_client = evidence_client or GoogleSheetTableClient(
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=evidence_sheet_name,
+        credentials_path=Path(credentials_path),
+    )
+    evidence_client.ensure_sheet_exists()
+    added_columns = evidence_client.ensure_columns(M6_PROVIDER_FIELDNAMES)
+    existing_rows = evidence_client.read_rows(range_suffix="A1:ZZ5000")
+    if existing_rows and "catalog_key" not in existing_rows[0]:
+        raise RuntimeError(f"{evidence_sheet_name} must contain a catalog_key column for provider-only publish")
+
+    provider_rows_by_key = {
+        packet.catalog_key: _provider_validation_update_row(packet)
+        for packet in packets
+        if packet.catalog_key
+    }
+    updates: list[dict[str, Any]] = []
+    matched_keys: set[str] = set()
+    for existing in existing_rows:
+        catalog_key = str(existing.get("catalog_key") or "")
+        provider_row = provider_rows_by_key.get(catalog_key)
+        if provider_row is None:
+            continue
+        matched_keys.add(catalog_key)
+        updates.append({"row_index": existing["row_index"], **provider_row})
+
+    evidence_client.batch_update_rows(rows=updates, columns=M6_PROVIDER_FIELDNAMES)
+    missing_keys = sorted(set(provider_rows_by_key) - matched_keys)
+    return {
+        "provider_rows": len(provider_rows_by_key),
+        "updated_rows": len(updates),
+        "missing_catalog_keys": missing_keys,
+        "added_columns": added_columns,
+    }
+
+
+def _provider_validation_update_row(packet: MalaHandoffPacket) -> dict[str, Any]:
+    return {
+        "provider_validation_status": packet.provider_validation.status,
+        "provider_feature_risk": packet.provider_validation.feature_risk,
+        "provider_signal_overlap": packet.provider_validation.signal_overlap,
+        "provider_validation_report": packet.provider_validation.report,
     }
 
 
@@ -933,6 +1001,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all-runs", action="store_true", help="Include older duplicate catalog_key rows instead of latest only.")
     parser.add_argument("--promote-shadow-only", action="store_true", help="Exclude watch_only candidates.")
     parser.add_argument("--publish-sheets", action="store_true", help="Overwrite the Mala evidence review tab in Google Sheets.")
+    parser.add_argument(
+        "--publish-provider-validation-only",
+        action="store_true",
+        help="Update only M6 provider validation columns in existing Mala_Evidence_v1 rows.",
+    )
     parser.add_argument("--sheet-id", default="", help="Google spreadsheet ID or URL. Defaults to STRATEGY_CATALOG_SHEET_ID.")
     parser.add_argument("--google-credentials", default="", help="Google service-account JSON path. Defaults to GOOGLE_API_CREDENTIALS_PATH.")
     parser.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
@@ -959,6 +1032,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"RECOMMENDATION_COUNTS={json.dumps(counts, sort_keys=True)}")
     for name, path in paths.items():
         print(f"{name.upper()}={path}")
+    if args.publish_sheets and args.publish_provider_validation_only:
+        raise SystemExit("--publish-sheets and --publish-provider-validation-only are mutually exclusive")
     if args.publish_sheets:
         sheet_id = args.sheet_id or settings.strategy_catalog_sheet_id
         credentials = args.google_credentials or settings.google_api_credentials_path
@@ -974,6 +1049,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"EVIDENCE_SHEET={args.evidence_sheet_name}")
         print(f"SHEET_PUBLISH={json.dumps(publish_result, sort_keys=True)}")
+    if args.publish_provider_validation_only:
+        sheet_id = args.sheet_id or settings.strategy_catalog_sheet_id
+        credentials = args.google_credentials or settings.google_api_credentials_path
+        if not sheet_id:
+            raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID is required for --publish-provider-validation-only")
+        if not credentials:
+            raise SystemExit("--google-credentials or GOOGLE_API_CREDENTIALS_PATH is required for --publish-provider-validation-only")
+        publish_result = publish_provider_validation_columns(
+            packets,
+            spreadsheet_id=sheet_id,
+            credentials_path=credentials,
+            evidence_sheet_name=args.evidence_sheet_name,
+        )
+        print(f"EVIDENCE_SHEET={args.evidence_sheet_name}")
+        print(f"PROVIDER_VALIDATION_PUBLISH={json.dumps(publish_result, sort_keys=True)}")
     return 0
 
 

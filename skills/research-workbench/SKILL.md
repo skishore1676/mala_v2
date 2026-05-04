@@ -130,7 +130,7 @@ Interpretation:
 - Valid `Research_Control.operator_action` values are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
 - `publish-pending` and `sync-board` are dry-run by default; use `--apply` only after explicit review.
 - `mark-stale` appends a non-destructive decision to `research/reports/research_ops/finding_dispositions.jsonl`; it suppresses that reviewed finding without deleting or moving artifacts.
-- `provider-validate-m6` writes advisory post-M5 provider/runtime validation artifacts into the run dir. `mala_handoff` will join the four sheet-safe fields when `M6_provider_validation.csv` exists.
+- `provider-validate-m6` writes advisory post-M5 provider/runtime validation artifacts into the run dir. Use `mala_handoff --publish-provider-validation-only` when publishing M6 into Sheets; that path updates only the four provider fields and preserves existing readiness, thesis-exit, recommendation, and strategy evidence.
 
 ## Research Runner Layer
 
