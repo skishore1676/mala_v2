@@ -46,6 +46,8 @@ class BhikshaSignalEvArtifacts:
     trade_csv: Path
     deployment_csv: Path
     signal_csv: Path
+    counterfactual_csv: Path
+    counterfactual_summary_csv: Path
 
 
 def build_bhiksha_signal_ev_report(
@@ -55,6 +57,7 @@ def build_bhiksha_signal_ev_report(
     lookback_days: int = 21,
     max_signal_lag_minutes: int = 5,
     same_bar_replay: bool = False,
+    counterfactual_replay: bool = False,
     data_dir: str | Path | None = None,
     replay_warmup_days: int = 7,
 ) -> BhikshaSignalEvArtifacts:
@@ -76,13 +79,14 @@ def build_bhiksha_signal_ev_report(
     ]
 
     timeline = _build_deployment_timeline(events)
-    replay_cache = _ReplayCache(Path(data_dir) if data_dir else DATA_DIR) if same_bar_replay else None
+    replay_cache = _ReplayCache(Path(data_dir) if data_dir else DATA_DIR) if same_bar_replay or counterfactual_replay else None
     signal_rows = _signal_rows(
         scoped_events,
         timeline,
         replay_cache=replay_cache,
         replay_warmup_days=replay_warmup_days,
     )
+    evaluation_rows = _signal_evaluation_rows(scoped_events)
     trade_rows = _trade_rows(
         scoped_events,
         scoped_trade_sessions,
@@ -90,28 +94,46 @@ def build_bhiksha_signal_ev_report(
         signal_rows,
         max_signal_lag=timedelta(minutes=max_signal_lag_minutes),
     )
+    counterfactual_rows = _counterfactual_rows(
+        timeline,
+        signal_rows,
+        replay_cache=replay_cache if counterfactual_replay else None,
+        replay_warmup_days=replay_warmup_days,
+        start_at=start_at,
+        evaluation_rows=evaluation_rows,
+    )
+    counterfactual_summary_rows = _counterfactual_summary_rows(counterfactual_rows, trade_rows)
     deployment_rows = _deployment_rows(signal_rows, trade_rows)
 
     signal_csv = out / "bhiksha_signal_events.csv"
     trade_csv = out / "bhiksha_signal_ev_trades.csv"
     deployment_csv = out / "bhiksha_signal_ev_deployments.csv"
+    counterfactual_csv = out / "bhiksha_signal_counterfactual.csv"
+    counterfactual_summary_csv = out / "bhiksha_signal_counterfactual_summary.csv"
     report_md = out / "BHIKSHA_SIGNAL_EV_REPORT.md"
 
     _write_csv(signal_csv, signal_rows)
     _write_csv(trade_csv, trade_rows)
     _write_csv(deployment_csv, deployment_rows)
+    _write_csv(counterfactual_csv, counterfactual_rows)
+    _write_csv(counterfactual_summary_csv, counterfactual_summary_rows)
     report_md.write_text(
         _render_report(
             db_path=db,
             lookback_days=lookback_days,
             max_seen_at=max_seen_at,
             same_bar_replay=same_bar_replay,
+            counterfactual_replay=counterfactual_replay,
             signal_rows=signal_rows,
             trade_rows=trade_rows,
             deployment_rows=deployment_rows,
+            counterfactual_rows=counterfactual_rows,
+            counterfactual_summary_rows=counterfactual_summary_rows,
             signal_csv=signal_csv,
             trade_csv=trade_csv,
             deployment_csv=deployment_csv,
+            counterfactual_csv=counterfactual_csv,
+            counterfactual_summary_csv=counterfactual_summary_csv,
         ),
         encoding="utf-8",
     )
@@ -121,6 +143,8 @@ def build_bhiksha_signal_ev_report(
         trade_csv=trade_csv,
         deployment_csv=deployment_csv,
         signal_csv=signal_csv,
+        counterfactual_csv=counterfactual_csv,
+        counterfactual_summary_csv=counterfactual_summary_csv,
     )
 
 
@@ -193,11 +217,11 @@ def _deployment_for_time(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     fallback: tuple[dict[str, Any], dict[str, Any]] | None = None
     for snapshot in timeline:
+        if when is not None and snapshot["created_at"] > when:
+            break
         deployment = snapshot["deployments"].get(deployment_id)
         if deployment is not None:
             fallback = snapshot, deployment
-        if when is not None and snapshot["created_at"] > when:
-            break
     if fallback is None:
         return {}, {}
     return fallback
@@ -255,6 +279,34 @@ def _signal_rows(
         }
         rows.append(row)
     rows.sort(key=lambda row: row["signal_at"])
+    return rows
+
+
+def _signal_evaluation_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return all Bhiksha runtime signal evaluations when the newer event exists."""
+
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        if event["event_type"] != "signal_evaluation":
+            continue
+        payload = event["payload"]
+        deployment_id = str(payload.get("deployment_id", ""))
+        evaluated_at = _parse_dt_or_none(str(payload.get("timestamp") or event["created_at"]))
+        if not deployment_id or evaluated_at is None:
+            continue
+        rows.append(
+            {
+                "created_at": _parse_dt(event["created_at"]).isoformat(),
+                "evaluated_at": evaluated_at.isoformat(),
+                "deployment_id": deployment_id,
+                "symbol": payload.get("symbol", ""),
+                "signal": _yes_no(bool(payload.get("signal"))),
+                "direction": payload.get("direction", ""),
+                "reason": ",".join(str(reason) for reason in payload.get("reason") or []),
+                "features": _compact_json(payload.get("features") or {}),
+            }
+        )
+    rows.sort(key=lambda row: row["evaluated_at"])
     return rows
 
 
@@ -408,18 +460,447 @@ def _deployment_rows(signal_rows: list[dict[str, Any]], trade_rows: list[dict[st
     return rows
 
 
+def _counterfactual_rows(
+    timeline: list[dict[str, Any]],
+    signal_rows: list[dict[str, Any]],
+    *,
+    replay_cache: "_ReplayCache | None",
+    replay_warmup_days: int,
+    start_at: datetime | None,
+    evaluation_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if replay_cache is None:
+        return []
+
+    actual_by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in signal_rows:
+        signal_at = _parse_dt_or_none(str(row.get("signal_at", "")))
+        if signal_at is None:
+            continue
+        actual_by_key[(str(row.get("deployment_id", "")), _bar_key(signal_at))].append(row)
+
+    evaluation_by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in evaluation_rows:
+        evaluated_at = _parse_dt_or_none(str(row.get("evaluated_at", "")))
+        if evaluated_at is None:
+            continue
+        evaluation_by_key[(str(row.get("deployment_id", "")), _bar_key(evaluated_at))].append(row)
+
+    seen_deployments: set[tuple[str, str, str]] = set()
+    matched_actual_keys: set[tuple[str, str]] = set()
+    rows: list[dict[str, Any]] = []
+    for snapshot in timeline:
+        trading_date = str(snapshot.get("trading_date") or "")
+        if not trading_date:
+            continue
+        if start_at is not None:
+            day_end = _parse_dt_or_none(f"{trading_date}T23:59:59+00:00")
+            if day_end is not None and day_end < start_at:
+                continue
+        for deployment_id, deployment in snapshot.get("deployments", {}).items():
+            key = (str(snapshot.get("active_plan_id", "")), trading_date, str(deployment_id))
+            if key in seen_deployments:
+                continue
+            seen_deployments.add(key)
+            rows.extend(
+                _counterfactual_deployment_day_rows(
+                    snapshot=snapshot,
+                    deployment_id=str(deployment_id),
+                    deployment=deployment,
+                    trading_date=trading_date,
+                    actual_by_key=actual_by_key,
+                    evaluation_by_key=evaluation_by_key,
+                    matched_actual_keys=matched_actual_keys,
+                    replay_cache=replay_cache,
+                    replay_warmup_days=replay_warmup_days,
+                )
+            )
+
+    for signal in signal_rows:
+        signal_at = _parse_dt_or_none(str(signal.get("signal_at", "")))
+        if signal_at is None:
+            continue
+        key = (str(signal.get("deployment_id", "")), _bar_key(signal_at))
+        if key in matched_actual_keys:
+            continue
+        row = {
+            "counterfactual_status": "extra_bhiksha_signal",
+            "active_plan_id": signal.get("active_plan_id", ""),
+            "trading_date": signal_at.astimezone(ET).date().isoformat(),
+            "deployment_id": signal.get("deployment_id", ""),
+            "symbol": signal.get("symbol", ""),
+            "strategy_key": signal.get("strategy_key", ""),
+            "strategy_name": signal.get("strategy_name", ""),
+            "catalog_key": signal.get("catalog_key", ""),
+            "expected_direction": signal.get("expected_direction", ""),
+            "mala_signal_at": "",
+            "mala_signal_at_et": "",
+            "mala_direction": "",
+            "bhiksha_signal_at": signal.get("signal_at", ""),
+            "bhiksha_signal_at_et": signal.get("signal_at_et", ""),
+            "bhiksha_direction": signal.get("direction", ""),
+            "bhiksha_reason": signal.get("reason", ""),
+            "mala_signal_window_et": signal.get("signal_window_et", ""),
+            "mala_replay_status": signal.get("mala_same_bar_replay_status", ""),
+            "mala_replay_error": signal.get("mala_same_bar_replay_error", ""),
+            "mala_feature_mismatch_count": signal.get("mala_same_bar_feature_mismatch_count", ""),
+            "mala_feature_max_pct_diff": signal.get("mala_same_bar_feature_max_pct_diff", ""),
+            "mala_feature_worst": signal.get("mala_same_bar_feature_worst", ""),
+            "mala_feature_diffs": signal.get("mala_same_bar_feature_diffs", ""),
+        }
+        row["root_cause"] = _counterfactual_root_cause(row)
+        rows.append(row)
+    rows.sort(
+        key=lambda row: (
+            str(row.get("trading_date", "")),
+            str(row.get("deployment_id", "")),
+            str(row.get("mala_signal_at") or row.get("bhiksha_signal_at") or ""),
+            str(row.get("counterfactual_status", "")),
+        )
+    )
+    return rows
+
+
+def _counterfactual_deployment_day_rows(
+    *,
+    snapshot: dict[str, Any],
+    deployment_id: str,
+    deployment: dict[str, Any],
+    trading_date: str,
+    actual_by_key: dict[tuple[str, str], list[dict[str, Any]]],
+    evaluation_by_key: dict[tuple[str, str], list[dict[str, Any]]],
+    matched_actual_keys: set[tuple[str, str]],
+    replay_cache: "_ReplayCache",
+    replay_warmup_days: int,
+) -> list[dict[str, Any]]:
+    metadata = _metadata(deployment)
+    evidence = _mala_evidence(metadata)
+    strategy_key = str(_nested_get(deployment, ["strategy", "key"], ""))
+    strategy_name = STRATEGY_NAME_BY_KEY.get(strategy_key)
+    symbol = str(deployment.get("symbol") or metadata.get("symbol") or "")
+    expected_direction = _expected_direction(deployment, metadata)
+    signal_window = _signal_window(metadata)
+    base_row = {
+        "active_plan_id": snapshot.get("active_plan_id", ""),
+        "trading_date": trading_date,
+        "deployment_id": deployment_id,
+        "symbol": symbol,
+        "strategy_key": strategy_key,
+        "strategy_name": evidence.get("strategy_name", strategy_name or ""),
+        "catalog_key": metadata.get("catalog_key", ""),
+        "expected_direction": expected_direction,
+        "mala_signal_window_et": signal_window,
+    }
+    if not strategy_name:
+        return [
+            base_row
+            | {
+                "counterfactual_status": "unsupported_strategy",
+                "mala_replay_status": "unsupported_strategy",
+                "mala_replay_error": f"strategy_key={strategy_key}",
+                "root_cause": "unsupported_strategy_adapter",
+            }
+        ]
+
+    day = datetime.fromisoformat(trading_date).date()
+    params = _normalized_params(_nested_get(deployment, ["strategy", "params"], {}) or {})
+    try:
+        frame = replay_cache.signal_frame(
+            symbol=symbol,
+            start_date=day - timedelta(days=replay_warmup_days),
+            end_date=day,
+            strategy_name=strategy_name,
+            params=params,
+        )
+        if frame.is_empty():
+            row = base_row | {"counterfactual_status": "missing_bars", "mala_replay_status": "missing_bars"}
+            row["root_cause"] = _counterfactual_root_cause(row)
+            return [row]
+        day_signals = _mala_day_signals(frame, trading_date, expected_direction, signal_window)
+    except Exception as exc:
+        return [
+            base_row
+            | {
+                "counterfactual_status": "replay_error",
+                "mala_replay_status": "replay_error",
+                "mala_replay_error": str(exc)[:240],
+                "root_cause": "mala_replay_error",
+            }
+        ]
+
+    rows: list[dict[str, Any]] = []
+    for signal in day_signals:
+        signal_at = signal["signal_at"]
+        bar_key = _bar_key(signal_at)
+        actuals = actual_by_key.get((deployment_id, bar_key), [])
+        actual = _matching_actual_signal(actuals, str(signal.get("direction", "")), expected_direction)
+        if actual:
+            matched_actual_keys.add((deployment_id, bar_key))
+            status = "matched_actual"
+        elif actuals:
+            matched_actual_keys.add((deployment_id, bar_key))
+            actual = actuals[0]
+            status = "actual_direction_mismatch"
+        else:
+            status = "missed_by_bhiksha"
+        evaluation = _nearest_evaluation(evaluation_by_key.get((deployment_id, bar_key), []), signal_at)
+        rows.append(
+            _with_root_cause(
+                base_row
+                | {
+                    "counterfactual_status": status,
+                    "mala_replay_status": "signal",
+                    "mala_signal_at": signal_at.isoformat(),
+                    "mala_signal_at_et": _format_et(signal_at),
+                    "mala_direction": signal.get("direction", ""),
+                    "bhiksha_signal_at": actual.get("signal_at", "") if actual else "",
+                    "bhiksha_signal_at_et": actual.get("signal_at_et", "") if actual else "",
+                    "bhiksha_direction": actual.get("direction", "") if actual else "",
+                    "bhiksha_reason": actual.get("reason", "") if actual else "",
+                    "bhiksha_evaluation_at": evaluation.get("evaluated_at", "") if evaluation else "",
+                    "bhiksha_evaluation_signal": evaluation.get("signal", "") if evaluation else "",
+                    "bhiksha_evaluation_direction": evaluation.get("direction", "") if evaluation else "",
+                    "bhiksha_evaluation_reason": evaluation.get("reason", "") if evaluation else "",
+                }
+            )
+        )
+    if not rows:
+        row = base_row | {"counterfactual_status": "no_mala_signals", "mala_replay_status": "no_signal"}
+        row["root_cause"] = _counterfactual_root_cause(row)
+        rows.append(row)
+    return rows
+
+
+def _mala_day_signals(
+    frame: pl.DataFrame,
+    trading_date: str,
+    expected_direction: str,
+    signal_window: str,
+) -> list[dict[str, Any]]:
+    if "timestamp" not in frame.columns or "signal" not in frame.columns:
+        return []
+    keyed = frame.with_columns(
+        pl.col("timestamp").dt.convert_time_zone("America/New_York").dt.date().cast(pl.Utf8).alias("_et_date")
+    ).filter(pl.col("_et_date") == trading_date)
+    if keyed.is_empty():
+        return []
+    keyed = keyed.filter(pl.col("signal").fill_null(False))
+    if expected_direction and "signal_direction" in keyed.columns:
+        keyed = keyed.filter(pl.col("signal_direction") == expected_direction)
+    signals: list[dict[str, Any]] = []
+    for row in keyed.iter_rows(named=True):
+        signal_at = row.get("timestamp")
+        if not isinstance(signal_at, datetime):
+            continue
+        if signal_at.tzinfo is None:
+            signal_at = signal_at.replace(tzinfo=timezone.utc)
+        if not _inside_window(signal_at, signal_window):
+            continue
+        signals.append(
+            {
+                "signal_at": signal_at.astimezone(timezone.utc),
+                "direction": "" if row.get("signal_direction") is None else str(row.get("signal_direction")),
+            }
+        )
+    signals.sort(key=lambda row: row["signal_at"])
+    return signals
+
+
+def _matching_actual_signal(
+    actuals: list[dict[str, Any]],
+    mala_direction: str,
+    expected_direction: str,
+) -> dict[str, Any]:
+    for actual in actuals:
+        actual_direction = str(actual.get("direction", ""))
+        if mala_direction and actual_direction == mala_direction:
+            return actual
+        if not mala_direction and expected_direction and actual_direction == expected_direction:
+            return actual
+    return {}
+
+
+def _nearest_evaluation(evaluations: list[dict[str, Any]], target_at: datetime) -> dict[str, Any]:
+    if not evaluations:
+        return {}
+    best: dict[str, Any] = {}
+    best_abs_seconds: float | None = None
+    for evaluation in evaluations:
+        evaluated_at = _parse_dt_or_none(str(evaluation.get("evaluated_at", "")))
+        if evaluated_at is None:
+            continue
+        abs_seconds = abs((evaluated_at - target_at).total_seconds())
+        if best_abs_seconds is None or abs_seconds < best_abs_seconds:
+            best = evaluation
+            best_abs_seconds = abs_seconds
+    return best
+
+
+def _with_root_cause(row: dict[str, Any]) -> dict[str, Any]:
+    row["root_cause"] = _counterfactual_root_cause(row)
+    return row
+
+
+def _counterfactual_root_cause(row: dict[str, Any]) -> str:
+    status = str(row.get("counterfactual_status", ""))
+    if status == "matched_actual":
+        return "matched"
+    if status == "actual_direction_mismatch":
+        return "runtime_direction_mismatch"
+    if status == "unsupported_strategy":
+        return "unsupported_strategy_adapter"
+    if status in {"missing_bars", "missing_bar"}:
+        return "mala_cache_gap"
+    if status == "replay_error":
+        return "mala_replay_error"
+    if status == "extra_bhiksha_signal":
+        replay_status = str(row.get("mala_replay_status", ""))
+        if replay_status == "unsupported_strategy":
+            return "unsupported_strategy_adapter"
+        if replay_status in {"missing_bars", "missing_bar"}:
+            return "mala_cache_gap"
+        if replay_status == "replay_error":
+            return "mala_replay_error"
+        mismatch_count = int(_first_float(row.get("mala_feature_mismatch_count"), 0) or 0)
+        if mismatch_count > 0:
+            worst = str(row.get("mala_feature_worst", "")).lower()
+            if "volume" in worst:
+                return "provider_feature_mismatch_volume"
+            if any(token in worst for token in ("velocity", "accel", "jerk", "directional_mass", "vpoc")):
+                return "provider_feature_mismatch_kinematic"
+            return "provider_feature_mismatch"
+        if replay_status == "no_mala_signal":
+            return "same_bar_strategy_mismatch"
+        return "extra_signal_unclassified"
+    if status == "missed_by_bhiksha":
+        signal = str(row.get("bhiksha_evaluation_signal", ""))
+        if signal == "yes":
+            return "runtime_direction_or_matching_gap"
+        reason = str(row.get("bhiksha_evaluation_reason", "")).lower()
+        if not reason:
+            return "no_runtime_evaluation_observed"
+        if any(token in reason for token in ("time_window", "entry_window", "minutes")):
+            return "runtime_time_window_gate"
+        if "volume" in reason:
+            return "runtime_volume_gate"
+        if "regime" in reason:
+            return "runtime_regime_gate"
+        if any(token in reason for token in ("velocity", "accel", "jerk", "directional_mass", "vpoc", "stretch")):
+            return "runtime_strategy_feature_gate"
+        if any(token in reason for token in ("cooldown", "position", "cash", "lifecycle", "reconciliation")):
+            return "runtime_risk_or_lifecycle_gate"
+        return "runtime_strategy_gate"
+    if status == "no_mala_signals":
+        return "no_mala_signal_expected"
+    return status or "unknown"
+
+
+def _counterfactual_summary_rows(
+    counterfactual_rows: list[dict[str, Any]],
+    trade_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deployments = sorted(
+        {str(row.get("deployment_id", "")) for row in counterfactual_rows + trade_rows if row.get("deployment_id")}
+    )
+    rows: list[dict[str, Any]] = []
+    for deployment_id in deployments:
+        cf = [row for row in counterfactual_rows if row.get("deployment_id") == deployment_id]
+        trades = [row for row in trade_rows if row.get("deployment_id") == deployment_id]
+        representative = (trades or cf or [{}])[-1]
+        clean_trades = [row for row in trades if row.get("mala_same_bar_replay_status") == "match"]
+        extra_trades = [row for row in trades if row.get("mala_same_bar_replay_status") == "no_mala_signal"]
+        clean_ev = _realized_trade_summary(clean_trades)
+        extra_ev = _realized_trade_summary(extra_trades)
+        expected = [row for row in cf if row.get("counterfactual_status") in {"matched_actual", "missed_by_bhiksha", "actual_direction_mismatch"}]
+        matched = [row for row in cf if row.get("counterfactual_status") == "matched_actual"]
+        missed = [row for row in cf if row.get("counterfactual_status") == "missed_by_bhiksha"]
+        extras = [row for row in cf if row.get("counterfactual_status") == "extra_bhiksha_signal"]
+        root_causes = Counter(str(row.get("root_cause", "")) for row in missed + extras if row.get("root_cause"))
+        rows.append(
+            {
+                "deployment_id": deployment_id,
+                "symbol": representative.get("symbol", ""),
+                "strategy_key": representative.get("strategy_key", ""),
+                "catalog_key": representative.get("catalog_key", ""),
+                "authorization_mode": representative.get("authorization_mode", ""),
+                "mala_expected_signals": len(expected),
+                "matched_actual_signals": len(matched),
+                "missed_mala_signals": len(missed),
+                "extra_bhiksha_signals": len(extras),
+                "actual_match_rate": _round_or_blank(len(matched) / len(expected) if expected else None),
+                "clean_trade_count": clean_ev["count"],
+                "clean_win_rate": _round_or_blank(clean_ev["win_rate"]),
+                "clean_avg_realized_stop_r": _round_or_blank(clean_ev["avg_r"]),
+                "clean_total_pnl_usd": _round_or_blank(clean_ev["pnl"]),
+                "extra_trade_count": extra_ev["count"],
+                "extra_win_rate": _round_or_blank(extra_ev["win_rate"]),
+                "extra_avg_realized_stop_r": _round_or_blank(extra_ev["avg_r"]),
+                "extra_total_pnl_usd": _round_or_blank(extra_ev["pnl"]),
+                "top_root_causes": _compact_counter(root_causes, limit=3),
+                "counterfactual_focus": _counterfactual_focus(len(expected), len(matched), len(missed), len(extras), clean_ev, extra_ev),
+            }
+        )
+    rows.sort(key=lambda row: (str(row["counterfactual_focus"]), str(row["deployment_id"])))
+    return rows
+
+
+def _realized_trade_summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    closed = [row for row in trades if row.get("status") == "closed" and row.get("realized_stop_r") != ""]
+    values = [_first_float(row.get("realized_stop_r")) for row in closed]
+    values = [value for value in values if value is not None]
+    pnls = [_first_float(row.get("realized_pnl_usd")) for row in closed]
+    pnls = [value for value in pnls if value is not None]
+    return {
+        "count": len(values),
+        "win_rate": sum(1 for value in values if value > 0) / len(values) if values else None,
+        "avg_r": sum(values) / len(values) if values else None,
+        "pnl": sum(pnls) if pnls else None,
+    }
+
+
+def _counterfactual_focus(
+    expected: int,
+    matched: int,
+    missed: int,
+    extras: int,
+    clean_ev: dict[str, Any],
+    extra_ev: dict[str, Any],
+) -> str:
+    match_rate = matched / expected if expected else 1.0
+    clean_avg = clean_ev.get("avg_r")
+    extra_avg = extra_ev.get("avg_r")
+    if expected and (missed >= 2 or match_rate < 0.80):
+        return "architecture_false_negative_review"
+    if extras >= 2 and (extra_avg is None or extra_avg < 0):
+        return "architecture_false_positive_review"
+    if clean_avg is not None and clean_avg < 0:
+        return "strategy_or_execution_review"
+    if clean_avg is not None and clean_avg > 0:
+        return "clean_signal_positive"
+    return "needs_more_sample"
+
+
+def _bar_key(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(second=0, microsecond=0).isoformat()
+
+
 def _render_report(
     *,
     db_path: Path,
     lookback_days: int,
     max_seen_at: datetime | None,
     same_bar_replay: bool,
+    counterfactual_replay: bool,
     signal_rows: list[dict[str, Any]],
     trade_rows: list[dict[str, Any]],
     deployment_rows: list[dict[str, Any]],
+    counterfactual_rows: list[dict[str, Any]],
+    counterfactual_summary_rows: list[dict[str, Any]],
     signal_csv: Path,
     trade_csv: Path,
     deployment_csv: Path,
+    counterfactual_csv: Path,
+    counterfactual_summary_csv: Path,
 ) -> str:
     closed = [row for row in trade_rows if row.get("status") == "closed"]
     realized_closed = [row for row in closed if row.get("realized_stop_r") != ""]
@@ -429,6 +910,10 @@ def _render_report(
     positive = sum(1 for row in trade_rows if row.get("ev_alignment") == "positive_trade")
     concordance_counts = Counter(row.get("concordance_status", "") for row in signal_rows)
     replay_counts = Counter(row.get("mala_same_bar_replay_status", "") for row in signal_rows)
+    counterfactual_counts = Counter(row.get("counterfactual_status", "") for row in counterfactual_rows)
+    root_cause_counts = Counter(row.get("root_cause", "") for row in counterfactual_rows if row.get("root_cause"))
+    clean_ev = _realized_trade_summary([row for row in trade_rows if row.get("mala_same_bar_replay_status") == "match"])
+    extra_ev = _realized_trade_summary([row for row in trade_rows if row.get("mala_same_bar_replay_status") == "no_mala_signal"])
     lines = [
         "# Bhiksha Signal Concordance and Realized EV",
         "",
@@ -446,6 +931,8 @@ def _render_report(
         f"- signal_csv: `{signal_csv}`",
         f"- trade_csv: `{trade_csv}`",
         f"- deployment_csv: `{deployment_csv}`",
+        f"- counterfactual_csv: `{counterfactual_csv}`",
+        f"- counterfactual_summary_csv: `{counterfactual_summary_csv}`",
         "",
         "## Method",
         "",
@@ -456,6 +943,11 @@ def _render_report(
             "- Same-bar Mala replay is enabled: cached 1-minute bars are enriched with Newton features, the compiled Mala strategy params are rerun, and the Bhiksha signal bar is checked for a same-direction Mala signal."
             if same_bar_replay
             else "- Same-bar Mala replay is disabled for this run. Re-run with `--same-bar-replay` to independently verify cached Mala signals."
+        ),
+        (
+            "- Counterfactual replay is enabled: each active-plan deployment/day is replayed across its Mala signal window, then expected Mala signals are compared with actual Bhiksha signal events on the same minute bar."
+            if counterfactual_replay
+            else "- Counterfactual replay is disabled for this run. Re-run with `--counterfactual-replay` to measure missed Mala signals and extra Bhiksha signals."
         ),
         "- Converts long option fills into realized premium PnL and an option-stop-R proxy: option return divided by configured `stop_loss_pct`.",
         "",
@@ -470,6 +962,50 @@ def _render_report(
         lines.extend(["", "## Same-Bar Mala Replay", "", "| Status | Count |", "|---|---:|"])
         for status, count in replay_counts.most_common():
             lines.append(f"| {status or 'unknown'} | {count} |")
+
+    if counterfactual_replay:
+        expected_count = sum(
+            count
+            for status, count in counterfactual_counts.items()
+            if status in {"matched_actual", "missed_by_bhiksha", "actual_direction_mismatch"}
+        )
+        lines.extend(
+            [
+                "",
+                "## Counterfactual Mala Replay",
+                "",
+                f"- mala_expected_signals: `{expected_count}`",
+                f"- matched_actual_signals: `{counterfactual_counts.get('matched_actual', 0)}`",
+                f"- missed_mala_signals: `{counterfactual_counts.get('missed_by_bhiksha', 0)}`",
+                f"- extra_bhiksha_signals: `{counterfactual_counts.get('extra_bhiksha_signal', 0)}`",
+                f"- clean_matched_trades: `{clean_ev['count']}` win_rate=`{_round_or_blank(clean_ev['win_rate'])}` avg_realized_r=`{_round_or_blank(clean_ev['avg_r'])}` pnl=`{_round_or_blank(clean_ev['pnl'])}`",
+                f"- extra_bhiksha_trades: `{extra_ev['count']}` win_rate=`{_round_or_blank(extra_ev['win_rate'])}` avg_realized_r=`{_round_or_blank(extra_ev['avg_r'])}` pnl=`{_round_or_blank(extra_ev['pnl'])}`",
+                "",
+                "| Status | Count |",
+                "|---|---:|",
+            ]
+        )
+        for status, count in counterfactual_counts.most_common():
+            lines.append(f"| {status or 'unknown'} | {count} |")
+        lines.extend(["", "### Root-Cause Buckets", "", "| Root Cause | Count |", "|---|---:|"])
+        for cause, count in root_cause_counts.most_common():
+            lines.append(f"| {cause or 'unknown'} | {count} |")
+        lines.extend(
+            [
+                "",
+                "### Counterfactual Deployment Focus",
+                "",
+                "| Deployment | Expected | Matched | Missed | Extra | Clean Trades | Clean Avg R | Extra Trades | Extra Avg R | Top Causes | Focus |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+            ]
+        )
+        for row in counterfactual_summary_rows[:25]:
+            lines.append(
+                f"| {row['deployment_id']} | {row['mala_expected_signals']} | {row['matched_actual_signals']} | "
+                f"{row['missed_mala_signals']} | {row['extra_bhiksha_signals']} | {row['clean_trade_count']} | "
+                f"{row['clean_avg_realized_stop_r']} | {row['extra_trade_count']} | {row['extra_avg_realized_stop_r']} | "
+                f"{row['top_root_causes']} | {row['counterfactual_focus']} |"
+            )
 
     lines.extend(
         [
@@ -1004,6 +1540,10 @@ def _compact_json(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     except TypeError:
         return ""
+
+
+def _compact_counter(counter: Counter[str], *, limit: int) -> str:
+    return ",".join(f"{key}:{count}" for key, count in counter.most_common(limit))
 
 
 __all__ = ["BhikshaSignalEvArtifacts", "build_bhiksha_signal_ev_report"]

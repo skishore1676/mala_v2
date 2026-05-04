@@ -2864,6 +2864,7 @@ def cmd_bhiksha_signal_ev(args: argparse.Namespace) -> int:
         lookback_days=args.lookback_days,
         max_signal_lag_minutes=args.max_signal_lag_minutes,
         same_bar_replay=args.same_bar_replay,
+        counterfactual_replay=args.counterfactual_replay,
         data_dir=Path(args.data_dir) if args.data_dir else None,
         replay_warmup_days=args.replay_warmup_days,
     )
@@ -2871,6 +2872,8 @@ def cmd_bhiksha_signal_ev(args: argparse.Namespace) -> int:
     print(f"BHIKSHA_SIGNAL_EV_TRADES_CSV={artifacts.trade_csv}")
     print(f"BHIKSHA_SIGNAL_EV_DEPLOYMENTS_CSV={artifacts.deployment_csv}")
     print(f"BHIKSHA_SIGNAL_EV_SIGNALS_CSV={artifacts.signal_csv}")
+    print(f"BHIKSHA_SIGNAL_COUNTERFACTUAL_CSV={artifacts.counterfactual_csv}")
+    print(f"BHIKSHA_SIGNAL_COUNTERFACTUAL_SUMMARY_CSV={artifacts.counterfactual_summary_csv}")
     return 0
 
 
@@ -3114,6 +3117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     signal_ev.add_argument("--lookback-days", type=int, default=21)
     signal_ev.add_argument("--max-signal-lag-minutes", type=int, default=5)
     signal_ev.add_argument("--same-bar-replay", action="store_true", help="Independently rerun Mala strategy params on cached bars for each Bhiksha signal bar.")
+    signal_ev.add_argument("--counterfactual-replay", action="store_true", help="Replay each active-plan deployment/day across its Mala signal window and compare expected Mala signals with actual Bhiksha signals.")
     signal_ev.add_argument("--data-dir", default="", help="Mala cached bar directory; defaults to repo data/.")
     signal_ev.add_argument("--replay-warmup-days", type=int, default=7)
     signal_ev.add_argument("--output-dir", default="", help="Explicit artifact output directory.")

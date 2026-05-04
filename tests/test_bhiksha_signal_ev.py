@@ -8,6 +8,7 @@ from pathlib import Path
 
 import polars as pl
 
+import src.research.bhiksha_signal_ev as signal_ev
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 
 
@@ -215,6 +216,189 @@ def test_same_bar_replay_compares_runtime_features_to_mala_bar(tmp_path: Path) -
     assert signals[0]["mala_same_bar_feature_compared"] == "2"
     assert signals[0]["mala_same_bar_feature_mismatch_count"] == "1"
     assert signals[0]["mala_same_bar_feature_worst"] == "volume"
+
+
+def test_counterfactual_replay_finds_matched_missed_and_extra_signals(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "bhiksha.db"
+    _create_db(db_path)
+    deployment_id = "strategy_market_impulse_amd_long_shadow_row_1"
+    _insert_event(
+        db_path,
+        "2026-05-01T13:30:00+00:00",
+        "startup_config",
+        {
+            "active_plan": {
+                "active_plan_id": "active_plan_test",
+                "trading_date": "2026-05-01",
+                "deployments": [
+                    {
+                        "deployment_id": deployment_id,
+                        "symbol": "AMD",
+                        "strategy": {"key": "market_impulse", "params": {"direction": "long"}},
+                        "source": {
+                            "metadata": {
+                                "authorization_mode": "shadow",
+                                "catalog_key": "market-impulse-amd-long",
+                                "direction": "long",
+                                "playbook_summary": {
+                                    "mala_evidence": {
+                                        "strategy_name": "Market Impulse (Cross & Reclaim)",
+                                        "signal_window_et": "09:35-09:40",
+                                    }
+                                },
+                            }
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    for timestamp in ("2026-05-01T13:36:00+00:00", "2026-05-01T13:38:00+00:00"):
+        _insert_event(
+            db_path,
+            timestamp,
+            "signal_decision",
+            {
+                "deployment_id": deployment_id,
+                "symbol": "AMD",
+                "timestamp": timestamp,
+                "signal": True,
+                "direction": "long",
+                "reason": ["runtime_signal"],
+            },
+        )
+    _insert_event(
+        db_path,
+        "2026-05-01T13:37:01+00:00",
+        "signal_evaluation",
+        {
+            "deployment_id": deployment_id,
+            "symbol": "AMD",
+            "timestamp": "2026-05-01T13:37:00+00:00",
+            "signal": False,
+            "direction": None,
+            "reason": ["volume_gate_blocked"],
+        },
+    )
+
+    class FakeReplayCache:
+        def __init__(self, data_dir: Path) -> None:
+            pass
+
+        def signal_frame(self, **kwargs) -> pl.DataFrame:
+            return pl.DataFrame(
+                {
+                    "timestamp": [
+                        datetime(2026, 5, 1, 13, 36, tzinfo=timezone.utc),
+                        datetime(2026, 5, 1, 13, 37, tzinfo=timezone.utc),
+                    ],
+                    "signal": [True, True],
+                    "signal_direction": ["long", "long"],
+                }
+            )
+
+    monkeypatch.setattr(signal_ev, "_ReplayCache", FakeReplayCache)
+
+    artifacts = build_bhiksha_signal_ev_report(
+        db_path=db_path,
+        out_dir=tmp_path / "out",
+        lookback_days=7,
+        counterfactual_replay=True,
+        data_dir=tmp_path / "cache",
+    )
+
+    rows = list(csv.DictReader(artifacts.counterfactual_csv.open()))
+    assert [row["counterfactual_status"] for row in rows] == [
+        "matched_actual",
+        "missed_by_bhiksha",
+        "extra_bhiksha_signal",
+    ]
+    assert rows[1]["bhiksha_evaluation_reason"] == "volume_gate_blocked"
+    assert rows[1]["root_cause"] == "runtime_volume_gate"
+    summary = list(csv.DictReader(artifacts.counterfactual_summary_csv.open()))
+    assert summary[0]["mala_expected_signals"] == "2"
+    assert summary[0]["matched_actual_signals"] == "1"
+    assert summary[0]["missed_mala_signals"] == "1"
+    assert summary[0]["extra_bhiksha_signals"] == "1"
+    assert "runtime_volume_gate:1" in summary[0]["top_root_causes"]
+
+
+def test_deployment_lookup_does_not_attach_future_snapshot(tmp_path: Path) -> None:
+    db_path = tmp_path / "bhiksha.db"
+    _create_db(db_path)
+    old_deployment_id = "strategy_market_impulse_amd_long_old"
+    new_deployment_id = "strategy_market_impulse_amd_long_new"
+    _insert_event(
+        db_path,
+        "2026-05-01T13:30:00+00:00",
+        "startup_config",
+        {
+            "active_plan": {
+                "active_plan_id": "active_plan_2026-05-01",
+                "trading_date": "2026-05-01",
+                "deployments": [
+                    {
+                        "deployment_id": old_deployment_id,
+                        "symbol": "AMD",
+                        "strategy": {"key": "market_impulse", "params": {"direction": "long"}},
+                        "source": {
+                            "metadata": {
+                                "catalog_key": "old-row",
+                                "direction": "long",
+                            }
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    _insert_event(
+        db_path,
+        "2026-05-01T13:36:05+00:00",
+        "signal_decision",
+        {
+            "deployment_id": old_deployment_id,
+            "symbol": "AMD",
+            "timestamp": "2026-05-01T13:36:00+00:00",
+            "signal": True,
+            "direction": "long",
+        },
+    )
+    _insert_event(
+        db_path,
+        "2026-05-01T13:40:00+00:00",
+        "startup_config",
+        {
+            "active_plan": {
+                "active_plan_id": "active_plan_2026-05-02",
+                "trading_date": "2026-05-02",
+                "deployments": [
+                    {
+                        "deployment_id": old_deployment_id,
+                        "symbol": "AMD",
+                        "strategy": {"key": "market_impulse", "params": {"direction": "long"}},
+                        "source": {
+                            "metadata": {
+                                "catalog_key": "future-row",
+                                "direction": "long",
+                            }
+                        },
+                    },
+                    {
+                        "deployment_id": new_deployment_id,
+                        "symbol": "AMD",
+                        "strategy": {"key": "market_impulse", "params": {"direction": "long"}},
+                    },
+                ],
+            }
+        },
+    )
+
+    artifacts = build_bhiksha_signal_ev_report(db_path=db_path, out_dir=tmp_path / "out", lookback_days=7)
+
+    signals = list(csv.DictReader(artifacts.signal_csv.open()))
+    assert signals[0]["active_plan_id"] == "active_plan_2026-05-01"
+    assert signals[0]["catalog_key"] == "old-row"
 
 
 def _create_db(db_path: Path) -> None:
