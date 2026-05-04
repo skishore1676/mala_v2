@@ -7,6 +7,7 @@ MALA_PYTHON="${MALA_PYTHON:-$MALA_ROOT/.venv/bin/python}"
 BHIKSHA_PYTHON="${BHIKSHA_PYTHON:-$BHIKSHA_ROOT/.venv/bin/python}"
 ACTIVE_PLAN_PATH="${ACTIVE_PLAN_PATH:-$BHIKSHA_ROOT/artifacts/playbook/active_plan.json}"
 BHIKSHA_DB_PATH="${BHIKSHA_DB_PATH:-$BHIKSHA_ROOT/bhiksha.db}"
+ACTIVE_PLAN_ID="${ACTIVE_PLAN_ID:-active_plan_$(date +%F)}"
 TRADING_DAYS="${TRADING_DAYS:-3}"
 SIGNAL_EV_LOOKBACK_DAYS="${SIGNAL_EV_LOOKBACK_DAYS:-21}"
 
@@ -35,8 +36,22 @@ fi
 "$BHIKSHA_PYTHON" "${review_args[@]}"
 
 cd "$MALA_ROOT"
-"$MALA_PYTHON" -m src.research.research_ops shadow-daily-report --with-evidence
-"$MALA_PYTHON" -m src.research.research_ops bhiksha-signal-ev \
-  --db-path "$BHIKSHA_DB_PATH" \
-  --lookback-days "$SIGNAL_EV_LOOKBACK_DAYS" \
+shadow_daily_args=(
+  -m src.research.research_ops
+  shadow-daily-report
+  --with-evidence
+  --active-plan-id "$ACTIVE_PLAN_ID"
+)
+"$MALA_PYTHON" "${shadow_daily_args[@]}"
+
+signal_ev_args=(
+  -m src.research.research_ops
+  bhiksha-signal-ev
+  --db-path "$BHIKSHA_DB_PATH"
+  --lookback-days "$SIGNAL_EV_LOOKBACK_DAYS"
   --same-bar-replay
+)
+if [[ "${SIGNAL_EV_COUNTERFACTUAL:-1}" == "1" ]]; then
+  signal_ev_args+=(--counterfactual-replay)
+fi
+"$MALA_PYTHON" "${signal_ev_args[@]}"

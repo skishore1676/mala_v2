@@ -86,7 +86,18 @@ After market close on oldmac:
 5. Review both reports and create fixes for runtime mismatches.
 6. Do not tune strategies until plumbing defects are resolved.
 
-Command outline:
+The oldmac wrapper for this routine is:
+
+```bash
+cd ~/Documents/mala_v2
+./scripts/shadow_campaign_daily_oldmac.sh
+```
+
+The wrapper filters the daily report to today's active plan by default and
+enables Bhiksha counterfactual replay. Override with `ACTIVE_PLAN_ID=...` or
+`SIGNAL_EV_COUNTERFACTUAL=0` only for a specific triage run.
+
+Expanded command outline:
 
 ```bash
 cd ~/Documents/mala_v2
@@ -96,11 +107,14 @@ cd ~/Documents/bhiksha
 ./.venv/bin/python -m bhiksha.tools.bionic_session review --mala-root ~/Documents/mala_v2
 
 cd ~/Documents/mala_v2
-./.venv/bin/python -m src.research.research_ops shadow-daily-report --with-evidence
+./.venv/bin/python -m src.research.research_ops shadow-daily-report \
+  --with-evidence \
+  --active-plan-id "active_plan_$(date +%F)"
 ./.venv/bin/python -m src.research.research_ops bhiksha-signal-ev \
   --db-path ../bhiksha/bhiksha.db \
   --lookback-days 21 \
-  --same-bar-replay
+  --same-bar-replay \
+  --counterfactual-replay
 ```
 
 ## Daily Report Questions
