@@ -77,6 +77,7 @@ review_args=(
 if [[ "${SHADOW_SKIP_REPLAY:-0}" == "1" ]]; then
   review_args+=(--skip-replay)
 fi
+cd "$BHIKSHA_ROOT"
 "$BHIKSHA_PYTHON" "${review_args[@]}"
 
 cd "$MALA_ROOT"
