@@ -580,6 +580,7 @@ def _counterfactual_deployment_day_rows(
     symbol = str(deployment.get("symbol") or metadata.get("symbol") or "")
     expected_direction = _expected_direction(deployment, metadata)
     signal_window = _signal_window(metadata)
+    thesis_metrics = _thesis_metrics(metadata)
     base_row = {
         "active_plan_id": snapshot.get("active_plan_id", ""),
         "trading_date": trading_date,
@@ -590,6 +591,13 @@ def _counterfactual_deployment_day_rows(
         "catalog_key": metadata.get("catalog_key", ""),
         "expected_direction": expected_direction,
         "mala_signal_window_et": signal_window,
+        "mala_thesis_exit_policy": _nested_get(deployment, ["exit", "thesis_exit_policy"], "")
+        or metadata.get("thesis_exit_policy", ""),
+        "mala_thesis_expectancy_r": _round_or_blank(
+            _first_float(thesis_metrics.get("expectancy"), metadata.get("expectancy"))
+        ),
+        "mala_thesis_win_rate": _round_or_blank(_first_float(thesis_metrics.get("win_rate"))),
+        "mala_thesis_trade_count": thesis_metrics.get("trade_count", ""),
     }
     if not strategy_name:
         return [
@@ -653,6 +661,14 @@ def _counterfactual_deployment_day_rows(
                     "mala_signal_at": signal_at.isoformat(),
                     "mala_signal_at_et": _format_et(signal_at),
                     "mala_direction": signal.get("direction", ""),
+                    "mala_underlying_entry_price": signal.get("mala_underlying_entry_price", ""),
+                    "mala_underlying_mfe_points": signal.get("mala_underlying_mfe_points", ""),
+                    "mala_underlying_mae_points": signal.get("mala_underlying_mae_points", ""),
+                    "mala_underlying_mfe_pct": signal.get("mala_underlying_mfe_pct", ""),
+                    "mala_underlying_mae_pct": signal.get("mala_underlying_mae_pct", ""),
+                    "mala_underlying_mfe_mae_ratio": signal.get("mala_underlying_mfe_mae_ratio", ""),
+                    "mala_underlying_excursion_win": signal.get("mala_underlying_excursion_win", ""),
+                    "mala_underlying_measure": signal.get("mala_underlying_measure", ""),
                     "bhiksha_signal_at": actual.get("signal_at", "") if actual else "",
                     "bhiksha_signal_at_et": actual.get("signal_at_et", "") if actual else "",
                     "bhiksha_direction": actual.get("direction", "") if actual else "",
@@ -679,14 +695,21 @@ def _mala_day_signals(
 ) -> list[dict[str, Any]]:
     if "timestamp" not in frame.columns or "signal" not in frame.columns:
         return []
-    keyed = frame.with_columns(
+    day_frame = frame.with_columns(
         pl.col("timestamp").dt.convert_time_zone("America/New_York").dt.date().cast(pl.Utf8).alias("_et_date")
     ).filter(pl.col("_et_date") == trading_date)
-    if keyed.is_empty():
+    if day_frame.is_empty():
         return []
-    keyed = keyed.filter(pl.col("signal").fill_null(False))
+    day_rows = day_frame.sort("timestamp").iter_rows(named=True)
+    day_records = list(day_rows)
+    keyed = pl.DataFrame(day_records).filter(pl.col("signal").fill_null(False))
     if expected_direction and "signal_direction" in keyed.columns:
         keyed = keyed.filter(pl.col("signal_direction") == expected_direction)
+    row_index_by_key = {
+        _bar_key(_ensure_aware_datetime(row["timestamp"])): index
+        for index, row in enumerate(day_records)
+        if isinstance(row.get("timestamp"), datetime)
+    }
     signals: list[dict[str, Any]] = []
     for row in keyed.iter_rows(named=True):
         signal_at = row.get("timestamp")
@@ -696,14 +719,78 @@ def _mala_day_signals(
             signal_at = signal_at.replace(tzinfo=timezone.utc)
         if not _inside_window(signal_at, signal_window):
             continue
+        direction = "" if row.get("signal_direction") is None else str(row.get("signal_direction"))
+        underlying = _underlying_counterfactual_metrics(
+            day_records=day_records,
+            signal_index=row_index_by_key.get(_bar_key(signal_at)),
+            direction=direction or expected_direction,
+        )
         signals.append(
             {
                 "signal_at": signal_at.astimezone(timezone.utc),
-                "direction": "" if row.get("signal_direction") is None else str(row.get("signal_direction")),
+                "direction": direction,
+                **underlying,
             }
         )
     signals.sort(key=lambda row: row["signal_at"])
     return signals
+
+
+def _underlying_counterfactual_metrics(
+    *,
+    day_records: list[dict[str, Any]],
+    signal_index: int | None,
+    direction: str,
+) -> dict[str, Any]:
+    base = {
+        "mala_underlying_entry_price": "",
+        "mala_underlying_mfe_points": "",
+        "mala_underlying_mae_points": "",
+        "mala_underlying_mfe_pct": "",
+        "mala_underlying_mae_pct": "",
+        "mala_underlying_mfe_mae_ratio": "",
+        "mala_underlying_excursion_win": "",
+        "mala_underlying_measure": "signal_close_to_eod",
+    }
+    if signal_index is None or signal_index >= len(day_records):
+        return base
+    signal_row = day_records[signal_index]
+    entry = _finite_float(signal_row.get("close"))
+    if entry is None or entry == 0:
+        return base
+    forward = day_records[signal_index + 1 :]
+    if not forward:
+        return base | {"mala_underlying_entry_price": _round_or_blank(entry)}
+    highs = [_finite_float(row.get("high")) for row in forward]
+    lows = [_finite_float(row.get("low")) for row in forward]
+    highs = [value for value in highs if value is not None]
+    lows = [value for value in lows if value is not None]
+    if not highs or not lows:
+        return base | {"mala_underlying_entry_price": _round_or_blank(entry)}
+    normalized_direction = direction.lower()
+    if normalized_direction == "short":
+        mfe = entry - min(lows)
+        mae = max(highs) - entry
+    else:
+        mfe = max(highs) - entry
+        mae = entry - min(lows)
+    mfe = max(0.0, float(mfe))
+    mae = max(0.0, float(mae))
+    ratio = None
+    if mae > 0:
+        ratio = mfe / mae
+    elif mfe > 0:
+        ratio = float("inf")
+    win = mfe > 0 and (mae == 0 or mfe >= 2 * mae)
+    return base | {
+        "mala_underlying_entry_price": _round_or_blank(entry),
+        "mala_underlying_mfe_points": _round_or_blank(mfe),
+        "mala_underlying_mae_points": _round_or_blank(mae),
+        "mala_underlying_mfe_pct": _round_or_blank(mfe / entry),
+        "mala_underlying_mae_pct": _round_or_blank(mae / entry),
+        "mala_underlying_mfe_mae_ratio": "inf" if ratio == float("inf") else _round_or_blank(ratio),
+        "mala_underlying_excursion_win": _yes_no(win),
+    }
 
 
 def _matching_actual_signal(
@@ -816,6 +903,12 @@ def _counterfactual_summary_rows(
         missed = [row for row in cf if row.get("counterfactual_status") == "missed_by_bhiksha"]
         extras = [row for row in cf if row.get("counterfactual_status") == "extra_bhiksha_signal"]
         root_causes = Counter(str(row.get("root_cause", "")) for row in missed + extras if row.get("root_cause"))
+        underlying_mfes = _float_values(row.get("mala_underlying_mfe_points") for row in expected)
+        underlying_maes = _float_values(row.get("mala_underlying_mae_points") for row in expected)
+        underlying_win_values = [row.get("mala_underlying_excursion_win") for row in expected]
+        underlying_win_count = sum(1 for value in underlying_win_values if value == "yes")
+        underlying_win_sample = sum(1 for value in underlying_win_values if value in {"yes", "no"})
+        thesis_expectancies = _float_values(row.get("mala_thesis_expectancy_r") for row in expected)
         rows.append(
             {
                 "deployment_id": deployment_id,
@@ -828,6 +921,12 @@ def _counterfactual_summary_rows(
                 "missed_mala_signals": len(missed),
                 "extra_bhiksha_signals": len(extras),
                 "actual_match_rate": _round_or_blank(len(matched) / len(expected) if expected else None),
+                "mala_counterfactual_win_rate": _round_or_blank(
+                    underlying_win_count / underlying_win_sample if underlying_win_sample else None
+                ),
+                "mala_avg_underlying_mfe_points": _round_or_blank(_mean(underlying_mfes)),
+                "mala_avg_underlying_mae_points": _round_or_blank(_mean(underlying_maes)),
+                "mala_avg_thesis_expectancy_r": _round_or_blank(_mean(thesis_expectancies)),
                 "clean_trade_count": clean_ev["count"],
                 "clean_win_rate": _round_or_blank(clean_ev["win_rate"]),
                 "clean_avg_realized_stop_r": _round_or_blank(clean_ev["avg_r"]),
@@ -995,14 +1094,16 @@ def _render_report(
                 "",
                 "### Counterfactual Deployment Focus",
                 "",
-                "| Deployment | Expected | Matched | Missed | Extra | Clean Trades | Clean Avg R | Extra Trades | Extra Avg R | Top Causes | Focus |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+                "| Deployment | Expected | Matched | Missed | Extra | Mala Win | Mala MFE | Mala MAE | Mala Exp R | Clean Trades | Clean Avg R | Extra Trades | Extra Avg R | Top Causes | Focus |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
             ]
         )
         for row in counterfactual_summary_rows[:25]:
             lines.append(
                 f"| {row['deployment_id']} | {row['mala_expected_signals']} | {row['matched_actual_signals']} | "
-                f"{row['missed_mala_signals']} | {row['extra_bhiksha_signals']} | {row['clean_trade_count']} | "
+                f"{row['missed_mala_signals']} | {row['extra_bhiksha_signals']} | {row['mala_counterfactual_win_rate']} | "
+                f"{row['mala_avg_underlying_mfe_points']} | {row['mala_avg_underlying_mae_points']} | "
+                f"{row['mala_avg_thesis_expectancy_r']} | {row['clean_trade_count']} | "
                 f"{row['clean_avg_realized_stop_r']} | {row['extra_trade_count']} | {row['extra_avg_realized_stop_r']} | "
                 f"{row['top_root_causes']} | {row['counterfactual_focus']} |"
             )
@@ -1355,6 +1456,12 @@ def _mala_evidence(metadata: dict[str, Any]) -> dict[str, Any]:
     return evidence if isinstance(evidence, dict) else {}
 
 
+def _thesis_metrics(metadata: dict[str, Any]) -> dict[str, Any]:
+    evidence = _mala_evidence(metadata)
+    metrics = evidence.get("thesis_exit_metrics")
+    return metrics if isinstance(metrics, dict) else {}
+
+
 def _expected_direction(deployment: dict[str, Any], metadata: dict[str, Any]) -> str:
     return str(metadata.get("direction") or _nested_get(deployment, ["strategy", "params", "direction"], "") or "")
 
@@ -1437,6 +1544,12 @@ def _parse_dt_or_none(value: str) -> datetime | None:
 
 def _format_et(value: datetime) -> str:
     return value.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _ensure_aware_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def _nested_get(root: dict[str, Any], path: list[str], default: Any = "") -> Any:
@@ -1523,6 +1636,15 @@ def _first_float(*values: Any) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _float_values(values: Any) -> list[float]:
+    parsed = [_first_float(value) for value in values]
+    return [value for value in parsed if value is not None]
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
 
 
 def _round_or_blank(value: float | None) -> str:

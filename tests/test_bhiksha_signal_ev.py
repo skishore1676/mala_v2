@@ -244,6 +244,11 @@ def test_counterfactual_replay_finds_matched_missed_and_extra_signals(tmp_path: 
                                     "mala_evidence": {
                                         "strategy_name": "Market Impulse (Cross & Reclaim)",
                                         "signal_window_et": "09:35-09:40",
+                                        "thesis_exit_metrics": {
+                                            "expectancy": 0.5,
+                                            "trade_count": 20,
+                                            "win_rate": 0.55,
+                                        },
                                     }
                                 },
                             }
@@ -291,9 +296,13 @@ def test_counterfactual_replay_finds_matched_missed_and_extra_signals(tmp_path: 
                     "timestamp": [
                         datetime(2026, 5, 1, 13, 36, tzinfo=timezone.utc),
                         datetime(2026, 5, 1, 13, 37, tzinfo=timezone.utc),
+                        datetime(2026, 5, 1, 13, 38, tzinfo=timezone.utc),
                     ],
-                    "signal": [True, True],
-                    "signal_direction": ["long", "long"],
+                    "close": [100.0, 100.0, 101.0],
+                    "high": [100.1, 100.5, 103.0],
+                    "low": [99.9, 99.0, 100.5],
+                    "signal": [True, True, False],
+                    "signal_direction": ["long", "long", None],
                 }
             )
 
@@ -320,6 +329,10 @@ def test_counterfactual_replay_finds_matched_missed_and_extra_signals(tmp_path: 
     assert summary[0]["matched_actual_signals"] == "1"
     assert summary[0]["missed_mala_signals"] == "1"
     assert summary[0]["extra_bhiksha_signals"] == "1"
+    assert summary[0]["mala_counterfactual_win_rate"] == "1.0"
+    assert summary[0]["mala_avg_underlying_mfe_points"] == "3.0"
+    assert summary[0]["mala_avg_underlying_mae_points"] == "0.5"
+    assert summary[0]["mala_avg_thesis_expectancy_r"] == "0.5"
     assert "runtime_volume_gate:1" in summary[0]["top_root_causes"]
 
 
