@@ -11,6 +11,8 @@ ACTIVE_PLAN_ID="${ACTIVE_PLAN_ID:-active_plan_$(date +%F)}"
 TRADING_DAYS="${TRADING_DAYS:-3}"
 SIGNAL_EV_LOOKBACK_DAYS="${SIGNAL_EV_LOOKBACK_DAYS:-21}"
 POLYGON_CACHE_BACKFILL_DAYS="${POLYGON_CACHE_BACKFILL_DAYS:-$SIGNAL_EV_LOOKBACK_DAYS}"
+OBSIDIAN_VAULT_ROOT="${OBSIDIAN_VAULT_ROOT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar}"
+OBSIDIAN_SHADOW_DIR="${OBSIDIAN_SHADOW_DIR:-areas/trading/mala-shadow}"
 
 if [[ ! -x "$MALA_PYTHON" ]]; then
   echo "Missing Mala python: $MALA_PYTHON" >&2
@@ -100,3 +102,9 @@ if [[ "${SIGNAL_EV_COUNTERFACTUAL:-1}" == "1" ]]; then
   signal_ev_args+=(--counterfactual-replay)
 fi
 "$MALA_PYTHON" "${signal_ev_args[@]}"
+
+"$MALA_PYTHON" "$MALA_ROOT/scripts/publish_shadow_decision_brief.py" \
+  --mala-root "$MALA_ROOT" \
+  --vault-root "$OBSIDIAN_VAULT_ROOT" \
+  --output-dir "$OBSIDIAN_SHADOW_DIR" \
+  --trading-date "$(date +%F)"

@@ -3,13 +3,41 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import polars as pl
 
 import src.research.bhiksha_signal_ev as signal_ev
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
+
+
+def test_replay_warmup_uses_startup_contract_before_legacy_fallback() -> None:
+    deployment = {"deployment_id": "dep_1", "symbol": "MU", "strategy": {"key": "market_impulse"}}
+
+    assert (
+        signal_ev._resolve_replay_warmup_trading_days(
+            snapshot={"warmup": {"by_deployment": {"dep_1": 9}}, "app": {"warmup_trading_days": 2}},
+            deployment_id="dep_1",
+            deployment=deployment,
+            override_days=0,
+        )
+        == 9
+    )
+    assert (
+        signal_ev._resolve_replay_warmup_trading_days(
+            snapshot={"app": {"warmup_trading_days": 2}},
+            deployment_id="dep_1",
+            deployment=deployment,
+            override_days=0,
+        )
+        == 5
+    )
+
+
+def test_replay_start_date_counts_trading_days_like_bhiksha_runtime() -> None:
+    assert signal_ev._replay_start_date(date(2026, 5, 8), 5) == date(2026, 5, 4)
+    assert signal_ev._replay_start_date(date(2026, 5, 8), 9) == date(2026, 4, 28)
 
 
 def test_bhiksha_signal_ev_report_joins_runtime_to_mala_metadata(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ import sqlite3
 from collections import Counter, defaultdict
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -38,6 +38,8 @@ STRATEGY_NAME_BY_KEY = {
     "market_impulse": "Market Impulse (Cross & Reclaim)",
     "opening_drive_classifier": "Opening Drive Classifier",
 }
+LEGACY_BHIKSHA_WARMUP_BUFFER_DAYS = 3
+DEFAULT_REPLAY_WARMUP_TRADING_DAYS = 7
 
 
 @dataclass(slots=True, frozen=True)
@@ -59,7 +61,7 @@ def build_bhiksha_signal_ev_report(
     same_bar_replay: bool = False,
     counterfactual_replay: bool = False,
     data_dir: str | Path | None = None,
-    replay_warmup_days: int = 7,
+    replay_warmup_days: int = 0,
 ) -> BhikshaSignalEvArtifacts:
     """Build a signal/EV scorecard from Bhiksha's SQLite runtime database."""
 
@@ -203,6 +205,8 @@ def _build_deployment_timeline(events: list[dict[str, Any]]) -> list[dict[str, A
                 "created_at": _parse_dt(event["created_at"]),
                 "active_plan_id": active_plan.get("active_plan_id", ""),
                 "trading_date": active_plan.get("trading_date", ""),
+                "app": payload.get("app") if isinstance(payload.get("app"), dict) else {},
+                "warmup": payload.get("warmup") if isinstance(payload.get("warmup"), dict) else {},
                 "deployments": deployment_map,
             }
         )
@@ -225,6 +229,114 @@ def _deployment_for_time(
     if fallback is None:
         return {}, {}
     return fallback
+
+
+def _resolve_replay_warmup_trading_days(
+    *,
+    snapshot: dict[str, Any],
+    deployment_id: str,
+    deployment: dict[str, Any],
+    override_days: int,
+) -> int:
+    if override_days > 0:
+        return override_days
+    warmup = snapshot.get("warmup") if isinstance(snapshot.get("warmup"), dict) else {}
+    by_deployment = warmup.get("by_deployment") if isinstance(warmup.get("by_deployment"), dict) else {}
+    deployment_days = _as_int_or_none(by_deployment.get(deployment_id))
+    if deployment_days is not None and deployment_days > 0:
+        return deployment_days
+    symbol = str(deployment.get("symbol") or _metadata(deployment).get("symbol") or "")
+    by_symbol = warmup.get("by_symbol") if isinstance(warmup.get("by_symbol"), dict) else {}
+    symbol_days = _as_int_or_none(by_symbol.get(symbol))
+    if symbol_days is not None and symbol_days > 0:
+        return symbol_days
+    effective_days = _as_int_or_none(warmup.get("effective_trading_days"))
+    if effective_days is not None and effective_days > 0:
+        return effective_days
+    app = snapshot.get("app") if isinstance(snapshot.get("app"), dict) else {}
+    base_days = _as_int_or_none(app.get("warmup_trading_days"))
+    if base_days is not None:
+        return max(base_days, 0) + LEGACY_BHIKSHA_WARMUP_BUFFER_DAYS
+    return DEFAULT_REPLAY_WARMUP_TRADING_DAYS
+
+
+def _replay_start_date(anchor: date, trading_days: int) -> date:
+    return _trading_days_ago(anchor, max(int(trading_days), 1))
+
+
+def _trading_days_ago(anchor: date, trading_days: int) -> date:
+    candidate = anchor
+    if not _is_trading_day(candidate):
+        candidate = _previous_trading_day(candidate)
+    for _ in range(max(trading_days - 1, 0)):
+        candidate = _previous_trading_day(candidate)
+    return candidate
+
+
+def _previous_trading_day(value: date) -> date:
+    candidate = value - timedelta(days=1)
+    while not _is_trading_day(candidate):
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _is_trading_day(value: date) -> bool:
+    return value.weekday() < 5 and value not in _nyse_holidays(value.year)
+
+
+def _nyse_holidays(year: int) -> set[date]:
+    first_monday_may = _nth_weekday_of_month(year, 5, 0, 1)
+    last_monday_may = first_monday_may + timedelta(weeks=4)
+    if last_monday_may.month != 5:
+        last_monday_may = first_monday_may + timedelta(weeks=3)
+    return {
+        _observe(date(year, 1, 1)),
+        _nth_weekday_of_month(year, 1, 0, 3),
+        _nth_weekday_of_month(year, 2, 0, 3),
+        _easter(year) - timedelta(days=2),
+        last_monday_may,
+        _observe(date(year, 6, 19)),
+        _observe(date(year, 7, 4)),
+        _nth_weekday_of_month(year, 9, 0, 1),
+        _nth_weekday_of_month(year, 11, 3, 4),
+        _observe(date(year, 12, 25)),
+    }
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date:
+    first_day = date(year, month, 1)
+    offset = (weekday - first_day.weekday()) % 7
+    return first_day + timedelta(days=offset, weeks=n - 1)
+
+
+def _observe(value: date) -> date:
+    if value.weekday() == 5:
+        return value - timedelta(days=1)
+    if value.weekday() == 6:
+        return value + timedelta(days=1)
+    return value
+
+
+def _easter(year: int) -> date:
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _as_int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _signal_rows(
@@ -251,6 +363,7 @@ def _signal_rows(
         signal_window = _signal_window(metadata)
         replay = _same_bar_replay(
             payload=payload,
+            snapshot=snapshot,
             deployment=deployment,
             signal_at=signal_at,
             replay_cache=replay_cache,
@@ -599,6 +712,20 @@ def _counterfactual_deployment_day_rows(
         "mala_thesis_win_rate": _round_or_blank(_first_float(thesis_metrics.get("win_rate"))),
         "mala_thesis_trade_count": thesis_metrics.get("trade_count", ""),
     }
+    replay_warmup_trading_days = _resolve_replay_warmup_trading_days(
+        snapshot=snapshot,
+        deployment_id=deployment_id,
+        deployment=deployment,
+        override_days=replay_warmup_days,
+    )
+    replay_start_date = _replay_start_date(
+        datetime.fromisoformat(trading_date).date(),
+        replay_warmup_trading_days,
+    )
+    base_row |= {
+        "mala_replay_warmup_trading_days": replay_warmup_trading_days,
+        "mala_replay_start_date": replay_start_date.isoformat(),
+    }
     if not strategy_name:
         return [
             base_row
@@ -615,7 +742,7 @@ def _counterfactual_deployment_day_rows(
     try:
         frame = replay_cache.signal_frame(
             symbol=symbol,
-            start_date=day - timedelta(days=replay_warmup_days),
+            start_date=replay_start_date,
             end_date=day,
             strategy_name=strategy_name,
             params=params,
@@ -1039,12 +1166,12 @@ def _render_report(
         "- Uses the latest prior `startup_config.active_plan.deployments` snapshot to attach Mala catalog metadata, expected R, thesis win rate, signal window, exit profile, and risk profile to each runtime event.",
         "- Treats signal concordance as a compiled-runtime check: Bhiksha fired through the Mala-sourced deployment, in the expected direction, inside the Mala signal window.",
         (
-            "- Same-bar Mala replay is enabled: cached 1-minute bars are enriched with Newton features, the compiled Mala strategy params are rerun, and the Bhiksha signal bar is checked for a same-direction Mala signal."
+            "- Same-bar Mala replay is enabled: cached 1-minute bars are enriched with Newton features, the compiled Mala strategy params are rerun, and the Bhiksha signal bar is checked for a same-direction Mala signal. Replay warmup uses the Bhiksha startup warmup contract when present, otherwise the legacy runtime warmup (`app.warmup_trading_days + 3`)."
             if same_bar_replay
             else "- Same-bar Mala replay is disabled for this run. Re-run with `--same-bar-replay` to independently verify cached Mala signals."
         ),
         (
-            "- Counterfactual replay is enabled: each active-plan deployment/day is replayed across its Mala signal window, then expected Mala signals are compared with actual Bhiksha signal events on the same minute bar."
+            "- Counterfactual replay is enabled: each active-plan deployment/day is replayed across its Mala signal window with the Bhiksha startup warmup contract, then expected Mala signals are compared with actual Bhiksha signal events on the same minute bar."
             if counterfactual_replay
             else "- Counterfactual replay is disabled for this run. Re-run with `--counterfactual-replay` to measure missed Mala signals and extra Bhiksha signals."
         ),
@@ -1191,6 +1318,7 @@ class _ReplayCache:
 def _same_bar_replay(
     *,
     payload: dict[str, Any],
+    snapshot: dict[str, Any],
     deployment: dict[str, Any],
     signal_at: datetime,
     replay_cache: _ReplayCache | None,
@@ -1208,6 +1336,8 @@ def _same_bar_replay(
         "mala_same_bar_feature_max_pct_diff": "",
         "mala_same_bar_feature_worst": "",
         "mala_same_bar_feature_diffs": "",
+        "mala_same_bar_replay_warmup_trading_days": "",
+        "mala_same_bar_replay_start_date": "",
     }
     if replay_cache is None:
         return base
@@ -1220,7 +1350,17 @@ def _same_bar_replay(
         }
     params = _normalized_params(_nested_get(deployment, ["strategy", "params"], {}) or {})
     signal_date = signal_at.astimezone(ET).date()
-    start_date = signal_date - timedelta(days=replay_warmup_days)
+    replay_warmup_trading_days = _resolve_replay_warmup_trading_days(
+        snapshot=snapshot,
+        deployment_id=str(payload.get("deployment_id", "")),
+        deployment=deployment,
+        override_days=replay_warmup_days,
+    )
+    start_date = _replay_start_date(signal_date, replay_warmup_trading_days)
+    base |= {
+        "mala_same_bar_replay_warmup_trading_days": replay_warmup_trading_days,
+        "mala_same_bar_replay_start_date": start_date.isoformat(),
+    }
     expected_direction = str(payload.get("direction", ""))
     try:
         frame = replay_cache.signal_frame(

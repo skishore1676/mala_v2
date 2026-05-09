@@ -3119,7 +3119,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     signal_ev.add_argument("--same-bar-replay", action="store_true", help="Independently rerun Mala strategy params on cached bars for each Bhiksha signal bar.")
     signal_ev.add_argument("--counterfactual-replay", action="store_true", help="Replay each active-plan deployment/day across its Mala signal window and compare expected Mala signals with actual Bhiksha signals.")
     signal_ev.add_argument("--data-dir", default="", help="Mala cached bar directory; defaults to repo data/.")
-    signal_ev.add_argument("--replay-warmup-days", type=int, default=7)
+    signal_ev.add_argument(
+        "--replay-warmup-days",
+        type=int,
+        default=0,
+        help="Override replay warmup trading days; default 0 uses Bhiksha startup warmup contract.",
+    )
     signal_ev.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
     signal_ev.set_defaults(func=cmd_bhiksha_signal_ev)
 
