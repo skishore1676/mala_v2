@@ -2421,7 +2421,7 @@ def write_digest_report(
 
 PROGRAM_STATUS_TAGS = {"auto_continue", "needs_suman", "blocked", "running", "done"}
 DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar")
-DECISION_CARD_DIR = Path("areas/trading/mala-research/decision-cards")
+DECISION_CARD_DIR = Path("Projects/Trading/Mala/Research/Decision Cards")
 COMMENTS_START = "<!-- mala-card-comments:start -->"
 COMMENTS_END = "<!-- mala-card-comments:end -->"
 RECEIPT_START = "<!-- mala-card-receipt:start -->"
@@ -2444,7 +2444,7 @@ def _latest_file(root: Path, pattern: str) -> Path | None:
 def _latest_shadow_brief(vault: Path | None = None) -> dict[str, str]:
     candidates: list[Path] = []
     if vault is not None:
-        root = vault / "areas" / "trading" / "mala-shadow"
+        root = vault / "Projects" / "Trading" / "Mala" / "Shadow"
         if root.exists():
             candidates.extend(root.glob("*.md"))
     if DEFAULT_SHADOW_CAMPAIGN_DIR.exists():

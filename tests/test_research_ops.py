@@ -994,7 +994,7 @@ def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Pat
     second = write_decision_cards(status, vault, limit=1)
     assert second[0]["action"] == "unchanged"
     assert "- human note" in path.read_text(encoding="utf-8")
-    assert len(list((vault / "areas" / "trading" / "mala-research" / "decision-cards").glob("*.md"))) == 1
+    assert len(list((vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards").glob("*.md"))) == 1
 
 def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: Path) -> None:
     from src.research.research_ops import COMMENTS_END, COMMENTS_START, RECEIPT_END, RECEIPT_START, write_decision_cards
@@ -1395,7 +1395,7 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
     hypotheses = tmp_path / "research" / "hypotheses"
     runs = tmp_path / "data" / "results" / "hypothesis_runs"
     vault = tmp_path / "vault"
-    card_dir = vault / "areas" / "trading" / "mala-research" / "decision-cards"
+    card_dir = vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards"
     hypotheses.mkdir(parents=True)
     card_dir.mkdir(parents=True)
     _write_hypothesis(
