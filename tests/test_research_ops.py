@@ -10,12 +10,17 @@ from src.research.research_ops import (
     _publish_catalog_rows,
     FindingDisposition,
     append_disposition,
+    apply_review_decision_records,
     build_action_brief,
     build_control_rows,
     build_hot_start_findings,
+    build_intake_proposal_row,
+    build_operator_options_table,
     build_ledger,
     build_next_actions,
+    build_review_decision_records,
     build_surface_expansion_plan,
+    score_researcher_verdict,
     evaluate_hypothesis_intake,
     process_intake_rows,
     read_dispositions,
@@ -251,6 +256,60 @@ def test_next_actions_rank_publish_and_retune_work(tmp_path: Path) -> None:
     assert actions[0].mutates_external_state == "yes"
 
 
+def test_control_skip_disposition_suppresses_matching_next_action(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="retune-idea", state="retune", decision="retune")
+    ledger = build_ledger(
+        hypotheses_dir=hypotheses,
+        runs_dir=runs,
+        dispositions=[
+            FindingDisposition(
+                created_at="2026-05-08T00:00:00+00:00",
+                status="ignore",
+                key="retune_plan:retune-idea",
+                category="control_skip",
+                reason="operator skip",
+            )
+        ],
+    )
+
+    actions = build_next_actions(ledger)
+
+    assert "retune_plan:retune-idea" not in [f"{action.action_type}:{action.key}" for action in actions]
+
+
+def test_pending_run_m1_brief_recommends_approve_run_m1(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    brief = build_action_brief(ledger=ledger, key="run_m1:pending-idea")
+
+    assert brief.recommendation == "RUN_M1_REVIEW"
+    assert brief.suggested_operator_action == "APPROVE_RUN_M1"
+
+
+def test_running_m1_promote_brief_recommends_continue_m2(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="running-idea", state="running", decision="promote_to_m2")
+    run_dir = runs / "running-idea" / "2026-05-08T080000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text("- decision: `promote_to_m2`\n", encoding="utf-8")
+    _write_csv(run_dir / "M1_top.csv", [{"ticker": "AMD", "avg_test_exp_r": "0.1", "m1_score": "1.2"}])
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    brief = build_action_brief(ledger=ledger, key="resume_or_normalize:running-idea")
+
+    assert brief.recommendation == "CONTINUE_M2_REVIEW"
+    assert brief.suggested_operator_action == "APPROVE_CONTINUE_M2"
+
+
 def test_build_control_rows_preserves_operator_action() -> None:
     from src.research.research_ops import NextAction
 
@@ -377,6 +436,34 @@ def test_action_brief_recommends_skip_after_no_positive_m1_retune(tmp_path: Path
     assert brief.suggested_operator_action == "SKIP"
 
 
+def test_control_rows_surface_operator_recommendation_for_failed_retune(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="dead-idea", state="retune", decision="retune")
+    run_dir = runs / "dead-idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: no positive configs found\n",
+        encoding="utf-8",
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+    actions = build_next_actions(ledger)
+
+    rows = build_control_rows(
+        actions=actions,
+        existing_rows=[{"action_id": "retune_plan:dead-idea", "status": "queued"}],
+        generated_at="2026-05-07 06:10:00 CDT",
+        ledger=ledger,
+    )
+
+    action_row = next(row for row in rows if row["action_id"] == "retune_plan:dead-idea")
+    assert action_row["recommended_operator_action"] == "SKIP"
+    assert action_row["recommendation"] == "KILL_OR_SKIP"
+    assert "Choose SKIP" in action_row["decision_needed"]
+    assert action_row["symbol_scope"] == "AMD"
+
+
 class _FakeControlClient:
     def __init__(self) -> None:
         self.rows = [{"row_index": 2, "action_id": "retune_plan:idea", "updated_at": ""}]
@@ -449,7 +536,7 @@ def test_surface_expansion_plan_recommends_config_only_for_m1_sample_failure(tmp
 
     assert plan.feasibility_tag == "config-only"
     assert plan.recommendation == "CONFIG_ONLY_SURFACE_EXPANSION"
-    assert plan.next_operator_action == "APPROVE_RETUNE"
+    assert plan.next_operator_action == ""
     assert any("opening_window_minutes" in line for line in plan.proposed_bounds)
     assert Path(plan.report_path).exists()
     assert Path(plan.json_path).exists()
@@ -468,7 +555,7 @@ def test_update_control_row_with_surface_plan_writes_plan_columns() -> None:
         symbol_scope="MSFT",
         feasibility_tag="config-only",
         recommendation="CONFIG_ONLY_SURFACE_EXPANSION",
-        next_operator_action="APPROVE_RETUNE",
+        next_operator_action="",
         summary="Expand one bounded parameter family.",
         proposed_bounds=[],
         rationale=[],
@@ -479,10 +566,73 @@ def test_update_control_row_with_surface_plan_writes_plan_columns() -> None:
     )
 
     assert update_control_row_with_surface_plan(client=client, plan=plan)
+    assert client.rows[0]["recommendation"] == "CONFIG_ONLY_SURFACE_EXPANSION"
+    assert client.rows[0]["recommended_operator_action"] == ""
+    assert "Review evidence" in client.rows[0]["decision_needed"]
+    assert client.rows[0]["evidence_summary"] == "Expand one bounded parameter family."
+    assert "config-only search-surface patch" in client.rows[0]["next_step"]
+    assert client.rows[0]["artifact_path"] == "surface.md"
     assert client.rows[0]["brief_recommendation"] == "CONFIG_ONLY_SURFACE_EXPANSION"
     assert client.rows[0]["brief_summary"] == "Expand one bounded parameter family."
     assert client.rows[0]["brief_path"] == "surface.md"
+    assert client.rows[0]["last_report_path"] == "surface.md"
     assert client.rows[0]["status"] == "surface_plan_ready"
+
+
+def test_control_rows_preserve_surface_plan_recommendation_on_refresh(tmp_path: Path) -> None:
+    from src.research.research_ops import NextAction
+
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(
+        hypotheses,
+        hypothesis_id="opening-idea",
+        state="retune",
+        decision="retune",
+        strategy="Opening Drive Classifier",
+        symbol_scope="MSFT",
+    )
+    run_dir = runs / "opening-idea" / "2026-04-24T083939"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: signals=15<50; windows=1<3\n",
+        encoding="utf-8",
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+    action = NextAction(
+        rank=1,
+        priority="medium",
+        action_type="retune_plan",
+        key="opening-idea",
+        reason="needs retune",
+        suggested_command="cmd",
+        requires_approval="yes",
+        mutates_external_state="no",
+    )
+
+    rows = build_control_rows(
+        actions=[action],
+        generated_at="2026-05-08 08:00:00 CDT",
+        existing_rows=[
+            {
+                "row_index": 2,
+                "action_id": "retune_plan:opening-idea",
+                "status": "surface_plan_ready",
+                "recommendation": "SURFACE_EXPANSION_REVIEW",
+                "recommended_operator_action": "APPROVE_RETUNE",
+                "brief_recommendation": "CONFIG_ONLY_SURFACE_EXPANSION",
+                "brief_summary": "Plan says bounded retune next.",
+                "brief_path": "data/results/research_ops/surface_expansion/plan.md",
+            }
+        ],
+        ledger=ledger,
+    )
+
+    assert rows[0]["recommendation"] == "CONFIG_ONLY_SURFACE_EXPANSION"
+    assert rows[0]["recommended_operator_action"] == ""
+    assert rows[0]["evidence_summary"] == "Plan says bounded retune next."
+    assert rows[0]["artifact_path"] == "data/results/research_ops/surface_expansion/plan.md"
 
 
 def test_evaluate_hypothesis_intake_classifies_config_only() -> None:
@@ -512,6 +662,48 @@ def test_evaluate_hypothesis_intake_blocks_unknown_strategy() -> None:
 
     assert evaluation.feasibility_tag == "new-class"
     assert "not in the current factory registry" in evaluation.feasibility_summary
+
+
+def test_build_intake_proposal_row_is_review_only() -> None:
+    row = build_intake_proposal_row(
+        intake_id="xle-market-impulse-cross-reclaim-01",
+        title="XLE Market Impulse Cross & Reclaim",
+        hypothesis_id="xle-market-impulse-cross-reclaim-01",
+        strategy="Market Impulse (Cross & Reclaim)",
+        symbol_scope="XLE",
+        thesis="Energy-sector relative strength after pullback/reclaim may produce intraday continuation.",
+        suggested_config="Bounded M1 first; continue only if the M1 gate passes.",
+        max_stage="M2",
+        source="StockCharts May 5 sector note; FXEmpire Apr 28 XLE note.",
+        research_ops_notes="No existing XLE hypothesis found.",
+        proposed_at="2026-05-07 06:10:00 CDT",
+    )
+
+    assert row["operator_action"] == ""
+    assert row["status"] == "proposed_by_research_ops"
+    assert row["recommendation"] == "EVALUATE"
+    assert row["recommended_operator_action"] == "EVALUATE"
+    assert "Choose EVALUATE" in row["decision_needed"]
+    assert row["feasibility_tag"] == "config-only"
+    assert row["max_stage"] == "M2"
+    assert row["suggested_config"] == "Bounded M1 first; continue only if the M1 gate passes."
+    assert "Bounded M1 first" in row["notes"]
+    assert row["source"].startswith("StockCharts")
+
+
+def test_build_operator_options_table_lists_sheet_dropdown_values() -> None:
+    table = build_operator_options_table()
+
+    assert table[0] == [
+        "Operator_Action in Research Control",
+        "",
+        "Operator_Action in Research_Intake",
+    ]
+    assert ["APPROVE_CONTINUE_M2", "", "EVALUATE"] in table
+    assert any(row[0] == "APPROVE_RUN_M1" for row in table)
+    assert any(row[0] == "APPROVE_RETUNE" for row in table)
+    assert ["SKIP", "", ""] in table
+    assert any(row[2] == "APPROVE_CREATE_HYPOTHESIS" for row in table)
 
 
 def test_process_intake_rows_creates_pending_hypothesis_when_approved(tmp_path: Path) -> None:
@@ -748,3 +940,574 @@ def test_append_and_read_dispositions_jsonl(tmp_path: Path) -> None:
     assert rows[0].key == "idea/run"
     assert rows[0].category == "run_missing_summary"
     assert rows[0].status == "stale"
+
+
+def test_program_status_writes_json_markdown_and_degrades_without_sheets(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "runs"
+    out_dir = tmp_path / "out"
+    vault = tmp_path / "vault"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
+
+    from src.research.research_ops import build_program_status, write_program_status
+
+    args = SimpleNamespace(
+        hypotheses_dir=str(hypotheses),
+        runs_dir=str(runs),
+        dispositions_path=str(tmp_path / "dispositions.jsonl"),
+        out_dir=str(out_dir),
+        with_catalog=False,
+        with_board=False,
+        with_control=False,
+        with_intake=False,
+        limit=50,
+        vault=str(vault),
+    )
+    status = build_program_status(args)
+    json_path, md_path = write_program_status(status, out_dir)
+
+    assert json_path.exists()
+    assert md_path.exists()
+    assert status["summary"]["tags"]["needs_suman"] == 1
+    assert any("control sheet not requested" in warning for warning in status["warnings"])
+    assert "needs_suman" in md_path.read_text(encoding="utf-8")
+
+
+def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Path) -> None:
+    from src.research.research_ops import COMMENTS_END, COMMENTS_START, write_decision_cards
+
+    vault = tmp_path / "vault"
+    status = {
+        "items": [
+            {"id": "run_m1:idea-a", "tag": "needs_suman", "title": "Run M1 A", "why": "Pending", "next": "Approve M1", "owner": "Suman", "source": "a.md"},
+            {"id": "retune_plan:idea-b", "tag": "needs_suman", "title": "Retune B", "why": "Retune", "next": "Approve retune", "owner": "Suman", "source": "b.md"},
+            {"id": "running:idea-c", "tag": "running", "title": "Running C", "why": "Running", "next": "Watch", "owner": "Research Ops", "source": "c.md"},
+        ]
+    }
+    first = write_decision_cards(status, vault, limit=1)
+    assert len(first) == 1
+    path = Path(first[0]["path"])
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(f"{COMMENTS_START}\n-\n{COMMENTS_END}", f"{COMMENTS_START}\n- human note\n{COMMENTS_END}"), encoding="utf-8")
+
+    second = write_decision_cards(status, vault, limit=1)
+    assert second[0]["action"] == "unchanged"
+    assert "- human note" in path.read_text(encoding="utf-8")
+    assert len(list((vault / "areas" / "trading" / "mala-research" / "decision-cards").glob("*.md"))) == 1
+
+def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: Path) -> None:
+    from src.research.research_ops import COMMENTS_END, COMMENTS_START, RECEIPT_END, RECEIPT_START, write_decision_cards
+
+    vault = tmp_path / "vault"
+    status = {
+        "items": [
+            {
+                "id": "retune_plan:idea-a",
+                "tag": "needs_suman",
+                "title": "retune_plan: idea-a",
+                "why": "Retune needs judgment",
+                "next": "Approve bounded retune",
+                "owner": "Suman",
+                "source": "research/hypotheses/idea-a.md",
+                "action_type": "retune_plan",
+                "key": "idea-a",
+                "brief": {
+                    "title": "Idea A Opening Drive",
+                    "hypothesis_id": "idea-a",
+                    "strategy": "Opening Drive Classifier",
+                    "symbol_scope": "SPY",
+                    "stage": "M1",
+                    "decision": "retune",
+                    "thesis": "SPY may continue after a clean opening drive.",
+                    "latest_artifact": "data/results/hypothesis_runs/idea-a/2026-05-01T000000",
+                    "metrics": ["M1 rows=4; best SPY combined exp_r=0.2232 pct_pos=1.00 signals=16"],
+                    "suggested_operator_action": "APPROVE_RETUNE",
+                    "recommendation_reason": "M1 still has positive candidates; run the bounded retune plan.",
+                    "confidence": "medium",
+                    "sources": ["research/hypotheses/idea-a.md", "data/results/hypothesis_runs/idea-a/2026-05-01T000000"],
+                },
+            },
+            {
+                "id": "retune_plan:idea-b",
+                "tag": "needs_suman",
+                "title": "retune_plan: idea-b",
+                "why": "Retune needs judgment",
+                "next": "Approve bounded retune",
+                "owner": "Suman",
+                "source": "research/hypotheses/idea-b.md",
+                "action_type": "retune_plan",
+                "key": "idea-b",
+                "brief": {
+                    "title": "Idea B Kinematic Ladder",
+                    "hypothesis_id": "idea-b",
+                    "strategy": "Kinematic Ladder",
+                    "symbol_scope": "QQQ",
+                    "stage": "M1",
+                    "decision": "retune",
+                    "thesis": "Velocity and acceleration may identify continuation pockets.",
+                    "latest_artifact": "data/results/hypothesis_runs/idea-b/2026-05-01T000000",
+                    "metrics": ["M1 rows=2; best QQQ short exp_r=0.1568 pct_pos=0.50 signals=33"],
+                    "suggested_operator_action": "APPROVE_RETUNE",
+                    "recommendation_reason": "M1 still has positive candidates; run the bounded retune plan.",
+                    "confidence": "medium",
+                    "sources": ["research/hypotheses/idea-b.md"],
+                },
+            },
+        ]
+    }
+    first = write_decision_cards(status, vault, limit=1)
+    path = Path(first[0]["path"])
+    text = path.read_text(encoding="utf-8")
+    assert "## Executive Summary" in text
+    assert "## Decision Data That Matters" in text
+    assert "## Research Detail" in text
+    assert "### Evidence Snapshot" in text
+    assert "## Recommendation" in text
+    assert "## Appendix: Source Artifacts" in text
+    assert "Recommendation:" in text
+    assert "Decision needed:" in text
+    assert "Permission boundary:" in text
+    assert "SPY may continue after a clean opening drive" in text
+    assert "M1 rows=4" in text
+    assert "APPROVE_RETUNE" in text
+    assert "approve subset with comments" in text
+
+    path.write_text(
+        text.replace(f"{COMMENTS_START}\n-\n{COMMENTS_END}", f"{COMMENTS_START}\n- keep idea-a only\n{COMMENTS_END}")
+        .replace(f"{RECEIPT_START}\n- pending\n{RECEIPT_END}", f"{RECEIPT_START}\n- prior receipt\n{RECEIPT_END}"),
+        encoding="utf-8",
+    )
+    second = write_decision_cards(status, vault, limit=1)
+    updated = path.read_text(encoding="utf-8")
+    assert second[0]["action"] == "unchanged"
+    assert "- keep idea-a only" in updated
+    assert "- prior receipt" in updated
+
+
+
+def _m1_row(
+    *,
+    ticker: str = "ABC",
+    direction: str = "combined",
+    exp_r: str = "0.20",
+    windows: str = "3",
+    signals: str = "60",
+    pct_pos: str = "0.75",
+    score: str = "10",
+) -> dict[str, str]:
+    return {
+        "ticker": ticker,
+        "strategy": "Synthetic Strategy",
+        "direction": direction,
+        "oos_windows": windows,
+        "oos_signals": signals,
+        "avg_test_exp_r": exp_r,
+        "pct_positive_oos_windows": pct_pos,
+        "avg_test_confidence": "0.55",
+        "avg_test_mfe_mae_ratio": "1.80",
+        "m1_score": score,
+        "lookback": "20",
+    }
+
+
+def test_score_researcher_verdict_approves_surface_for_robust_synthetic_evidence() -> None:
+    rows = [
+        _m1_row(ticker="AAA", exp_r="0.22", windows="4", signals="90", score="12"),
+        _m1_row(ticker="BBB", exp_r="0.16", windows="3", signals="75", score="10"),
+        _m1_row(ticker="CCC", exp_r="0.11", windows="3", signals="55", score="9"),
+    ]
+
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Synthetic continuation basket", "thesis": "Continuation after impulse."},
+        m1_top_rows=rows,
+        m1_aggregate_rows=rows,
+        m1_detail_rows=rows,
+    )
+
+    assert verdict["recommendation"] == "approve_surface_expansion"
+    assert verdict["priority"] == "high"
+    assert verdict["evidence_quality"] == "strong"
+    assert verdict["stability_read"]["robust_config_count"] == 3
+
+
+def test_score_researcher_verdict_fragile_positive_gets_bounded_retune() -> None:
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Synthetic open auction continuation"},
+        m1_top_rows=[_m1_row(exp_r="0.31", windows="1", signals="18")],
+        m1_aggregate_rows=[_m1_row(exp_r="0.31", windows="1", signals="18")],
+    )
+
+    assert verdict["recommendation"] == "approve_bounded_retune"
+    assert {"thin_signals", "one_oos_window"}.issubset(verdict["fragility_flags"])
+
+
+def test_score_researcher_verdict_defers_weak_sparse_expectancy() -> None:
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Synthetic weak edge"},
+        m1_top_rows=[_m1_row(exp_r="0.04", windows="3", signals="80")],
+        m1_aggregate_rows=[_m1_row(exp_r="0.04", windows="3", signals="80")],
+    )
+
+    assert verdict["recommendation"] == "defer_for_better_evidence"
+    assert "weak_expectancy" in verdict["fragility_flags"]
+
+
+def test_score_researcher_verdict_rejects_zero_or_negative_evidence() -> None:
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Synthetic dead end"},
+        m1_top_rows=[_m1_row(exp_r="-0.03", windows="3", signals="100")],
+        m1_aggregate_rows=[_m1_row(exp_r="-0.03", windows="3", signals="100")],
+    )
+
+    assert verdict["recommendation"] == "reject_or_kill"
+
+
+def test_score_researcher_verdict_closes_explicit_smoke_metadata() -> None:
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Pipeline smoke validation", "purpose": "plumbing smoke test"},
+        m1_top_rows=[_m1_row(exp_r="0.40", windows="1", signals="12")],
+    )
+
+    assert verdict["recommendation"] == "close_as_smoke_test"
+    assert verdict["evidence_quality"] == "smoke_test"
+    assert "smoke_test" in verdict["fragility_flags"]
+
+
+def test_score_researcher_verdict_flags_aggregate_disagreement_from_rows() -> None:
+    verdict = score_researcher_verdict(
+        hypothesis_metadata={"title": "Synthetic disagreement"},
+        m1_top_rows=[_m1_row(exp_r="0.28", windows="1", signals="20")],
+        m1_aggregate_rows=[_m1_row(exp_r="-0.06", windows="3", signals="75")],
+    )
+
+    assert "aggregate_disagrees" in verdict["fragility_flags"]
+    assert verdict["stability_read"]["broader_sample_disagreement"] is True
+
+
+def test_researcher_scoring_path_has_no_current_batch_identity_branches() -> None:
+    import inspect
+    from src.research import research_ops
+
+    source = "\n".join(
+        inspect.getsource(obj)
+        for obj in [
+            research_ops.score_researcher_verdict,
+            research_ops._researcher_recommendation,
+            research_ops._fragility_flags,
+        ]
+    ).lower()
+    forbidden = [
+        "kinematic-ladder-current-basket-discovery",
+        "expand30-w1-b2-p2-msft-opening-drive",
+        "opening-drive-v2",
+        "msft",
+        "xlf",
+        "tlt",
+        "kinematic",
+    ]
+    assert not any(token in source for token in forbidden)
+
+
+def test_researcher_verdicts_split_high_value_retunes_and_summary_defer(tmp_path: Path) -> None:
+    from src.research.research_ops import write_decision_cards
+
+    vault = tmp_path / "vault"
+
+    def item(key: str, title: str, recommendation: str, priority: str, quality: str = "weak", strategy: str = "Synthetic Strategy") -> dict[str, object]:
+        return {
+            "id": f"retune_plan:{key}",
+            "tag": "needs_suman",
+            "title": f"retune_plan: {key}",
+            "why": "Retune needs judgment",
+            "next": "Review researcher verdict",
+            "owner": "Suman",
+            "source": f"research/hypotheses/{key}.md",
+            "action_type": "retune_plan",
+            "key": key,
+            "brief": {
+                "title": title,
+                "hypothesis_id": key,
+                "strategy": strategy,
+                "symbol_scope": "SPY",
+                "stage": "M1",
+                "decision": "retune",
+                "thesis": "A differentiated thesis exists.",
+                "latest_artifact": f"data/results/hypothesis_runs/{key}/2026-05-01T000000",
+                "metrics": ["M1 rows=4; best SPY combined exp_r=0.2232 pct_pos=1.00 signals=16"],
+                "researcher_verdict": {
+                    "recommendation": recommendation,
+                    "priority": priority,
+                    "evidence_quality": quality,
+                    "rationale": f"{title} rationale.",
+                    "fragility_flags": ["thin_signals"] if quality != "smoke_test" else ["smoke_test", "thin_signals"],
+                    "best_config": {"ticker": "SPY", "direction": "combined", "avg_test_exp_r": "0.2232", "pct_positive_oos_windows": "1.00", "oos_signals": "16"},
+                    "stability_read": {"positive_config_count": 2, "robust_config_count": 0, "broader_sample_disagreement": True, "notes": "broader rows disagree"},
+                },
+                "sources": [f"research/hypotheses/{key}.md"],
+            },
+        }
+
+    status = {
+        "items": [
+            item("robust-surface-candidate", "Robust Surface Candidate", "approve_surface_expansion", "high", "medium"),
+            item("fragile-diagnostic-candidate", "Fragile Diagnostic Candidate", "approve_bounded_retune", "medium"),
+            item("weak-defer-candidate", "Weak Defer Candidate", "defer_for_better_evidence", "low"),
+            item("explicit-smoke-candidate", "Explicit Smoke Candidate", "close_as_smoke_test", "low", "smoke_test"),
+        ]
+    }
+
+    cards = write_decision_cards(status, vault, limit=3)
+    ids = [card["id"] for card in cards]
+    assert "retune_plan-robust-surface-candidate" in ids
+    assert "retune_plan-fragile-diagnostic-candidate" in ids
+    assert "retune_plan-defer-summary-needs-suman" in ids
+
+    summary = Path(next(card["path"] for card in cards if card["id"] == "retune_plan-defer-summary-needs-suman")).read_text(encoding="utf-8")
+    assert "## Executive Summary" in summary
+    assert "Decision needed: accept the defer/close recommendation" in summary
+    assert "## Decision Data That Matters" in summary
+    assert "attention-managed retune summary" in summary
+    assert "Researcher Verdict: `defer_for_better_evidence`" in summary
+    assert "Researcher Verdict: `close_as_smoke_test`" in summary
+    assert "approve subset with comments" in summary
+
+
+def test_program_status_researcher_verdict_flags_fragile_smoke_and_one_window(tmp_path: Path) -> None:
+    from src.research.research_ops import build_program_status
+
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    hyp_path = _write_hypothesis(
+        hypotheses,
+        hypothesis_id="spy-opening-drive-m1-smoke",
+        state="retune",
+        decision="retune",
+        strategy="Opening Drive Classifier",
+        symbol_scope="SPY",
+    )
+    hyp_path.write_text(
+        hyp_path.read_text(encoding="utf-8") + "\n\n## Thesis\nPipeline smoke test for research plumbing.\n",
+        encoding="utf-8",
+    )
+    run_dir = runs / "spy-opening-drive-m1-smoke" / "2026-05-01T000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text("- decision: `retune`\n\n## Notes\n\n- M1 FAIL: signals=16<50; windows=1<3\n", encoding="utf-8")
+    _write_csv(run_dir / "M1_top.csv", [{"ticker": "SPY", "strategy": "Opening Drive Classifier", "direction": "combined", "oos_windows": "1", "oos_signals": "16", "avg_test_exp_r": "0.2232", "pct_positive_oos_windows": "1.0", "avg_test_confidence": "0.4375", "avg_test_mfe_mae_ratio": "14.1082", "m1_score": "10", "opening_window_minutes": "20"}])
+    _write_csv(run_dir / "M1_aggregate.csv", [{"ticker": "SPY", "strategy": "Opening Drive Classifier", "direction": "combined", "oos_windows": "3", "oos_signals": "54", "avg_test_exp_r": "-0.161", "pct_positive_oos_windows": "0.0"}])
+    _write_csv(run_dir / "M1_detail.csv", [{"ticker": "SPY", "strategy": "Opening Drive Classifier", "direction": "combined", "window_idx": "1", "test_signals": "16", "test_exp_r": "0.2232", "effective_cost_r": "0.01", "opening_window_minutes": "20"}])
+    args = SimpleNamespace(
+        hypotheses_dir=str(hypotheses),
+        runs_dir=str(runs),
+        dispositions_path=str(tmp_path / "dispositions.jsonl"),
+        out_dir=str(tmp_path / "out"),
+        with_catalog=False,
+        with_board=False,
+        with_control=False,
+        with_intake=False,
+        limit=50,
+        vault=str(tmp_path / "vault"),
+    )
+
+    status = build_program_status(args)
+    item = next(item for item in status["items"] if item["key"] == "spy-opening-drive-m1-smoke")
+    verdict = item["brief"]["researcher_verdict"]
+
+    assert verdict["recommendation"] == "close_as_smoke_test"
+    assert verdict["evidence_quality"] == "smoke_test"
+    assert {"smoke_test", "thin_signals", "one_oos_window", "aggregate_disagrees"}.issubset(verdict["fragility_flags"])
+    assert verdict["best_config"]["ticker"] == "SPY"
+
+
+def test_control_rows_use_researcher_verdict_for_smoke_retune(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    hyp_path = _write_hypothesis(
+        hypotheses,
+        hypothesis_id="spy-opening-drive-m1-smoke",
+        state="retune",
+        decision="retune",
+        strategy="Opening Drive Classifier",
+        symbol_scope="SPY",
+    )
+    hyp_path.write_text(
+        hyp_path.read_text(encoding="utf-8") + "\n\n## Thesis\nPipeline smoke test for research plumbing.\n",
+        encoding="utf-8",
+    )
+    run_dir = runs / "spy-opening-drive-m1-smoke" / "2026-05-01T000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: signals=16<50; windows=1<3\n",
+        encoding="utf-8",
+    )
+    _write_csv(
+        run_dir / "M1_top.csv",
+        [
+            {
+                "ticker": "SPY",
+                "strategy": "Opening Drive Classifier",
+                "direction": "combined",
+                "oos_windows": "1",
+                "oos_signals": "16",
+                "avg_test_exp_r": "0.2232",
+                "pct_positive_oos_windows": "1.0",
+                "avg_test_confidence": "0.4375",
+                "avg_test_mfe_mae_ratio": "14.1082",
+                "m1_score": "10",
+                "opening_window_minutes": "20",
+            }
+        ],
+    )
+    _write_csv(
+        run_dir / "M1_aggregate.csv",
+        [
+            {
+                "ticker": "SPY",
+                "strategy": "Opening Drive Classifier",
+                "direction": "combined",
+                "oos_windows": "3",
+                "oos_signals": "54",
+                "avg_test_exp_r": "-0.161",
+                "pct_positive_oos_windows": "0.0",
+            }
+        ],
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+    brief = build_action_brief(ledger=ledger, key="retune_plan:spy-opening-drive-m1-smoke")
+    rows = build_control_rows(
+        actions=build_next_actions(ledger),
+        generated_at="2026-05-10T00:00:00+00:00",
+        existing_rows=[{"action_id": "retune_plan:spy-opening-drive-m1-smoke", "status": "queued"}],
+        ledger=ledger,
+    )
+    row = next(item for item in rows if item["action_id"] == "retune_plan:spy-opening-drive-m1-smoke")
+
+    assert brief.recommendation == "CLOSE_SMOKE_TEST"
+    assert brief.suggested_operator_action == "SKIP"
+    assert row["recommendation"] == "CLOSE_SMOKE_TEST"
+    assert row["recommended_operator_action"] == "SKIP"
+    assert row["brief_recommendation"] == "CLOSE_SMOKE_TEST"
+
+
+def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(tmp_path: Path) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    vault = tmp_path / "vault"
+    card_dir = vault / "areas" / "trading" / "mala-research" / "decision-cards"
+    hypotheses.mkdir(parents=True)
+    card_dir.mkdir(parents=True)
+    _write_hypothesis(
+        hypotheses,
+        hypothesis_id="kinematic-ladder-current-basket-discovery",
+        state="retune",
+        decision="retune",
+        strategy="Kinematic Ladder",
+        symbol_scope="SPY",
+    )
+    run_dir = runs / "kinematic-ladder-current-basket-discovery" / "2026-05-01T000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text("- decision: `retune`\n", encoding="utf-8")
+    rows = [
+        {
+            "ticker": "SPY",
+            "strategy": "Kinematic Ladder",
+            "direction": "combined",
+            "oos_windows": "4",
+            "oos_signals": "90",
+            "avg_test_exp_r": "0.22",
+            "pct_positive_oos_windows": "0.75",
+            "m1_score": "12",
+        },
+        {
+            "ticker": "QQQ",
+            "strategy": "Kinematic Ladder",
+            "direction": "combined",
+            "oos_windows": "3",
+            "oos_signals": "80",
+            "avg_test_exp_r": "0.16",
+            "pct_positive_oos_windows": "0.67",
+            "m1_score": "10",
+        },
+        {
+            "ticker": "IWM",
+            "strategy": "Kinematic Ladder",
+            "direction": "combined",
+            "oos_windows": "3",
+            "oos_signals": "65",
+            "avg_test_exp_r": "0.11",
+            "pct_positive_oos_windows": "0.67",
+            "m1_score": "9",
+        },
+    ]
+    _write_csv(run_dir / "M1_top.csv", rows)
+    _write_csv(run_dir / "M1_aggregate.csv", rows)
+    card = card_dir / "retune_plan-kinematic-ladder-current-basket-discovery.md"
+    card.write_text(
+        "\n".join(
+            [
+                "---",
+                "card_id: retune_plan-kinematic-ladder-current-basket-discovery",
+                "program_id: mala_next_gen_research_ops_flow",
+                "---",
+                "",
+                "# Mala Decision Card: retune_plan: kinematic-ladder-current-basket-discovery",
+                "",
+                "## Decision",
+                "- [x] approve",
+                "- [ ] reject",
+                "- [ ] defer",
+                "",
+                "## Comments",
+                "<!-- mala-card-comments:start -->",
+                "- approve this one",
+                "<!-- mala-card-comments:end -->",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
+
+    records = build_review_decision_records(vault=vault, ledger=ledger)
+
+    assert len(records) == 1
+    assert records[0]["status"] == "ready"
+    assert records[0]["action_id"] == "retune_plan:kinematic-ladder-current-basket-discovery"
+    assert records[0]["operator_action"] == "APPROVE_SURFACE_EXPANSION"
+    assert records[0]["comments"] == "- approve this one"
+
+
+def test_apply_review_decision_records_updates_operator_and_recommendation_columns() -> None:
+    client = _FakeControlClient()
+    client.rows = [
+        {
+            "row_index": 2,
+            "action_id": "retune_plan:spy-opening-drive-m1-smoke",
+            "recommendation": "SURFACE_EXPANSION_REVIEW",
+            "recommended_operator_action": "APPROVE_SURFACE_EXPANSION",
+            "operator_action": "",
+            "decision_needed": "",
+        }
+    ]
+    records = [
+        {
+            "status": "ready",
+            "action_id": "retune_plan:spy-opening-drive-m1-smoke",
+            "operator_action": "SKIP",
+            "recommendation": "CLOSE_SMOKE_TEST",
+            "recommended_operator_action": "SKIP",
+            "decision_needed": "Choose SKIP in Research_Control.operator_action to apply; leave blank to defer.",
+        }
+    ]
+
+    applied = apply_review_decision_records(client, records)
+
+    assert applied == 1
+    assert records[0]["status"] == "applied"
+    assert client.rows[0]["operator_action"] == "SKIP"
+    assert client.rows[0]["recommendation"] == "CLOSE_SMOKE_TEST"
+    assert client.rows[0]["recommended_operator_action"] == "SKIP"
+    assert "Choose SKIP" in client.rows[0]["decision_needed"]
+    assert client.columns == ["recommendation", "recommended_operator_action", "operator_action", "decision_needed", "updated_at"]

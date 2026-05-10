@@ -51,32 +51,47 @@ DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
 DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
 DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
 DEFAULT_INTAKE_SHEET_NAME = "Research_Intake"
+DEFAULT_OPTIONS_SHEET_NAME = "op_options"
 DEFAULT_SHADOW_CAMPAIGN_DIR = REPO_ROOT / "data" / "results" / "shadow_campaign"
 DEFAULT_LIVE_FEEDBACK_DIR = REPO_ROOT / "data" / "live_feedback"
 
 CONTROL_SHEET_HEADERS = [
-    "action_id",
     "rank",
-    "priority",
+    "status",
+    "recommendation",
+    "recommended_operator_action",
+    "operator_action",
+    "decision_needed",
+    "symbol_scope",
+    "strategy",
+    "latest_stage",
+    "reason",
+    "evidence_summary",
+    "next_step",
+    "artifact_path",
+    "action_id",
     "action_type",
     "key",
-    "reason",
-    "suggested_command",
-    "requires_approval",
-    "mutates_external_state",
-    "operator_action",
-    "status",
+    "priority",
     "brief_recommendation",
     "brief_summary",
     "brief_path",
     "last_report_path",
+    "suggested_command",
+    "requires_approval",
+    "mutates_external_state",
     "updated_at",
     "generated_at",
 ]
 
 CONTROL_OPERATOR_ACTIONS = {
     "",
+    "APPROVE_CONTINUE_M2",
+    "APPROVE_CONTINUE_M3",
+    "APPROVE_CONTINUE_M4",
+    "APPROVE_CONTINUE_M5",
     "APPROVE_KILL",
+    "APPROVE_RUN_M1",
     "APPROVE_RETUNE",
     "APPROVE_PUBLISH",
     "APPROVE_BOARD_SYNC",
@@ -85,18 +100,40 @@ CONTROL_OPERATOR_ACTIONS = {
     "SKIP",
 }
 
+CONTROL_OPERATOR_ACTION_DROPDOWN = [
+    "APPROVE_CONTINUE_M2",
+    "APPROVE_CONTINUE_M3",
+    "APPROVE_CONTINUE_M4",
+    "APPROVE_CONTINUE_M5",
+    "APPROVE_RUN_M1",
+    "APPROVE_RETUNE",
+    "APPROVE_SURFACE_EXPANSION",
+    "APPROVE_KILL",
+    "SKIP",
+    "MARK_STALE",
+    "APPROVE_PUBLISH",
+    "APPROVE_BOARD_SYNC",
+]
+
 INTAKE_SHEET_HEADERS = [
-    "intake_id",
+    "status",
+    "recommendation",
+    "recommended_operator_action",
+    "operator_action",
+    "decision_needed",
     "title",
-    "hypothesis_id",
-    "strategy",
     "symbol_scope",
+    "strategy",
     "thesis",
+    "reason_to_try",
+    "risk_or_overlap",
+    "suggested_config",
+    "source",
+    "max_stage",
+    "intake_id",
+    "hypothesis_id",
     "rules",
     "notes",
-    "max_stage",
-    "operator_action",
-    "status",
     "feasibility_tag",
     "feasibility_summary",
     "search_param_keys",
@@ -106,6 +143,9 @@ INTAKE_SHEET_HEADERS = [
     "report_path",
     "updated_at",
     "created_at",
+    "research_ops_notes",
+    "proposed_by",
+    "proposed_at",
 ]
 
 INTAKE_OPERATOR_ACTIONS = {
@@ -114,6 +154,18 @@ INTAKE_OPERATOR_ACTIONS = {
     "APPROVE_CREATE_HYPOTHESIS",
     "SKIP",
 }
+
+INTAKE_OPERATOR_ACTION_DROPDOWN = [
+    "EVALUATE",
+    "APPROVE_CREATE_HYPOTHESIS",
+    "SKIP",
+]
+
+OP_OPTIONS_HEADERS = [
+    "Operator_Action in Research Control",
+    "",
+    "Operator_Action in Research_Intake",
+]
 
 STAGE_FILES = {
     "M1": ("M1_top.csv", "M1_aggregate.csv", "M1_detail.csv"),
@@ -283,6 +335,7 @@ class ResearchLedger:
     runs: list[RunLedgerRow]
     promoted: list[PromotedLedgerRow]
     findings: list[HotStartFinding]
+    dispositions: list[FindingDisposition]
 
 
 def _field(text: str, name: str, default: str = "") -> str:
@@ -471,6 +524,25 @@ def _finding_is_disposed(
     return disposition.status in {"stale", "archived", "ignore"}
 
 
+def _action_is_disposed(
+    *,
+    action_type: str,
+    key: str,
+    dispositions: list[FindingDisposition],
+) -> bool:
+    latest = _latest_disposition_by_target(dispositions)
+    action_key = f"{action_type}:{key}"
+    disposition = (
+        latest.get(("control_skip", action_key))
+        or latest.get(("control_skip", key))
+        or latest.get((action_type, key))
+        or latest.get(("", action_key))
+    )
+    if disposition is None:
+        return False
+    return disposition.status in {"stale", "archived", "ignore", "skipped"}
+
+
 def build_ledger(
     *,
     hypotheses_dir: Path = DEFAULT_HYPOTHESES_DIR,
@@ -580,6 +652,7 @@ def build_ledger(
         runs=runs,
         promoted=promoted,
         findings=findings,
+        dispositions=list(dispositions or []),
     )
 
 
@@ -693,6 +766,8 @@ def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
         requires_approval: str = "yes",
         mutates_external_state: str = "no",
     ) -> None:
+        if _action_is_disposed(action_type=action_type, key=key, dispositions=ledger.dispositions):
+            return
         marker = (action_type, key)
         if marker in seen:
             return
@@ -834,11 +909,98 @@ def action_id(action: NextAction | dict[str, Any]) -> str:
     return f"{action_type}:{key}"
 
 
+def _operator_decision_text(sheet_name: str, action: str) -> str:
+    if action:
+        return f"Choose {action} in {sheet_name}.operator_action to apply; leave blank to defer."
+    return "Review evidence before choosing an operator_action."
+
+
+def _control_next_step(action: str, recommendation: str = "") -> str:
+    if action == "SKIP":
+        return "Use SKIP to clean this from the queue unless you want a new thesis."
+    if action == "APPROVE_RUN_M1":
+        return "Use APPROVE_RUN_M1 to run the first M1 feasibility pass for this pending hypothesis."
+    if action.startswith("APPROVE_CONTINUE_M"):
+        stage = action.rsplit("_", 1)[-1]
+        return f"Use {action} to continue a passing hypothesis through {stage} only."
+    if action == "APPROVE_RETUNE":
+        return "Use APPROVE_RETUNE only if the bounded retune still has a credible edge thesis."
+    if action == "APPROVE_SURFACE_EXPANSION":
+        return "Use APPROVE_SURFACE_EXPANSION to request a config-surface plan before another run."
+    if action == "MARK_STALE":
+        return "Use MARK_STALE if this artifact no longer needs repair."
+    if action:
+        return "Use the dropdown action only if the linked evidence matches the intended mutation."
+    if recommendation.startswith("CONFIG_ONLY_"):
+        return "Ask Codex/research agent to apply the config-only search-surface patch before approving a retune."
+    return "Leave blank until the evidence is clear."
+
+
+def _surface_plan_operator_action(recommendation: str) -> str:
+    if recommendation in {"CONTINUATION_REVIEW", "EVIDENCE_THIN", "NO_ACTION", "RETHINK_BEFORE_EXPANSION"}:
+        return "SKIP"
+    return ""
+
+
+def _control_decision_fields(
+    *,
+    ledger: ResearchLedger | None,
+    item: NextAction,
+    existing: dict[str, Any],
+) -> dict[str, Any]:
+    hypothesis = _find_hypothesis(ledger, item.key) if ledger is not None else None
+    latest_run = _latest_run(ledger, item.key) if ledger is not None else None
+    status = str(existing.get("status", "")).strip()
+    brief_path = str(
+        existing.get("brief_path", "") or existing.get("last_report_path", "") or existing.get("artifact_path", "")
+    ).strip()
+    surface_plan_ready = status == "surface_plan_ready" or "surface_expansion/" in brief_path
+    if surface_plan_ready:
+        recommendation = str(existing.get("brief_recommendation", "") or existing.get("recommendation", ""))
+    else:
+        recommendation = str(existing.get("recommendation", "") or existing.get("brief_recommendation", ""))
+    recommended_action = str(existing.get("recommended_operator_action", ""))
+    evidence_summary = str(existing.get("evidence_summary", "") or existing.get("brief_summary", ""))
+    artifact_path = str(existing.get("artifact_path", "") or existing.get("brief_path", "") or existing.get("last_report_path", ""))
+    if surface_plan_ready and recommendation.startswith("CONFIG_ONLY_"):
+        recommended_action = ""
+    elif surface_plan_ready and (not recommended_action or recommended_action == "APPROVE_SURFACE_EXPANSION"):
+        recommended_action = _surface_plan_operator_action(recommendation)
+    if surface_plan_ready and brief_path:
+        artifact_path = brief_path
+    if latest_run is not None and not artifact_path:
+        artifact_path = latest_run.artifact_dir
+
+    if ledger is not None and not surface_plan_ready:
+        try:
+            brief = build_action_brief(ledger=ledger, key=item.key, action_type=item.action_type)
+            recommendation = brief.recommendation
+            recommended_action = brief.suggested_operator_action
+            evidence_summary = _brief_cell(brief.summary, max_chars=650)
+            artifact_path = artifact_path or "; ".join(brief.sources[:2])
+        except Exception as exc:  # pragma: no cover - defensive; control sync should not fail on one brief
+            recommendation = recommendation or "INSPECT"
+            evidence_summary = evidence_summary or f"Could not build evidence brief: {exc}"
+
+    return {
+        "recommendation": recommendation,
+        "recommended_operator_action": recommended_action,
+        "decision_needed": _operator_decision_text(DEFAULT_CONTROL_SHEET_NAME, recommended_action),
+        "symbol_scope": hypothesis.symbol_scope if hypothesis is not None else str(existing.get("symbol_scope", "")),
+        "strategy": hypothesis.strategy if hypothesis is not None else str(existing.get("strategy", "")),
+        "latest_stage": hypothesis.latest_stage if hypothesis is not None else str(existing.get("latest_stage", "")),
+        "evidence_summary": evidence_summary,
+        "next_step": _control_next_step(recommended_action, recommendation),
+        "artifact_path": artifact_path,
+    }
+
+
 def build_control_rows(
     *,
     actions: list[NextAction],
     generated_at: str,
     existing_rows: list[dict[str, Any]] | None = None,
+    ledger: ResearchLedger | None = None,
 ) -> list[dict[str, Any]]:
     """Build Research_Control rows while preserving operator-entered fields."""
     existing_by_id = {
@@ -855,23 +1017,25 @@ def build_control_rows(
             status = f"invalid_operator_action:{operator_action}"
         else:
             status = existing_status
+        decision_fields = _control_decision_fields(ledger=ledger, item=item, existing=existing)
         rows.append(
             {
-                "action_id": action_id(item),
                 "rank": item.rank,
-                "priority": item.priority,
+                "status": status,
+                **decision_fields,
+                "operator_action": operator_action,
+                "reason": item.reason,
+                "action_id": action_id(item),
                 "action_type": item.action_type,
                 "key": item.key,
-                "reason": item.reason,
+                "priority": item.priority,
+                "brief_recommendation": decision_fields["recommendation"],
+                "brief_summary": decision_fields["evidence_summary"],
+                "brief_path": str(existing.get("brief_path", "")),
+                "last_report_path": str(existing.get("last_report_path", "")),
                 "suggested_command": item.suggested_command,
                 "requires_approval": item.requires_approval,
                 "mutates_external_state": item.mutates_external_state,
-                "operator_action": operator_action,
-                "status": status,
-                "brief_recommendation": str(existing.get("brief_recommendation", "")),
-                "brief_summary": str(existing.get("brief_summary", "")),
-                "brief_path": str(existing.get("brief_path", "")),
-                "last_report_path": str(existing.get("last_report_path", "")),
                 "updated_at": sheet_timestamp(),
                 "generated_at": generated_at,
             }
@@ -1077,6 +1241,7 @@ def _brief_recommendation(
     m1_rows: list[dict[str, str]],
     m2_rows: list[dict[str, str]],
     summary_text: str,
+    researcher_verdict: dict[str, Any] | None = None,
 ) -> tuple[str, str, str]:
     action_type = action.action_type if action else ""
     if action_type == "publish_pending":
@@ -1086,21 +1251,33 @@ def _brief_recommendation(
     if action_type in {"repair_run_summary", "inspect_terminal"}:
         return "MARK_STALE_OR_REPAIR", "MARK_STALE", "Evidence is incomplete; mark stale if the artifact is not needed, otherwise repair before use."
     if action_type == "run_m1":
-        return "RUN_M1_REVIEW", "SKIP", "Pending hypothesis needs human/agent thesis review before first execution."
+        return "RUN_M1_REVIEW", "APPROVE_RUN_M1", "Pending hypothesis is config-only; run M1 only after thesis review."
 
     if hypothesis is None:
         return "INSPECT", "SKIP", "Action key does not map to a local hypothesis; inspect before execution."
     combined = f"{hypothesis.state} {hypothesis.decision} {summary_text}".lower()
+    if action_type == "resume_or_normalize":
+        for stage in ("M2", "M3", "M4", "M5"):
+            if hypothesis.state == "running" and f"promote_to_{stage.lower()}" in combined:
+                return (
+                    f"CONTINUE_{stage}_REVIEW",
+                    f"APPROVE_CONTINUE_{stage}",
+                    f"{hypothesis.latest_stage} passed; continue through {stage} only before any catalog/publish work.",
+                )
+        return "RESUME_OR_NORMALIZE_REVIEW", "SKIP", "Running hypothesis needs inspection before resume or normalization."
     if hypothesis.state == "kill":
         return "NO_ACTION", "SKIP", "Hypothesis is already kill; do not spend more research cycles unless a new thesis is written."
     if hypothesis.state == "completed":
         return "PUBLISH_REVIEW", "APPROVE_PUBLISH", "Hypothesis is completed; use publish review only if a selected catalog row is missing."
 
     if action_type == "retune_plan":
+        verdict = researcher_verdict or {}
+        verdict_recommendation = str(verdict.get("recommendation") or "")
+        verdict_rationale = str(verdict.get("rationale") or "")
+        if verdict_recommendation == "close_as_smoke_test":
+            return "CLOSE_SMOKE_TEST", "SKIP", verdict_rationale or "Researcher verdict classifies this as smoke/plumbing evidence, not an alpha retune."
         if "m1 fail: no positive configs" in combined:
             return "KILL_OR_SKIP", "SKIP", "Latest retune found no positive configs; archive or kill unless the thesis changes materially."
-        if "m1 fail" in combined and ("signals=" in combined or "windows=" in combined or "pct_pos=" in combined):
-            return "SURFACE_EXPANSION_REVIEW", "APPROVE_SURFACE_EXPANSION", "M1 failed on sample/stability; inspect whether the search surface is too narrow before another retune."
         if m2_rows:
             pass_all = any(_truthy(row.get("passes_all_gates")) for row in m2_rows)
             pass_exp = any(_truthy(row.get("passes_exp_gate")) for row in m2_rows)
@@ -1111,6 +1288,16 @@ def _brief_recommendation(
                 return "APPROVE_RETUNE", "APPROVE_RETUNE", "Expectancy exists but stability did not survive M2; a bounded retune is reasonable."
             if not pass_exp:
                 return "KILL_OR_SURFACE_RETHINK", "SKIP", "M2 expectancy did not survive cost convergence; avoid another simple retune."
+        if verdict_recommendation == "approve_surface_expansion":
+            return "SURFACE_EXPANSION_REVIEW", "APPROVE_SURFACE_EXPANSION", verdict_rationale or "Researcher verdict supports a targeted surface expansion."
+        if verdict_recommendation == "approve_bounded_retune":
+            return "APPROVE_RETUNE", "APPROVE_RETUNE", verdict_rationale or "Researcher verdict supports only a bounded diagnostic retune."
+        if verdict_recommendation == "defer_for_better_evidence":
+            return "DEFER_FOR_BETTER_EVIDENCE", "", verdict_rationale or "Researcher verdict says the evidence is too thin to recommend more compute now."
+        if verdict_recommendation == "reject_or_kill":
+            return "KILL_OR_SKIP", "SKIP", verdict_rationale or "Researcher verdict does not support another research cycle."
+        if "m1 fail" in combined and ("signals=" in combined or "windows=" in combined or "pct_pos=" in combined):
+            return "SURFACE_EXPANSION_REVIEW", "APPROVE_SURFACE_EXPANSION", "M1 failed on sample/stability; inspect whether the search surface is too narrow before another retune."
         if m1_rows:
             positive = [row for row in m1_rows if _to_float(row.get("avg_test_exp_r")) > 0]
             if positive:
@@ -1148,13 +1335,30 @@ def build_action_brief(
     summary_path = latest_dir / "RUN_SUMMARY.md" if latest_dir else None
     summary_text = _read_text(summary_path) if summary_path else ""
     m1_rows = _read_csv_dicts(latest_dir / "M1_top.csv") if latest_dir else []
+    m1_aggregate_rows = _read_csv_dicts(latest_dir / "M1_aggregate.csv") if latest_dir else []
+    m1_detail_rows = _read_csv_dicts(latest_dir / "M1_detail.csv") if latest_dir else []
     m2_rows = _read_csv_dicts(latest_dir / "M2_gate_report.csv") if latest_dir else []
+    story = _hypothesis_story(hypothesis.file_path if hypothesis else "")
+    researcher_verdict = _build_researcher_verdict(
+        hypothesis_metadata={
+            "title": story.get("title", ""),
+            "thesis": story.get("thesis", ""),
+            "strategy": hypothesis.strategy if hypothesis else "",
+            "symbol_scope": hypothesis.symbol_scope if hypothesis else "",
+        },
+        m1_rows=m1_rows,
+        aggregate_rows=m1_aggregate_rows,
+        detail_rows=m1_detail_rows,
+        m2_rows=m2_rows,
+        run_summary_text=summary_text,
+    )
     recommendation, operator_action, summary = _brief_recommendation(
         hypothesis=hypothesis,
         action=action,
         m1_rows=m1_rows,
         m2_rows=m2_rows,
         summary_text=summary_text,
+        researcher_verdict=researcher_verdict,
     )
     evidence: list[str] = []
     if action is not None:
@@ -1393,7 +1597,7 @@ def _surface_plan_decision(
         return (
             "config-only",
             "CONFIG_ONLY_SURFACE_EXPANSION",
-            "APPROVE_RETUNE",
+            "",
             "Search surface likely needs bounded widening before another M1 retune.",
         )
     if rows:
@@ -1405,7 +1609,7 @@ def _surface_plan_decision(
             return (
                 "config-only",
                 "CONFIG_ONLY_STABILITY_RETUNE",
-                "APPROVE_RETUNE",
+                "",
                 "Expectancy exists, but stability needs a narrower parameter surface.",
             )
         return (
@@ -1555,14 +1759,34 @@ def update_control_row_with_surface_plan(
         if str(row.get("action_id", "")).strip() != plan.action_id:
             continue
         next_row = dict(row)
+        next_row["recommendation"] = plan.recommendation
+        next_row["recommended_operator_action"] = plan.next_operator_action
+        next_row["decision_needed"] = _operator_decision_text(DEFAULT_CONTROL_SHEET_NAME, plan.next_operator_action)
+        next_row["evidence_summary"] = _brief_cell(plan.summary, max_chars=650)
+        next_row["next_step"] = _control_next_step(plan.next_operator_action, plan.recommendation)
+        next_row["artifact_path"] = plan.report_path
         next_row["brief_recommendation"] = plan.recommendation
         next_row["brief_summary"] = _brief_cell(plan.summary)
         next_row["brief_path"] = plan.report_path
+        next_row["last_report_path"] = plan.report_path
         next_row["status"] = "surface_plan_ready"
         next_row["updated_at"] = sheet_timestamp()
         client.batch_update_rows(
             rows=[next_row],
-            columns=["brief_recommendation", "brief_summary", "brief_path", "status", "updated_at"],
+            columns=[
+                "recommendation",
+                "recommended_operator_action",
+                "decision_needed",
+                "evidence_summary",
+                "next_step",
+                "artifact_path",
+                "brief_recommendation",
+                "brief_summary",
+                "brief_path",
+                "last_report_path",
+                "status",
+                "updated_at",
+            ],
         )
         return True
     return False
@@ -1665,6 +1889,122 @@ def evaluate_hypothesis_intake(row: dict[str, Any]) -> HypothesisIntakeEvaluatio
     )
 
 
+def _intake_decision_fields(row: dict[str, Any]) -> dict[str, str]:
+    status = str(row.get("status", "")).strip()
+    operator_action = str(row.get("operator_action", "")).strip().upper()
+    feasibility_tag = str(row.get("feasibility_tag", "")).strip()
+    if operator_action:
+        recommendation = "PENDING_OPERATOR_ACTION"
+        recommended_action = operator_action
+        decision = f"{operator_action} is pending; leave it only if this is intentional."
+    elif status == "proposed_by_research_ops":
+        recommendation = "EVALUATE"
+        recommended_action = "EVALUATE"
+        decision = "Choose EVALUATE to feasibility-check this proposal; leave blank to defer."
+    elif status == "evaluated_ready_for_approval":
+        recommendation = "CREATE_HYPOTHESIS"
+        recommended_action = "APPROVE_CREATE_HYPOTHESIS"
+        decision = "Choose APPROVE_CREATE_HYPOTHESIS to create a pending hypothesis."
+    elif status.startswith("blocked_"):
+        recommendation = feasibility_tag or status
+        recommended_action = ""
+        decision = "Blocked; route to code/human research before choosing an action."
+    elif status in {"created_pending", "existing_hypothesis"}:
+        recommendation = "NO_ACTION"
+        recommended_action = ""
+        decision = "Already converted to a hypothesis; no intake action needed."
+    elif status == "skipped":
+        recommendation = "NO_ACTION"
+        recommended_action = ""
+        decision = "Skipped; no intake action needed."
+    else:
+        recommendation = feasibility_tag or "REVIEW"
+        recommended_action = ""
+        decision = "Review this row before choosing an operator_action."
+    return {
+        "recommendation": recommendation,
+        "recommended_operator_action": recommended_action,
+        "decision_needed": decision,
+    }
+
+
+def _enrich_intake_row(row: dict[str, Any]) -> dict[str, Any]:
+    next_row = dict(row)
+    if not str(next_row.get("reason_to_try", "")).strip():
+        next_row["reason_to_try"] = str(next_row.get("thesis", "")).strip()
+    if not str(next_row.get("suggested_config", "")).strip():
+        next_row["suggested_config"] = str(next_row.get("rules", "") or next_row.get("notes", "")).strip()
+    if not str(next_row.get("risk_or_overlap", "")).strip() and str(next_row.get("rules", "")).strip():
+        next_row["risk_or_overlap"] = str(next_row.get("notes", "")).strip()
+    next_row.update(_intake_decision_fields(next_row))
+    return next_row
+
+
+def build_intake_proposal_row(
+    *,
+    intake_id: str,
+    title: str,
+    strategy: str,
+    symbol_scope: str,
+    thesis: str,
+    hypothesis_id: str = "",
+    rules: str = "",
+    notes: str = "",
+    suggested_config: str = "",
+    reason_to_try: str = "",
+    risk_or_overlap: str = "",
+    max_stage: str = "M2",
+    feasibility_tag: str = "",
+    feasibility_summary: str = "",
+    source: str = "",
+    research_ops_notes: str = "",
+    proposed_by: str = "research_ops",
+    proposed_at: str = "",
+    existing_row: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a review-only Research_Intake proposal row."""
+    now = proposed_at or sheet_timestamp()
+    clean_intake_id = _slug(intake_id or title)
+    clean_hypothesis_id = _slug(hypothesis_id or clean_intake_id)
+    proposal_notes = "\n".join(part for part in [suggested_config.strip(), notes.strip()] if part)
+    base = {
+        "intake_id": clean_intake_id,
+        "title": title.strip(),
+        "hypothesis_id": clean_hypothesis_id,
+        "strategy": strategy.strip(),
+        "symbol_scope": symbol_scope.strip(),
+        "thesis": thesis.strip(),
+        "rules": rules.strip(),
+        "notes": proposal_notes,
+        "max_stage": max_stage.strip() or "M2",
+    }
+    evaluation = evaluate_hypothesis_intake(base)
+    existing = existing_row or {}
+    created_at = str(existing.get("created_at", "")).strip() or now
+    row = {
+        **base,
+        "operator_action": "",
+        "status": "proposed_by_research_ops",
+        "reason_to_try": reason_to_try.strip() or thesis.strip(),
+        "risk_or_overlap": risk_or_overlap.strip(),
+        "suggested_config": suggested_config.strip(),
+        "feasibility_tag": feasibility_tag.strip() or evaluation.feasibility_tag,
+        "feasibility_summary": feasibility_summary.strip() or evaluation.feasibility_summary,
+        "search_param_keys": evaluation.search_param_keys,
+        "discovery_config_count": evaluation.discovery_config_count,
+        "retune_config_count": evaluation.retune_config_count,
+        "hypothesis_path": str(existing.get("hypothesis_path", "")),
+        "report_path": str(existing.get("report_path", "")),
+        "updated_at": now,
+        "created_at": created_at,
+        "source": source.strip(),
+        "research_ops_notes": research_ops_notes.strip(),
+        "proposed_by": proposed_by.strip() or "research_ops",
+        "proposed_at": str(existing.get("proposed_at", "")).strip() or now,
+    }
+    return _enrich_intake_row(row)
+
+
 def _intake_status_from_evaluation(evaluation: HypothesisIntakeEvaluation) -> str:
     if evaluation.feasibility_tag == "config-only":
         return "evaluated_ready_for_approval"
@@ -1744,7 +2084,7 @@ def _merge_intake_update(
         next_row["created_at"] = next_row["updated_at"]
     if clear_operator_action:
         next_row["operator_action"] = ""
-    return next_row
+    return _enrich_intake_row(next_row)
 
 
 def process_intake_rows(
@@ -2078,6 +2418,1212 @@ def write_digest_report(
     )
 
 
+
+PROGRAM_STATUS_TAGS = {"auto_continue", "needs_suman", "blocked", "running", "done"}
+DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar")
+DECISION_CARD_DIR = Path("areas/trading/mala-research/decision-cards")
+COMMENTS_START = "<!-- mala-card-comments:start -->"
+COMMENTS_END = "<!-- mala-card-comments:end -->"
+RECEIPT_START = "<!-- mala-card-receipt:start -->"
+RECEIPT_END = "<!-- mala-card-receipt:end -->"
+
+
+def _safe_id(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value).strip()).strip("-").lower() or "item"
+
+
+def _latest_file(root: Path, pattern: str) -> Path | None:
+    if not root.exists():
+        return None
+    matches = [path for path in root.glob(pattern) if path.is_file()]
+    if not matches:
+        return None
+    return sorted(matches, key=lambda path: (path.stat().st_mtime, str(path)), reverse=True)[0]
+
+
+def _latest_shadow_brief(vault: Path | None = None) -> dict[str, str]:
+    candidates: list[Path] = []
+    if vault is not None:
+        root = vault / "areas" / "trading" / "mala-shadow"
+        if root.exists():
+            candidates.extend(root.glob("*.md"))
+    if DEFAULT_SHADOW_CAMPAIGN_DIR.exists():
+        candidates.extend(DEFAULT_SHADOW_CAMPAIGN_DIR.rglob("*.md"))
+    candidates = [path for path in candidates if path.is_file() and not path.name.startswith(".")]
+    if not candidates:
+        return {}
+    note = sorted(candidates, key=lambda path: (path.stat().st_mtime, str(path)), reverse=True)[0]
+    text = note.read_text(encoding="utf-8", errors="replace")[:5000]
+    title_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    verdict_match = re.search(r"decision_verdict:\s*(?:\*\*)?`?([^`*\n]+)", text, re.IGNORECASE)
+    owner_match = re.search(r"^-\s*Owner:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
+    return {
+        "title": title_match.group(1).strip() if title_match else note.stem,
+        "verdict": verdict_match.group(1).strip() if verdict_match else "",
+        "owner": (owner_match.group(1).split(".")[0].strip() if owner_match else "Research Ops"),
+        "path": str(note),
+    }
+
+
+def _read_sheet_rows_for_status(args: argparse.Namespace, kind: str) -> tuple[list[dict[str, Any]], list[str]]:
+    if not getattr(args, f"with_{kind}", False):
+        return [], [f"{kind} sheet not requested; run with --with-{kind} and credentials to include live sheet state."]
+    try:
+        rows = _read_control_rows(args) if kind == "control" else _read_intake_rows(args)
+        if not rows:
+            return [], [f"{kind} sheet returned no rows or sheet access was unavailable."]
+        return rows, []
+    except Exception as exc:  # pragma: no cover - defensive degradation path
+        return [], [f"{kind} sheet unavailable: {exc}"]
+
+
+def _classify_action(action: NextAction) -> str:
+    if action.action_type in {"repair_run_summary", "inspect_terminal"}:
+        return "blocked"
+    if action.action_type == "resume_or_normalize":
+        return "running"
+    if action.requires_approval == "yes" or action.mutates_external_state == "yes":
+        return "needs_suman"
+    return "auto_continue"
+
+
+def _status_item_from_action(action: NextAction, ledger: ResearchLedger) -> dict[str, Any]:
+    tag = _classify_action(action)
+    hyp = _find_hypothesis(ledger, action.key)
+    latest_run = _latest_run(ledger, action.key)
+    source = hyp.file_path if hyp else (latest_run.artifact_dir if latest_run else action.key)
+    item = {
+        "id": action_id(action),
+        "tag": tag,
+        "title": f"{action.action_type}: {action.key}",
+        "why": action.reason,
+        "next": action.suggested_command,
+        "owner": "Suman" if tag == "needs_suman" else ("Codex/Jarvis" if tag == "blocked" else "Research Ops"),
+        "source": source,
+        "priority": action.priority,
+        "action_type": action.action_type,
+        "key": action.key,
+        "requires_approval": action.requires_approval,
+        "mutates_external_state": action.mutates_external_state,
+    }
+    if action.action_type == "retune_plan":
+        item["brief"] = _research_brief_for_action(action, ledger)
+    return item
+
+
+def build_program_status(args: argparse.Namespace) -> dict[str, Any]:
+    ledger = _build_with_optional_sheets(args)
+    actions = build_next_actions(ledger)
+    if getattr(args, "limit", 0):
+        actions = actions[: args.limit]
+    control_rows, control_warnings = _read_sheet_rows_for_status(args, "control")
+    intake_rows, intake_warnings = _read_sheet_rows_for_status(args, "intake")
+    out_dir = Path(args.out_dir)
+    latest_digest = _latest_file(out_dir / "digests", "digest-*.md")
+    next_actions_report = out_dir / "next_actions.md"
+    shadow = _latest_shadow_brief(Path(args.vault).expanduser() if getattr(args, "vault", "") else DEFAULT_OBSIDIAN_VAULT)
+
+    items = [_status_item_from_action(action, ledger) for action in actions]
+    for row in ledger.hypotheses:
+        if row.state == "running" and not any(item["key"] == row.hypothesis_id for item in items):
+            items.append({
+                "id": f"running:{row.hypothesis_id}",
+                "tag": "running",
+                "title": f"Running hypothesis: {row.hypothesis_id}",
+                "why": f"Hypothesis file state is running; latest_stage={row.latest_stage} decision={row.decision or '<empty>'}.",
+                "next": "Resume through the bounded runner or normalize state after inspection.",
+                "owner": "Research Ops",
+                "source": row.file_path,
+                "priority": "high",
+                "action_type": "running_hypothesis",
+                "key": row.hypothesis_id,
+            })
+    if shadow:
+        verdict = shadow.get("verdict", "")
+        tag = "blocked" if "red" in verdict.lower() else "running"
+        items.append({
+            "id": f"shadow-brief:{_safe_id(Path(shadow['path']).stem)}",
+            "tag": tag,
+            "title": f"Shadow brief: {shadow.get('title')}",
+            "why": f"Latest Mala/Bhiksha shadow brief verdict: {verdict or 'not stated'}.",
+            "next": "Continue daily evidence capture; do not change active_strategy without explicit approval.",
+            "owner": shadow.get("owner") or "Research Ops",
+            "source": shadow.get("path", ""),
+            "priority": "medium",
+            "action_type": "shadow_brief",
+            "key": Path(shadow.get("path", "shadow")).stem,
+        })
+    for row in sorted([r for r in ledger.hypotheses if r.state in {"completed", "kill"}], key=lambda r: r.hypothesis_id)[:10]:
+        items.append({
+            "id": f"done:{row.hypothesis_id}",
+            "tag": "done",
+            "title": f"{row.hypothesis_id} is {row.state}",
+            "why": f"decision={row.decision or '<empty>'}; latest_stage={row.latest_stage}.",
+            "next": "No operator action unless new evidence reopens it.",
+            "owner": "Research Ops",
+            "source": row.file_path,
+            "priority": "low",
+            "action_type": "done_hypothesis",
+            "key": row.hypothesis_id,
+        })
+
+    by_tag = {tag: [item for item in items if item.get("tag") == tag] for tag in sorted(PROGRAM_STATUS_TAGS)}
+    warnings = control_warnings + intake_warnings
+    if not latest_digest:
+        warnings.append("No digest artifact found under data/results/research_ops/digests/.")
+    if not next_actions_report.exists():
+        warnings.append("No next_actions.md artifact found yet; program-status rebuilt next actions in memory.")
+    return {
+        "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "program": {"id": "mala_next_gen_research_ops_flow", "title": "Mala Next-Gen Research Ops Flow"},
+        "summary": {
+            "hypotheses": len(ledger.hypotheses),
+            "runs": len(ledger.runs),
+            "promoted_candidates": len(ledger.promoted),
+            "findings": len(ledger.findings),
+            "next_actions": len(actions),
+            "control_rows": len(control_rows),
+            "intake_rows": len(intake_rows),
+            "tags": {tag: len(by_tag[tag]) for tag in sorted(PROGRAM_STATUS_TAGS)},
+        },
+        "latest": {"digest": str(latest_digest) if latest_digest else "", "next_actions": str(next_actions_report) if next_actions_report.exists() else "", "shadow_brief": shadow},
+        "state": {
+            "control": {"available": bool(control_rows), "active_rows": [row for row in control_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip() not in {"", "queued"}][:10]},
+            "intake": {"available": bool(intake_rows), "active_rows": [row for row in intake_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip()][:10]},
+        },
+        "items": items,
+        "by_tag": by_tag,
+        "artifacts": {"hypotheses_dir": str(Path(args.hypotheses_dir)), "runs_dir": str(Path(args.runs_dir)), "out_dir": str(Path(args.out_dir))},
+        "warnings": warnings,
+    }
+
+
+def write_program_status(status: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
+    status_dir = out_dir / "program_status"
+    status_dir.mkdir(parents=True, exist_ok=True)
+    json_path = status_dir / "program_status.json"
+    md_path = status_dir / "program_status.md"
+    json_path.write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    lines = ["# Mala Program Status", "", f"- generated_at: `{status['generated_at']}`", f"- program_id: `{status['program']['id']}`", "", "## Summary", ""]
+    for key, value in status["summary"].items():
+        lines.append(f"- {key}: `{value}`")
+    if status.get("warnings"):
+        lines.extend(["", "## Warnings / Blockers", ""])
+        for warning in status["warnings"]:
+            lines.append(f"- {warning}")
+    latest = status.get("latest", {})
+    lines.extend(["", "## Latest Sources", ""])
+    for key in ("digest", "next_actions"):
+        lines.append(f"- {key}: `{latest.get(key) or 'not found'}`")
+    shadow = latest.get("shadow_brief") or {}
+    if shadow:
+        lines.append(f"- shadow_brief: `{shadow.get('path', '')}` — {shadow.get('verdict', '')}")
+    for tag in ("needs_suman", "blocked", "running", "auto_continue", "done"):
+        lines.extend(["", f"## {tag}", ""])
+        bucket = status.get("by_tag", {}).get(tag, [])
+        if not bucket:
+            lines.append("- None.")
+            continue
+        for item in bucket[:20]:
+            lines.append(f"- `{item['id']}` **{item['title']}**")
+            lines.append(f"  - why: {item.get('why', '')}")
+            lines.append(f"  - next: {item.get('next', '')}")
+            lines.append(f"  - owner: {item.get('owner', '')}")
+            lines.append(f"  - source: `{item.get('source', '')}`")
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return json_path, md_path
+
+
+def cmd_program_status(args: argparse.Namespace) -> int:
+    status = build_program_status(args)
+    json_path, md_path = write_program_status(status, Path(args.out_dir))
+    print(f"PROGRAM_STATUS_JSON={json_path}")
+    print(f"PROGRAM_STATUS_MD={md_path}")
+    print(f"NEEDS_SUMAN={status['summary']['tags'].get('needs_suman', 0)}")
+    print(f"BLOCKED={status['summary']['tags'].get('blocked', 0)}")
+    print(f"RUNNING={status['summary']['tags'].get('running', 0)}")
+    return 0
+
+
+def _load_or_build_program_status(args: argparse.Namespace) -> dict[str, Any]:
+    status_path = Path(args.out_dir) / "program_status" / "program_status.json"
+    if status_path.exists() and not getattr(args, "refresh", False):
+        try:
+            return json.loads(status_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    status = build_program_status(args)
+    write_program_status(status, Path(args.out_dir))
+    return status
+
+
+def _extract_preserved_block(text: str, start: str, end: str, default_body: str) -> str:
+    if start in text and end in text:
+        return text.split(start, 1)[1].split(end, 1)[0].strip("\n")
+    return default_body.strip("\n")
+
+
+def _section_text(markdown: str, heading: str, *, max_chars: int = 320) -> str:
+    pattern = rf"^##\s+{re.escape(heading)}\s*$\n(?P<body>.*?)(?=^##\s+|\Z)"
+    match = re.search(pattern, markdown, re.MULTILINE | re.DOTALL)
+    if not match:
+        return ""
+    body = re.sub(r"\s+", " ", match.group("body")).strip(" -\t\n")
+    return body[: max_chars - 3] + "..." if len(body) > max_chars else body
+
+
+def _hypothesis_story(path_value: str) -> dict[str, str]:
+    path = _artifact_path(path_value)
+    if path is None or not path.exists():
+        return {"title": Path(path_value or "").stem, "thesis": ""}
+    text = _read_text(path, max_chars=6000)
+    title_match = re.search(r"^#\s+Hypothesis:\s*(.+)$", text, re.MULTILINE) or re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    return {
+        "title": title_match.group(1).strip() if title_match else path.stem,
+        "thesis": _section_text(text, "Thesis"),
+    }
+
+
+def _summary_note(summary_text: str) -> str:
+    notes = _section_text(summary_text, "Notes", max_chars=220)
+    if notes:
+        return notes
+    match = re.search(r"^-\s*decision:\s*`?([^`\n]+)`?", summary_text, re.MULTILINE)
+    return f"decision={match.group(1).strip()}" if match else ""
+
+
+def _m1_metric_summary(m1_rows: list[dict[str, str]]) -> str:
+    if not m1_rows:
+        return "M1 evidence not found"
+    best_rows = _sorted_metric_rows(m1_rows, primary="m1_score", limit=1)
+    best = best_rows[0] if best_rows else m1_rows[0]
+    return (
+        f"M1 rows={len(m1_rows)}; best {best.get('ticker', '')} {best.get('direction', '')} "
+        f"exp_r={_format_number(best.get('avg_test_exp_r'))} "
+        f"pct_pos={_format_number(best.get('pct_positive_oos_windows'), digits=2)} "
+        f"signals={best.get('oos_signals', '')}"
+    ).strip()
+
+
+def _m2_metric_summary(m2_rows: list[dict[str, str]]) -> str:
+    if not m2_rows:
+        return ""
+    pass_all = sum(1 for row in m2_rows if _truthy(row.get("passes_all_gates")))
+    best_rows = _sorted_metric_rows(m2_rows, primary="score", secondary="min_avg_test_exp_r", limit=1)
+    best = best_rows[0] if best_rows else m2_rows[0]
+    return (
+        f"M2 rows={len(m2_rows)} pass_all={pass_all}; best min_exp_r="
+        f"{_format_number(best.get('min_avg_test_exp_r'))} "
+        f"min_pct_pos={_format_number(best.get('min_pct_positive_oos_windows'), digits=2)}"
+    ).strip()
+
+
+
+def _metric_row_fingerprint(row: dict[str, str]) -> tuple[str, str, str]:
+    return (str(row.get("ticker", "")), str(row.get("strategy", "")), str(row.get("direction", "")))
+
+
+def _best_m1_row(m1_rows: list[dict[str, str]]) -> dict[str, str]:
+    if not m1_rows:
+        return {}
+    positive = [row for row in m1_rows if _to_float(row.get("avg_test_exp_r")) > 0]
+    rows = positive or m1_rows
+    return _sorted_metric_rows(rows, primary="m1_score", secondary="avg_test_exp_r", limit=1)[0]
+
+
+def _matching_effective_cost(best: dict[str, str], detail_rows: list[dict[str, str]]) -> str:
+    if not best:
+        return ""
+    ignored = {"oos_windows", "oos_signals", "avg_test_exp_r", "pct_positive_oos_windows", "avg_test_confidence", "avg_test_mfe_mae_ratio", "m1_score"}
+    keys = [key for key, value in best.items() if key not in ignored and str(value).strip()]
+    matches = []
+    for row in detail_rows:
+        if all(str(row.get(key, "")).strip() == str(best.get(key, "")).strip() for key in keys if key in row):
+            matches.append(row)
+    costs = [_to_float(row.get("effective_cost_r"), default=float("nan")) for row in matches]
+    costs = [value for value in costs if value == value]
+    if not costs:
+        return ""
+    return _format_number(sum(costs) / len(costs), digits=4)
+
+
+def _best_config_sketch(best: dict[str, str], detail_rows: list[dict[str, str]]) -> dict[str, Any]:
+    if not best:
+        return {}
+    sketch = {
+        "ticker": best.get("ticker", ""),
+        "direction": best.get("direction", ""),
+        "avg_test_exp_r": _format_number(best.get("avg_test_exp_r")),
+        "pct_positive_oos_windows": _format_number(best.get("pct_positive_oos_windows"), digits=2),
+        "oos_signals": best.get("oos_signals", ""),
+        "avg_test_confidence": _format_number(best.get("avg_test_confidence"), digits=4),
+        "avg_test_mfe_mae_ratio": _format_number(best.get("avg_test_mfe_mae_ratio"), digits=4),
+        "effective_cost_r_if_available": _matching_effective_cost(best, detail_rows),
+        "key_params": _compact_config(best),
+    }
+    return {key: value for key, value in sketch.items() if str(value).strip()}
+
+
+def _direction_stability_flag(rows: list[dict[str, str]]) -> bool:
+    direction_exp: dict[str, list[float]] = {}
+    for row in rows:
+        direction = str(row.get("direction", "")).strip() or "unknown"
+        direction_exp.setdefault(direction, []).append(_to_float(row.get("avg_test_exp_r")))
+    positives = {direction for direction, values in direction_exp.items() if any(value > 0 for value in values)}
+    negatives = {direction for direction, values in direction_exp.items() if any(value < 0 for value in values)}
+    directional = {d for d in positives | negatives if d not in {"combined", "unknown"}}
+    return bool(directional and positives and negatives and len(direction_exp) > 1)
+
+
+def _stability_read(m1_rows: list[dict[str, str]], aggregate_rows: list[dict[str, str]], best: dict[str, str]) -> dict[str, Any]:
+    all_rows = aggregate_rows or m1_rows
+    positive_count = sum(1 for row in all_rows if _to_float(row.get("avg_test_exp_r")) > 0)
+    robust_rows = [
+        row for row in all_rows
+        if _to_float(row.get("avg_test_exp_r")) > 0
+        and _to_float(row.get("oos_windows")) >= 3
+        and _to_float(row.get("oos_signals")) >= 50
+    ]
+    broader_rows = [
+        row for row in all_rows
+        if _to_float(row.get("oos_windows")) >= max(2, _to_float(best.get("oos_windows"), 0))
+        and _to_float(row.get("oos_signals")) >= max(30, _to_float(best.get("oos_signals"), 0))
+    ]
+    broader_negative = any(_to_float(row.get("avg_test_exp_r")) < 0 for row in broader_rows)
+    notes: list[str] = []
+    if robust_rows:
+        sample = _sorted_metric_rows(robust_rows, primary="avg_test_exp_r", limit=2)
+        notes.append("robust-ish positives: " + ", ".join(f"{r.get('ticker','')} {r.get('direction','')} exp_r={_format_number(r.get('avg_test_exp_r'))} signals={r.get('oos_signals','')}" for r in sample))
+    else:
+        notes.append("no positive configs clear both 3-window and 50-signal rough stability bars")
+    if broader_negative:
+        notes.append("broader-sample rows include negative expectancy")
+    if _direction_stability_flag(all_rows):
+        notes.append("direction rows disagree across the sample")
+    return {
+        "positive_config_count": positive_count,
+        "robust_config_count": len(robust_rows),
+        "broader_sample_disagreement": broader_negative,
+        "notes": "; ".join(notes[:3]),
+    }
+
+
+def _metadata_text(metadata: dict[str, Any] | None, run_summary_text: str = "") -> str:
+    metadata = metadata or {}
+    allowed_keys = {
+        "title",
+        "strategy",
+        "symbol_scope",
+        "thesis",
+        "purpose",
+        "tags",
+        "notes",
+        "run_purpose",
+        "description",
+    }
+    parts = [str(value) for key, value in metadata.items() if key in allowed_keys for value in ([value] if not isinstance(value, list) else value)]
+    if run_summary_text:
+        parts.append(run_summary_text)
+    return "\n".join(parts).lower()
+
+
+def _is_smoke_test_metadata(metadata: dict[str, Any] | None, run_summary_text: str = "") -> bool:
+    text = _metadata_text(metadata, run_summary_text)
+    return bool(re.search(r"\b(smoke|plumbing|pipeline\s+test|dry[- ]run)\b", text))
+
+
+def _fragility_flags(*, metadata: dict[str, Any] | None, best: dict[str, str], stability: dict[str, Any], rows: list[dict[str, str]], run_summary_text: str = "") -> list[str]:
+    flags: list[str] = []
+    if not best:
+        flags.append("missing_artifact")
+    if _is_smoke_test_metadata(metadata, run_summary_text):
+        flags.append("smoke_test")
+    if best and _to_float(best.get("oos_signals")) < 50:
+        flags.append("thin_signals")
+    if best and _to_float(best.get("oos_windows")) <= 1:
+        flags.append("one_oos_window")
+    if bool(stability.get("broader_sample_disagreement")):
+        flags.append("aggregate_disagrees")
+    if best and _to_float(best.get("avg_test_exp_r")) < 0.10:
+        flags.append("weak_expectancy")
+    if _direction_stability_flag(rows):
+        flags.append("direction_unstable")
+    return list(dict.fromkeys(flags))
+
+
+def _evidence_quality(*, flags: list[str], robust_count: int, positive_count: int, exp_r: float) -> str:
+    if "smoke_test" in flags:
+        return "smoke_test"
+    if "missing_artifact" in flags:
+        return "blocked"
+    if exp_r <= 0:
+        return "weak"
+    if robust_count >= 2 and positive_count >= 3 and "aggregate_disagrees" not in flags:
+        return "strong"
+    if robust_count >= 1 and positive_count >= 2:
+        return "medium"
+    return "weak"
+
+
+def _researcher_recommendation(*, best: dict[str, str], stability: dict[str, Any], flags: list[str]) -> tuple[str, str, str, str]:
+    exp_r = _to_float(best.get("avg_test_exp_r"), default=0.0) if best else 0.0
+    pct_positive = _to_float(best.get("pct_positive_oos_windows"), default=0.0) if best else 0.0
+    robust_count = int(stability.get("robust_config_count") or 0)
+    positive_count = int(stability.get("positive_config_count") or 0)
+    quality = _evidence_quality(flags=flags, robust_count=robust_count, positive_count=positive_count, exp_r=exp_r)
+
+    if "smoke_test" in flags:
+        return "close_as_smoke_test", "low", "smoke_test", "Artifacts read like a smoke/plumbing test; close as pipeline evidence unless Suman intentionally converts it into a real hypothesis."
+    if "missing_artifact" in flags:
+        return "defer_for_better_evidence", "low", "blocked", "Required M1 evidence artifacts are missing, so Research Ops cannot justify another compute cycle."
+    if exp_r <= 0 or positive_count == 0:
+        return "reject_or_kill", "low", quality, "No positive after-cost expectancy is visible in the available evidence."
+    if robust_count >= 2 and positive_count >= 3 and "aggregate_disagrees" not in flags:
+        return "approve_surface_expansion", "high", quality, "Multiple positive configs clear rough window/signal stability bars; approve targeted surface expansion, not alpha promotion."
+    if robust_count >= 1 and positive_count >= 3:
+        return "approve_surface_expansion", "medium", quality, "At least one robust-ish positive config exists with broader positive support; expand the surface cautiously."
+    if "weak_expectancy" in flags and positive_count <= 1:
+        return "defer_for_better_evidence", "low", quality, "Positive evidence is too weak and sparse to justify a retune right now."
+    if "aggregate_disagrees" in flags and robust_count == 0:
+        return "defer_for_better_evidence", "low", quality, "The best row is not backed by broader-sample evidence; defer until the thesis or surface is clearer."
+    if pct_positive <= 0.50 and robust_count == 0:
+        return "defer_for_better_evidence", "low", "weak", "The best positive row is not stable across OOS windows; clarify the failure mode before retuning."
+    if "one_oos_window" in flags or "thin_signals" in flags:
+        return "approve_bounded_retune", "medium", quality, "Positive evidence exists but is sample-fragile; only a bounded diagnostic retune is justified."
+    return "defer_for_better_evidence", "low", quality, "Evidence is mixed or under-supported, so defer rather than spending a broad research cycle."
+
+
+def score_researcher_verdict(
+    *,
+    hypothesis_metadata: dict[str, Any] | None = None,
+    m1_top_rows: list[dict[str, str]] | None = None,
+    m1_aggregate_rows: list[dict[str, str]] | None = None,
+    m1_detail_rows: list[dict[str, str]] | None = None,
+    m2_rows: list[dict[str, str]] | None = None,
+    run_summary_text: str = "",
+) -> dict[str, Any]:
+    del m2_rows  # Reserved for later-stage gates; M1 evidence drives the current retune verdict.
+    m1_rows = m1_top_rows or []
+    aggregate_rows = m1_aggregate_rows or []
+    detail_rows = m1_detail_rows or []
+    best = _best_m1_row(m1_rows)
+    stability = _stability_read(m1_rows, aggregate_rows, best)
+    flags = _fragility_flags(
+        metadata=hypothesis_metadata,
+        best=best,
+        stability=stability,
+        rows=(aggregate_rows or m1_rows),
+        run_summary_text=run_summary_text,
+    )
+    recommendation, priority, evidence_quality, rationale = _researcher_recommendation(
+        best=best,
+        stability=stability,
+        flags=flags,
+    )
+    return {
+        "recommendation": recommendation,
+        "priority": priority,
+        "rationale": rationale,
+        "evidence_quality": evidence_quality,
+        "fragility_flags": flags,
+        "best_config": _best_config_sketch(best, detail_rows),
+        "stability_read": stability,
+    }
+
+
+def _build_researcher_verdict(*, hypothesis_metadata: dict[str, Any] | None, m1_rows: list[dict[str, str]], aggregate_rows: list[dict[str, str]], detail_rows: list[dict[str, str]], m2_rows: list[dict[str, str]], run_summary_text: str) -> dict[str, Any]:
+    return score_researcher_verdict(
+        hypothesis_metadata=hypothesis_metadata,
+        m1_top_rows=m1_rows,
+        m1_aggregate_rows=aggregate_rows,
+        m1_detail_rows=detail_rows,
+        m2_rows=m2_rows,
+        run_summary_text=run_summary_text,
+    )
+
+def _verdict_line(verdict: dict[str, Any]) -> str:
+    flags = verdict.get("fragility_flags") or []
+    flag_text = ", ".join(flags[:5]) if flags else "none"
+    best = verdict.get("best_config") or {}
+    best_text = ""
+    if best:
+        best_text = (
+            f" best={best.get('ticker','')} {best.get('direction','')} exp_r={best.get('avg_test_exp_r','')} "
+            f"pct_pos={best.get('pct_positive_oos_windows','')} signals={best.get('oos_signals','')}"
+        ).strip()
+    return (
+        f"{verdict.get('recommendation', 'defer_for_better_evidence')} / {verdict.get('priority', 'low')} "
+        f"/ evidence={verdict.get('evidence_quality', 'weak')} — {verdict.get('rationale', '')} "
+        f"Flags: {flag_text}.{(' ' + best_text) if best_text else ''}"
+    ).strip()
+
+
+def _batch_recommended_path(entries: list[dict[str, Any]]) -> list[str]:
+    by_rec: dict[str, list[str]] = {}
+    for entry in entries:
+        brief = entry.get("brief") if isinstance(entry.get("brief"), dict) else {}
+        verdict = brief.get("researcher_verdict") if isinstance(brief.get("researcher_verdict"), dict) else {}
+        rec = str(verdict.get("recommendation") or "defer_for_better_evidence")
+        name = str(brief.get("title") or brief.get("hypothesis_id") or entry.get("key") or entry.get("id"))
+        by_rec.setdefault(rec, []).append(name)
+    lines = ["Batch recommended path:" if len(entries) > 1 else "Recommended path:"]
+    if by_rec.get("approve_surface_expansion"):
+        lines.append("- Prioritize targeted surface expansion: " + "; ".join(by_rec["approve_surface_expansion"]))
+    if by_rec.get("approve_bounded_retune"):
+        lines.append("- Allow bounded diagnostic retune only: " + "; ".join(by_rec["approve_bounded_retune"]))
+    parked = by_rec.get("defer_for_better_evidence", []) + by_rec.get("reject_or_kill", [])
+    if parked:
+        lines.append("- Defer/reject unless strategic diversification matters: " + "; ".join(parked))
+    if by_rec.get("close_as_smoke_test"):
+        lines.append("- Close as smoke test or intentionally convert to a real hypothesis: " + "; ".join(by_rec["close_as_smoke_test"]))
+    return lines
+
+
+def _entry_brief(entry: dict[str, Any]) -> dict[str, Any]:
+    brief = entry.get("brief") if isinstance(entry.get("brief"), dict) else {}
+    return brief if isinstance(brief, dict) else {}
+
+
+def _entry_verdict(entry: dict[str, Any]) -> dict[str, Any]:
+    verdict = _entry_brief(entry).get("researcher_verdict")
+    return verdict if isinstance(verdict, dict) else {}
+
+
+def _entry_title(entry: dict[str, Any]) -> str:
+    brief = _entry_brief(entry)
+    return str(brief.get("title") or entry.get("title") or entry.get("key") or entry.get("id") or "research item")
+
+
+def _entry_recommendation(entry: dict[str, Any]) -> str:
+    brief = _entry_brief(entry)
+    verdict = _entry_verdict(entry)
+    return str(verdict.get("recommendation") or brief.get("suggested_operator_action") or brief.get("recommendation") or "defer_for_better_evidence")
+
+
+def _plain_recommendation(recommendation: str) -> str:
+    return {
+        "approve_surface_expansion": "approve targeted surface expansion",
+        "approve_bounded_retune": "approve bounded diagnostic retune",
+        "defer_for_better_evidence": "defer",
+        "reject_or_kill": "reject/kill",
+        "close_as_smoke_test": "close as smoke test",
+    }.get(recommendation, recommendation.replace("_", " "))
+
+
+def _executive_recommendation(entries: list[dict[str, Any]]) -> str:
+    by_rec: dict[str, list[str]] = {}
+    for entry in entries:
+        by_rec.setdefault(_entry_recommendation(entry), []).append(_entry_title(entry))
+    if len(entries) == 1:
+        rec, names = next(iter(by_rec.items()))
+        return f"Recommendation: {_plain_recommendation(rec).capitalize()} for {names[0]}."
+
+    labels = {
+        "approve_surface_expansion": "approve targeted expansion for",
+        "approve_bounded_retune": "approve bounded retune for",
+        "defer_for_better_evidence": "defer",
+        "reject_or_kill": "reject/kill",
+        "close_as_smoke_test": "close as smoke test",
+    }
+    ordered = list(labels)
+    parts: list[str] = []
+    for rec in ordered:
+        names = by_rec.get(rec, [])
+        if not names:
+            continue
+        noun = "candidate" if len(names) == 1 else "candidates"
+        parts.append(f"{labels[rec]} {len(names)} {noun}")
+    return "Recommendation: " + "; ".join(parts) + "."
+
+
+def _executive_confidence(entries: list[dict[str, Any]]) -> str:
+    qualities = {str(_entry_verdict(entry).get("evidence_quality") or "").lower() for entry in entries}
+    if "strong" in qualities and len(qualities - {"strong", "medium"}) == 0:
+        return "High"
+    if "medium" in qualities or "strong" in qualities:
+        return "Medium"
+    if "smoke_test" in qualities and len(qualities) == 1:
+        return "Low - smoke-test evidence only"
+    return "Low"
+
+
+def _executive_decision_needed(item: dict[str, Any], entries: list[dict[str, Any]]) -> str:
+    if item.get("action_type") == "retune_plan_batch":
+        return "Decision needed: accept the defer/close recommendation, or name an override subset in Comments."
+    return f"Decision needed: {_decision_next_text(item)}"
+
+
+def _executive_data_line(entry: dict[str, Any]) -> str:
+    verdict = _entry_verdict(entry)
+    stability = verdict.get("stability_read") if isinstance(verdict.get("stability_read"), dict) else {}
+    best = verdict.get("best_config") if isinstance(verdict.get("best_config"), dict) else {}
+    flags = verdict.get("fragility_flags") if isinstance(verdict.get("fragility_flags"), list) else []
+    best_bits: list[str] = []
+    if best:
+        if best.get("ticker") or best.get("direction"):
+            best_bits.append(f"best={best.get('ticker', '')} {best.get('direction', '')}".strip())
+        if best.get("avg_test_exp_r"):
+            best_bits.append(f"exp_r={best.get('avg_test_exp_r')}")
+        if best.get("oos_signals"):
+            best_bits.append(f"signals={best.get('oos_signals')}")
+    stability_text = ""
+    if stability:
+        stability_text = (
+            f"robustish={stability.get('robust_config_count', 0)} / "
+            f"{stability.get('positive_config_count', 0)} positive configs"
+        )
+    caveats: list[str] = []
+    if stability:
+        if stability.get("broader_sample_disagreement"):
+            caveats.append("broader sample disagrees")
+    caveats.extend(str(flag) for flag in flags[:3] if str(flag).strip())
+    evidence_parts = ["; ".join(best_bits) if best_bits else "", stability_text]
+    evidence = "; ".join(part for part in evidence_parts if part)
+    caveat_text = f"; caveats={', '.join(caveats)}" if caveats else ""
+    return f"- **{_entry_title(entry)}**: `{_entry_recommendation(entry)}`; {evidence or 'evidence unavailable'}{caveat_text}."
+
+
+def _render_executive_summary(item: dict[str, Any], entries: list[dict[str, Any]]) -> list[str]:
+    return [
+        "## Executive Summary",
+        "",
+        f"- {_executive_recommendation(entries)}",
+        f"- {_executive_decision_needed(item, entries)}",
+        f"- Confidence: {_executive_confidence(entries)}.",
+        "- Permission boundary: any approval authorizes only the named bounded research action; it does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk.",
+        "",
+        "## Decision Data That Matters",
+        "",
+        *[_executive_data_line(entry) for entry in entries],
+        "",
+    ]
+
+
+def _research_brief_for_action(action: NextAction, ledger: ResearchLedger) -> dict[str, Any]:
+    hyp = _find_hypothesis(ledger, action.key)
+    latest_run = _latest_run(ledger, action.key)
+    latest_dir = _artifact_path(hyp.latest_artifact_dir) if hyp else (_artifact_path(latest_run.artifact_dir) if latest_run else None)
+    summary_path = latest_dir / "RUN_SUMMARY.md" if latest_dir else None
+    summary_text = _read_text(summary_path, max_chars=5000) if summary_path else ""
+    m1_rows = _read_csv_dicts(latest_dir / "M1_top.csv") if latest_dir else []
+    m1_aggregate_rows = _read_csv_dicts(latest_dir / "M1_aggregate.csv") if latest_dir else []
+    m1_detail_rows = _read_csv_dicts(latest_dir / "M1_detail.csv") if latest_dir else []
+    m2_rows = _read_csv_dicts(latest_dir / "M2_gate_report.csv") if latest_dir else []
+    story = _hypothesis_story(hyp.file_path if hyp else "")
+    hypothesis_metadata = {
+        "title": story.get("title", ""),
+        "thesis": story.get("thesis", ""),
+        "strategy": hyp.strategy if hyp else "",
+        "symbol_scope": hyp.symbol_scope if hyp else "",
+    }
+    researcher_verdict = _build_researcher_verdict(
+        hypothesis_metadata=hypothesis_metadata,
+        m1_rows=m1_rows,
+        aggregate_rows=m1_aggregate_rows,
+        detail_rows=m1_detail_rows,
+        m2_rows=m2_rows,
+        run_summary_text=summary_text,
+    )
+    recommendation, operator_action, recommendation_reason = _brief_recommendation(
+        hypothesis=hyp,
+        action=action,
+        m1_rows=m1_rows,
+        m2_rows=m2_rows,
+        summary_text=summary_text,
+        researcher_verdict=researcher_verdict,
+    )
+    metrics = [value for value in (_m2_metric_summary(m2_rows), _m1_metric_summary(m1_rows), _summary_note(summary_text)) if value]
+    sources: list[str] = []
+    if hyp is not None:
+        sources.append(hyp.file_path)
+    if latest_run is not None:
+        sources.append(latest_run.artifact_dir)
+    if summary_path and summary_path.exists():
+        sources.append(_relative(summary_path))
+    confidence = "medium" if (m1_rows or m2_rows) else "low"
+    if recommendation.startswith(("INSPECT", "KILL_OR_SURFACE_RETHINK")):
+        confidence = "low" if not (m1_rows or m2_rows) else "medium-low"
+    return {
+        "title": story.get("title") or (hyp.hypothesis_id if hyp else action.key),
+        "hypothesis_id": hyp.hypothesis_id if hyp else action.key,
+        "strategy": hyp.strategy if hyp else "",
+        "symbol_scope": hyp.symbol_scope if hyp else "",
+        "stage": hyp.latest_stage if hyp else (latest_run.terminal_stage if latest_run else "none"),
+        "decision": hyp.decision if hyp else (latest_run.decision if latest_run else ""),
+        "thesis": story.get("thesis", ""),
+        "latest_artifact": latest_run.artifact_dir if latest_run else (hyp.latest_artifact_dir if hyp else ""),
+        "metrics": metrics[:3],
+        "recommendation": recommendation,
+        "suggested_operator_action": operator_action,
+        "recommendation_reason": recommendation_reason,
+        "confidence": confidence,
+        "researcher_verdict": researcher_verdict,
+        "sources": sources[:4],
+    }
+
+
+def _brief_source_text(sources: list[str]) -> str:
+    if not sources:
+        return "none found"
+    return "; ".join(f"`{source}`" for source in sources[:3])
+
+
+def _render_research_ops_brief(item: dict[str, Any]) -> list[str]:
+    if item.get("action_type") not in {"retune_plan", "retune_plan_batch"}:
+        return []
+    if item.get("action_type") == "retune_plan_batch":
+        entries = [child for child in item.get("batched_item_details", []) if isinstance(child, dict)]
+    else:
+        entries = [item]
+    if not entries:
+        return []
+
+    if item.get("action_type") == "retune_plan_batch":
+        plain_english = "Plain English: this is an attention-managed retune summary. The items are grouped because they are lower-priority or similar, not because Research Ops should ignore per-item differences."
+        approval_text = "Approving a subset must be named in comments. Approval authorizes only the recommended bounded action for the named items; it does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk by itself."
+    else:
+        plain_english = "Plain English: this is an individual retune decision card because this candidate has a differentiated Research Ops verdict or enough unblock value to deserve standalone judgment."
+        approval_text = "Approving this card authorizes only the named bounded research action. It does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk by itself."
+
+    lines = _render_executive_summary(item, entries)
+    lines.extend([
+        "## Research Detail",
+        "",
+        plain_english,
+        "",
+        approval_text,
+        "",
+        "### Evidence Snapshot",
+        "",
+    ])
+    for idx, entry in enumerate(entries, start=1):
+        brief = entry.get("brief") if isinstance(entry.get("brief"), dict) else {}
+        title = brief.get("title") or entry.get("title") or entry.get("key") or entry.get("id")
+        hyp_id = brief.get("hypothesis_id") or entry.get("key") or entry.get("id")
+        strategy = brief.get("strategy") or "unknown strategy"
+        symbols = brief.get("symbol_scope") or "unknown symbols"
+        stage = brief.get("stage") or "none"
+        decision = brief.get("decision") or "unknown"
+        thesis = brief.get("thesis") or "Thesis was not extractable from the hypothesis file."
+        metrics = brief.get("metrics") or []
+        metrics_text = "; ".join(str(metric) for metric in metrics[:2]) if metrics else "metrics not found"
+        verdict = brief.get("researcher_verdict") if isinstance(brief.get("researcher_verdict"), dict) else {}
+        recommendation = verdict.get("recommendation") or brief.get("suggested_operator_action") or brief.get("recommendation") or "defer_for_better_evidence"
+        reason = verdict.get("rationale") or brief.get("recommendation_reason") or entry.get("why") or "No recommendation reason found."
+        artifact = brief.get("latest_artifact") or entry.get("source") or "not found"
+        stability = verdict.get("stability_read") if isinstance(verdict.get("stability_read"), dict) else {}
+        best = verdict.get("best_config") if isinstance(verdict.get("best_config"), dict) else {}
+        best_params = f"; params=({best.get('key_params')})" if best.get("key_params") else ""
+        stability_text = (
+            f"positive_configs={stability.get('positive_config_count', '')}; "
+            f"robustish={stability.get('robust_config_count', '')}; "
+            f"broader_disagrees={stability.get('broader_sample_disagreement', '')}"
+        )
+        lines.extend([
+            f"{idx}. **{title}** (`{hyp_id}`) — {strategy}; symbols: {symbols}",
+            f"   - Thesis: {thesis}",
+            f"   - State/evidence: stage={stage}, decision={decision}; {metrics_text}",
+            f"   - Researcher Verdict: `{recommendation}` — {_verdict_line(verdict) if verdict else reason}",
+            f"   - Stability read: {stability_text}; {stability.get('notes', '')}",
+            f"   - Best config sketch: {best.get('ticker', '')} {best.get('direction', '')} exp_r={best.get('avg_test_exp_r', '')} pct_pos={best.get('pct_positive_oos_windows', '')} signals={best.get('oos_signals', '')} confidence={best.get('avg_test_confidence', '')} MFE/MAE={best.get('avg_test_mfe_mae_ratio', '')}{best_params}",
+            f"   - Latest artifact: `{artifact}`",
+        ])
+    recommendation_counts = Counter(
+        str(((entry.get("brief") or {}).get("researcher_verdict") or {}).get("recommendation") or (entry.get("brief") or {}).get("suggested_operator_action") or (entry.get("brief") or {}).get("recommendation") or "defer")
+        for entry in entries
+    )
+    lines.extend([
+        "",
+        "## Recommendation",
+        "",
+    ])
+    if recommendation_counts:
+        summary = ", ".join(f"{count}× {name}" for name, count in recommendation_counts.most_common())
+        lines.append(f"Research Ops recommendation mix: {summary}.")
+    lines.extend(_batch_recommended_path(entries))
+    low_conf = [entry for entry in entries if "low" in str((entry.get("brief") or {}).get("confidence", "")).lower()]
+    if low_conf:
+        lines.append("Confidence is mixed; if any item feels stale or off-thesis, defer that subset with comments rather than approving the whole batch.")
+    else:
+        lines.append("Confidence is medium because local M1/M2 summaries are present, but retune approval is still a judgment call about spending more research cycles.")
+    lines.extend([
+        "",
+        "Choices and consequences:",
+        "- **approve**: approve the card as written; for summary cards, name any approved subset in Comments.",
+        "- **reject**: stop spending cycles on this item/group unless a new thesis is written.",
+        "- **defer**: leave the item/group parked for more evidence or a cleaner recommendation.",
+        "- **approve subset with comments**: for grouped summaries only, write exceptions in Comments; only named approved items should move next.",
+        "",
+        "## Appendix: Source Artifacts",
+        "",
+    ])
+    seen: set[str] = set()
+    for entry in entries:
+        brief = entry.get("brief") if isinstance(entry.get("brief"), dict) else {}
+        hyp_id = brief.get("hypothesis_id") or entry.get("key") or entry.get("id")
+        sources = [str(source) for source in brief.get("sources", []) if str(source).strip()]
+        if not sources and entry.get("source"):
+            sources = [str(entry.get("source"))]
+        for source in sources[:3]:
+            key = f"{hyp_id}:{source}"
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"- `{hyp_id}`: `{source}`")
+    if not seen:
+        lines.append("- No drill-down artifacts found in the local status read model.")
+    lines.append("")
+    return lines
+
+
+
+def _decision_next_text(item: dict[str, Any]) -> str:
+    brief = item.get("brief") if isinstance(item.get("brief"), dict) else {}
+    verdict = brief.get("researcher_verdict") if isinstance(brief.get("researcher_verdict"), dict) else {}
+    title = str(brief.get("title") or item.get("title") or item.get("key") or "this research item")
+    recommendation = str(verdict.get("recommendation") or "")
+    if recommendation == "approve_surface_expansion":
+        return f"Approve targeted surface expansion for {title}."
+    if recommendation == "approve_bounded_retune":
+        return f"Approve bounded diagnostic retune for {title}."
+    if recommendation == "defer_for_better_evidence":
+        return f"Defer {title} until Research Ops has better evidence or a clearer thesis."
+    if recommendation == "reject_or_kill":
+        return f"Reject or kill {title} unless a materially new thesis is written."
+    if recommendation == "close_as_smoke_test":
+        return f"Close {title} as smoke-test/plumbing evidence unless intentionally converted into a real hypothesis."
+    next_text = str(item.get("next", "")).strip()
+    if next_text.startswith("python ") or next_text.startswith("python3 ") or " -m " in next_text:
+        return "Make the research decision described below; implementation command is source detail, not the approval request."
+    return next_text
+
+def render_decision_card(item: dict[str, Any], existing: str = "") -> str:
+    comments = _extract_preserved_block(existing, COMMENTS_START, COMMENTS_END, "-")
+    receipt = _extract_preserved_block(existing, RECEIPT_START, RECEIPT_END, "- pending")
+    card_id = _safe_id(str(item.get("id", item.get("key", "item"))))
+    lines = [
+        "---", f"card_id: {card_id}", "program_id: mala_next_gen_research_ops_flow", f"status_tag: {item.get('tag', 'needs_suman')}", f"owner: {item.get('owner', 'Suman')}", "generated_by: research_ops publish-review-cards", "---", "",
+        f"# Mala Decision Card: {item.get('title', card_id)}", "",
+        f"- stable_id: `{card_id}`", f"- why: {item.get('why', '')}", f"- next: {_decision_next_text(item)}", f"- owner: {item.get('owner', 'Suman')}", f"- source: `{item.get('source', '')}`",
+        "- why_not_auto_continuing: This item requires human judgment, approval, external mutation, or risk-sensitive confirmation before Research Ops can proceed.", "",
+    ]
+    lines.extend(_render_research_ops_brief(item))
+    lines.extend([
+        "## Decision", "- [ ] approve", "- [ ] reject", "- [ ] defer", "", "## Comments", COMMENTS_START, comments, COMMENTS_END, "", "## Receipt", RECEIPT_START, receipt, RECEIPT_END, "",
+    ])
+    return "\n".join(lines)
+
+
+
+def _retune_verdict(item: dict[str, Any]) -> dict[str, Any]:
+    brief = item.get("brief") if isinstance(item.get("brief"), dict) else {}
+    verdict = brief.get("researcher_verdict") if isinstance(brief.get("researcher_verdict"), dict) else {}
+    return verdict if isinstance(verdict, dict) else {}
+
+
+def _retune_sort_key(item: dict[str, Any]) -> tuple[int, int, str]:
+    priority_rank = {"high": 0, "medium": 1, "low": 2}
+    rec_rank = {
+        "approve_surface_expansion": 0,
+        "approve_bounded_retune": 1,
+        "defer_for_better_evidence": 2,
+        "close_as_smoke_test": 3,
+        "reject_or_kill": 4,
+    }
+    verdict = _retune_verdict(item)
+    priority = str(verdict.get("priority") or item.get("priority") or "medium").lower()
+    recommendation = str(verdict.get("recommendation") or "defer_for_better_evidence")
+    return (priority_rank.get(priority, 1), rec_rank.get(recommendation, 9), str(item.get("id") or item.get("key") or ""))
+
+
+def _retune_material_signature(item: dict[str, Any]) -> tuple[str, str]:
+    verdict = _retune_verdict(item)
+    return (str(verdict.get("recommendation") or ""), str(verdict.get("priority") or ""))
+
+
+def _retune_needs_individual_card(item: dict[str, Any]) -> bool:
+    verdict = _retune_verdict(item)
+    recommendation = str(verdict.get("recommendation") or "")
+    priority = str(verdict.get("priority") or "").lower()
+    return priority in {"high", "medium"} and recommendation in {"approve_surface_expansion", "approve_bounded_retune"}
+
+
+def _retune_summary_card(items: list[dict[str, Any]], *, summary_kind: str = "defer") -> dict[str, Any]:
+    title = f"Retune {summary_kind} summary ({len(items)} candidates)"
+    why = "Low-priority retune candidates have weak/defer/smoke-test verdicts; grouped as attention management, not approval batching."
+    next_text = "Review only if you want to override the defer/reject/close recommendations; otherwise leave parked."
+    return {
+        "id": f"retune_plan:{summary_kind}-summary-needs-suman",
+        "tag": "needs_suman",
+        "title": title,
+        "why": why,
+        "next": next_text,
+        "owner": "Suman",
+        "source": "per-candidate artifacts listed in card",
+        "action_type": "retune_plan_batch",
+        "key": f"{summary_kind}-summary-needs-suman",
+        "batched_items": [item.get("id") for item in items],
+        "batched_item_details": items,
+    }
+
+
+def _retune_card_candidates(retunes: list[dict[str, Any]], slots: int) -> list[dict[str, Any]]:
+    if slots <= 0 or not retunes:
+        return []
+    signatures = {_retune_material_signature(item) for item in retunes}
+    has_verdicts = any(_retune_verdict(item) for item in retunes)
+    # Legacy/no-verdict path and genuinely similar decisions can remain batched.
+    if len(retunes) > slots and (not has_verdicts or len(signatures) <= 1):
+        batch = sorted(retunes, key=_retune_sort_key)
+        return [{
+            "id": "retune_plan:batch-needs-suman",
+            "tag": "needs_suman",
+            "title": f"Batch retune review ({len(batch)} candidates)",
+            "why": "Similar retune candidates need the same human judgment; batched to avoid flooding Review Inbox while preserving subset comments.",
+            "next": "Review the listed retune candidates and approve/reject/defer the batch or comment with exceptions.",
+            "owner": "Suman",
+            "source": "per-candidate artifacts listed in card",
+            "action_type": "retune_plan_batch",
+            "key": "batch-needs-suman",
+            "batched_items": [item.get("id") for item in batch],
+            "batched_item_details": batch,
+        }]
+
+    ordered = sorted(retunes, key=_retune_sort_key)
+    individual = [item for item in ordered if _retune_needs_individual_card(item)]
+    remainder = [item for item in ordered if item not in individual]
+    cards: list[dict[str, Any]] = []
+    for item in individual[:slots]:
+        cards.append(item)
+    remaining_slots = slots - len(cards)
+    # Preserve nuance: if there is room, group low-quality remainder as a defer/close summary rather than hiding it inside approval batch.
+    if remainder and remaining_slots > 0:
+        cards.append(_retune_summary_card(remainder, summary_kind="defer"))
+    elif not cards:
+        cards.extend(ordered[:slots])
+    return cards[:slots]
+
+def _decision_card_candidates(status: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+    needs = [item for item in status.get("items", []) if item.get("tag") == "needs_suman"]
+    retunes = [item for item in needs if item.get("action_type") == "retune_plan"]
+    others = [item for item in needs if item.get("action_type") != "retune_plan"]
+    candidates: list[dict[str, Any]] = []
+    candidates.extend(others[:limit])
+    remaining_slots = max(0, limit - len(candidates))
+    candidates.extend(_retune_card_candidates(retunes, remaining_slots))
+    return candidates[:limit]
+
+
+def write_decision_cards(status: dict[str, Any], vault: Path, *, dry_run: bool = False, limit: int = 3) -> list[dict[str, str]]:
+    candidates = _decision_card_candidates(status, limit=limit)
+    card_dir = vault / DECISION_CARD_DIR
+    results: list[dict[str, str]] = []
+    for item in candidates:
+        card_id = _safe_id(str(item.get("id", item.get("key", "item"))))
+        path = card_dir / f"{card_id}.md"
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        rendered = render_decision_card(item, existing)
+        action = "unchanged" if existing == rendered else ("would_update" if dry_run and path.exists() else "would_create" if dry_run else "updated" if path.exists() else "created")
+        if not dry_run and existing != rendered:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(rendered, encoding="utf-8")
+        results.append({"id": card_id, "path": str(path), "action": action})
+    return results
+
+
+def cmd_publish_review_cards(args: argparse.Namespace) -> int:
+    vault = Path(args.vault).expanduser() if args.vault else DEFAULT_OBSIDIAN_VAULT
+    status = _load_or_build_program_status(args)
+    results = write_decision_cards(status, vault, dry_run=args.dry_run, limit=args.limit)
+    for result in results:
+        print(f"{result['action'].upper()}={result['path']}")
+    print(f"DECISION_CARDS={len(results)}")
+    print(f"DRY_RUN={'yes' if args.dry_run else 'no'}")
+    return 0
+
+
+def _parse_card_frontmatter(text: str) -> dict[str, str]:
+    if not text.startswith("---\n"):
+        return {}
+    try:
+        block = text.split("---\n", 2)[1]
+    except IndexError:
+        return {}
+    data: dict[str, str] = {}
+    for line in block.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip().strip("'\"")
+    return data
+
+
+def _card_checked_decision(text: str) -> tuple[str, list[str]]:
+    section = re.search(r"^##\s+Decision\s*$\n(?P<body>.*?)(?=^##\s+|\Z)", text, re.MULTILINE | re.DOTALL)
+    if not section:
+        return "", ["missing Decision section"]
+    checked = re.findall(r"^\s*-\s*\[[xX]\]\s*([A-Za-z_-]+)\s*$", section.group("body"), re.MULTILINE)
+    if not checked:
+        return "", []
+    normalized = [value.strip().lower().replace("-", "_") for value in checked]
+    if len(normalized) > 1:
+        return "", [f"multiple checked decisions: {', '.join(normalized)}"]
+    if normalized[0] not in {"approve", "reject", "defer"}:
+        return "", [f"unsupported checked decision: {normalized[0]}"]
+    return normalized[0], []
+
+
+def _card_comments(text: str) -> str:
+    return _extract_preserved_block(text, COMMENTS_START, COMMENTS_END, "").strip()
+
+
+def _card_action_id(text: str, frontmatter: dict[str, str]) -> str:
+    title = re.search(r"^#\s+Mala Decision Card:\s*(.+?)\s*$", text, re.MULTILINE)
+    if title:
+        value = title.group(1).strip()
+        if ":" in value and not value.lower().startswith("retune defer summary"):
+            action_type, key = value.split(":", 1)
+            return f"{action_type.strip()}:{key.strip()}"
+    card_id = frontmatter.get("card_id", "")
+    if card_id.startswith("retune_plan-") and not card_id.endswith("-summary-needs-suman"):
+        return "retune_plan:" + card_id.removeprefix("retune_plan-")
+    return ""
+
+
+def _decision_operator_action(decision: str, control_row: dict[str, Any]) -> tuple[str, str]:
+    if decision == "approve":
+        action = str(control_row.get("recommended_operator_action", "")).strip().upper()
+        if not action:
+            return "", "approve has no recommended operator action; leave for Jarvis/Codex review"
+        return action, "approve maps to the current recommended operator action"
+    if decision == "reject":
+        return "SKIP", "reject maps to SKIP for the current queued research action"
+    if decision == "defer":
+        return "", "defer records no Sheet mutation; leave operator_action blank"
+    return "", "no checked decision"
+
+
+def build_review_decision_records(
+    *,
+    vault: Path,
+    ledger: ResearchLedger,
+    existing_control_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    card_dir = vault / DECISION_CARD_DIR
+    actions = build_next_actions(ledger)
+    control_rows = build_control_rows(
+        actions=actions,
+        generated_at=sheet_timestamp(),
+        existing_rows=existing_control_rows or [],
+        ledger=ledger,
+    )
+    control_by_action_id = {str(row.get("action_id", "")).strip(): row for row in control_rows}
+    records: list[dict[str, Any]] = []
+    for path in sorted(card_dir.glob("*.md")) if card_dir.exists() else []:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        frontmatter = _parse_card_frontmatter(text)
+        decision, warnings = _card_checked_decision(text)
+        if not decision and not warnings:
+            continue
+        action_id = _card_action_id(text, frontmatter)
+        control_row = control_by_action_id.get(action_id, {})
+        operator_action, mapping_reason = _decision_operator_action(decision, control_row) if decision else ("", "no valid decision")
+        status = "ready"
+        if warnings:
+            status = "blocked"
+        elif not action_id:
+            status = "blocked"
+            warnings.append("card does not map to one Research_Control action; summary cards require Jarvis/manual subset handling")
+        elif not control_row:
+            status = "blocked"
+            warnings.append(f"no current Research_Control row for {action_id}")
+        elif decision == "defer":
+            status = "no_update"
+        elif not operator_action:
+            status = "blocked"
+            warnings.append(mapping_reason)
+        records.append(
+            {
+                "card_id": frontmatter.get("card_id", path.stem),
+                "path": str(path),
+                "decision": decision,
+                "comments": _card_comments(text),
+                "action_id": action_id,
+                "operator_action": operator_action,
+                "status": status,
+                "mapping_reason": mapping_reason,
+                "recommendation": str(control_row.get("recommendation", "")),
+                "recommended_operator_action": str(control_row.get("recommended_operator_action", "")),
+                "decision_needed": str(control_row.get("decision_needed", "")),
+                "warnings": warnings,
+            }
+        )
+    return records
+
+
+def write_review_decision_report(records: list[dict[str, Any]], out_dir: Path, *, applied: bool) -> tuple[Path, Path]:
+    stamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace(":", "").replace("-", "").replace("+", "Z")
+    report_dir = out_dir / "review_decisions"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    json_path = report_dir / f"ingest-review-decisions-{stamp}.json"
+    md_path = report_dir / f"ingest-review-decisions-{stamp}.md"
+    payload = {"generated_at": stamp, "applied": applied, "records": records}
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    lines = ["# Ingest Review Decisions", "", f"- generated_at: `{stamp}`", f"- applied: `{applied}`", f"- decisions: `{len(records)}`", ""]
+    if not records:
+        lines.append("- No checked decision cards found.")
+    for record in records:
+        lines.append(f"- `{record['status']}` `{record.get('card_id', '')}` decision={record.get('decision', '')} action_id=`{record.get('action_id', '')}` operator_action=`{record.get('operator_action', '')}`")
+        if record.get("mapping_reason"):
+            lines.append(f"  - reason: {record['mapping_reason']}")
+        for warning in record.get("warnings", []):
+            lines.append(f"  - warning: {warning}")
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return json_path, md_path
+
+
+def apply_review_decision_records(client: GoogleSheetTableClient, records: list[dict[str, Any]]) -> int:
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    by_action_id = {str(row.get("action_id", "")).strip(): row for row in rows}
+    updates: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("status") != "ready" or not record.get("operator_action"):
+            continue
+        row = by_action_id.get(str(record.get("action_id", "")))
+        if not row:
+            record.setdefault("warnings", []).append("apply skipped; sheet row disappeared")
+            record["status"] = "blocked"
+            continue
+        next_row = dict(row)
+        next_row["operator_action"] = str(record["operator_action"])
+        next_row["recommendation"] = str(record.get("recommendation", ""))
+        next_row["recommended_operator_action"] = str(record.get("recommended_operator_action", ""))
+        next_row["decision_needed"] = str(record.get("decision_needed", ""))
+        next_row["updated_at"] = sheet_timestamp()
+        updates.append(next_row)
+        record["status"] = "applied"
+    if updates:
+        client.batch_update_rows(rows=updates, columns=["recommendation", "recommended_operator_action", "operator_action", "decision_needed", "updated_at"])
+    return len(updates)
+
+
+def cmd_ingest_review_decisions(args: argparse.Namespace) -> int:
+    vault = Path(args.vault).expanduser() if args.vault else DEFAULT_OBSIDIAN_VAULT
+    ledger = _build_with_optional_sheets(args)
+    existing_rows = _read_control_rows(args) if args.apply else []
+    records = build_review_decision_records(vault=vault, ledger=ledger, existing_control_rows=existing_rows)
+    applied_count = 0
+    if args.apply:
+        applied_count = apply_review_decision_records(_control_client(args), records)
+    json_path, md_path = write_review_decision_report(records, Path(args.out_dir), applied=bool(args.apply))
+    print(f"REVIEW_DECISIONS_JSON={json_path}")
+    print(f"REVIEW_DECISIONS_MD={md_path}")
+    print(f"DECISIONS={len(records)}")
+    print(f"READY={sum(1 for record in records if record.get('status') == 'ready')}")
+    print(f"APPLIED={applied_count}")
+    print(f"DRY_RUN={'no' if args.apply else 'yes'}")
+    return 0
+
 def _read_strategy_catalog_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     credentials = args.catalog_google_credentials or args.google_credentials
     if not args.catalog_sheet_id or not credentials:
@@ -2156,6 +3702,20 @@ def _intake_client(args: argparse.Namespace) -> GoogleSheetTableClient:
     )
 
 
+def _options_client(args: argparse.Namespace) -> GoogleSheetTableClient:
+    credentials = args.options_google_credentials or args.control_google_credentials or args.google_credentials
+    sheet_id = args.options_sheet_id or args.control_sheet_id or args.board_sheet_id
+    if not sheet_id:
+        raise SystemExit("--options-sheet-id, --control-sheet-id, or --board-sheet-id is required")
+    if not credentials:
+        raise SystemExit("--google-credentials, --control-google-credentials, or --options-google-credentials is required")
+    return GoogleSheetTableClient(
+        spreadsheet_id=sheet_id,
+        sheet_name=args.options_sheet_name,
+        credentials_path=Path(credentials),
+    )
+
+
 def _build_with_optional_sheets(args: argparse.Namespace) -> ResearchLedger:
     catalog_rows = _read_strategy_catalog_rows(args) if args.with_catalog else []
     dispositions = read_dispositions(Path(args.dispositions_path))
@@ -2195,6 +3755,156 @@ def _read_intake_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     except SystemExit:
         return []
     return client.read_rows(range_suffix="A1:ZZ5000")
+
+
+def build_operator_options_table() -> list[list[str]]:
+    rows = [OP_OPTIONS_HEADERS]
+    length = max(len(CONTROL_OPERATOR_ACTION_DROPDOWN), len(INTAKE_OPERATOR_ACTION_DROPDOWN))
+    for index in range(length):
+        rows.append(
+            [
+                CONTROL_OPERATOR_ACTION_DROPDOWN[index] if index < len(CONTROL_OPERATOR_ACTION_DROPDOWN) else "",
+                "",
+                INTAKE_OPERATOR_ACTION_DROPDOWN[index] if index < len(INTAKE_OPERATOR_ACTION_DROPDOWN) else "",
+            ]
+        )
+    return rows
+
+
+def _quote_sheet_for_formula(sheet_name: str) -> str:
+    return "'" + sheet_name.replace("'", "''") + "'"
+
+
+def _operator_option_range(sheet_name: str, column_letter: str, option_count: int) -> str:
+    return f"={_quote_sheet_for_formula(sheet_name)}!${column_letter}$2:${column_letter}${option_count + 1}"
+
+
+def _sheet_id_for(client: GoogleSheetTableClient) -> int:
+    metadata = client.service.spreadsheets().get(spreadsheetId=client.spreadsheet_id).execute()
+    for sheet in metadata.get("sheets", []):
+        properties = sheet.get("properties", {})
+        if str(properties.get("title", "")).strip() == client.sheet_name:
+            return int(properties["sheetId"])
+    raise RuntimeError(f"Sheet not found: {client.sheet_name}")
+
+
+def _operator_action_column_index(client: GoogleSheetTableClient) -> int:
+    headers = client._header_row()
+    for index, header in enumerate(headers):
+        if str(header).strip() == "operator_action":
+            return index
+    raise RuntimeError(f"operator_action header not found in {client.sheet_name}")
+
+
+def _apply_operator_action_dropdown(
+    *,
+    client: GoogleSheetTableClient,
+    options_range: str,
+    start_row: int = 2,
+    end_row: int = 5000,
+) -> dict[str, Any]:
+    request = {
+        "setDataValidation": {
+            "range": {
+                "sheetId": _sheet_id_for(client),
+                "startRowIndex": start_row - 1,
+                "endRowIndex": end_row,
+                "startColumnIndex": _operator_action_column_index(client),
+                "endColumnIndex": _operator_action_column_index(client) + 1,
+            },
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_RANGE",
+                    "values": [{"userEnteredValue": options_range}],
+                },
+                "strict": True,
+                "showCustomUi": True,
+            },
+        }
+    }
+    return (
+        client.service.spreadsheets()
+        .batchUpdate(spreadsheetId=client.spreadsheet_id, body={"requests": [request]})
+        .execute()
+    )
+
+
+def _clear_sheet_validations(
+    *,
+    client: GoogleSheetTableClient,
+    start_row: int = 2,
+    end_row: int = 5000,
+) -> dict[str, Any]:
+    headers = client._header_row()
+    if not headers:
+        return {}
+    request = {
+        "setDataValidation": {
+            "range": {
+                "sheetId": _sheet_id_for(client),
+                "startRowIndex": start_row - 1,
+                "endRowIndex": end_row,
+                "startColumnIndex": 0,
+                "endColumnIndex": len(headers),
+            },
+        }
+    }
+    return (
+        client.service.spreadsheets()
+        .batchUpdate(spreadsheetId=client.spreadsheet_id, body={"requests": [request]})
+        .execute()
+    )
+
+
+def push_operator_options(
+    *,
+    options_client: GoogleSheetTableClient,
+    control_client: GoogleSheetTableClient,
+    intake_client: GoogleSheetTableClient,
+) -> dict[str, Any]:
+    options_client.ensure_sheet_exists()
+    values = build_operator_options_table()
+    options_client.service.spreadsheets().values().clear(
+        spreadsheetId=options_client.spreadsheet_id,
+        range=f"{options_client.sheet_name}!A1:ZZ100",
+        body={},
+    ).execute()
+    (
+        options_client.service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=options_client.spreadsheet_id,
+            range=f"{options_client.sheet_name}!A1:C{len(values)}",
+            valueInputOption="USER_ENTERED",
+            body={"values": values},
+        )
+        .execute()
+    )
+
+    control_client.ensure_sheet_exists()
+    control_client.ensure_columns(CONTROL_SHEET_HEADERS)
+    intake_client.ensure_sheet_exists()
+    intake_client.ensure_columns(INTAKE_SHEET_HEADERS)
+    control_range = _operator_option_range(
+        options_client.sheet_name,
+        "A",
+        len(CONTROL_OPERATOR_ACTION_DROPDOWN),
+    )
+    intake_range = _operator_option_range(
+        options_client.sheet_name,
+        "C",
+        len(INTAKE_OPERATOR_ACTION_DROPDOWN),
+    )
+    _clear_sheet_validations(client=control_client)
+    _clear_sheet_validations(client=intake_client)
+    _apply_operator_action_dropdown(client=control_client, options_range=control_range)
+    _apply_operator_action_dropdown(client=intake_client, options_range=intake_range)
+    return {
+        "options_rows": len(values) - 1,
+        "control_options_range": control_range,
+        "intake_options_range": intake_range,
+        "dropdowns_applied": 2,
+    }
 
 
 def _selected_matches_m5(selected: dict[str, str], row: dict[str, str]) -> bool:
@@ -2531,11 +4241,27 @@ def cmd_push_control(args: argparse.Namespace) -> int:
         actions=actions,
         generated_at=sheet_timestamp(),
         existing_rows=existing_rows,
+        ledger=ledger,
     )
     client.overwrite_table(headers=CONTROL_SHEET_HEADERS, rows=rows)
     print(f"CONTROL_SHEET_ID={args.control_sheet_id or args.board_sheet_id}")
     print(f"CONTROL_SHEET_NAME={args.control_sheet_name}")
     print(f"CONTROL_ROWS={len(rows)}")
+    return 0
+
+
+def cmd_push_operator_options(args: argparse.Namespace) -> int:
+    result = push_operator_options(
+        options_client=_options_client(args),
+        control_client=_control_client(args),
+        intake_client=_intake_client(args),
+    )
+    print(f"OP_OPTIONS_SHEET_ID={args.options_sheet_id or args.control_sheet_id or args.board_sheet_id}")
+    print(f"OP_OPTIONS_SHEET_NAME={args.options_sheet_name}")
+    print(f"OP_OPTIONS_ROWS={result['options_rows']}")
+    print(f"CONTROL_OPERATOR_ACTION_RANGE={result['control_options_range']}")
+    print(f"INTAKE_OPERATOR_ACTION_RANGE={result['intake_options_range']}")
+    print(f"DROPDOWNS_APPLIED={result['dropdowns_applied']}")
     return 0
 
 
@@ -2593,6 +4319,94 @@ def cmd_push_intake_template(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_push_intake_view(args: argparse.Namespace) -> int:
+    client = _intake_client(args)
+    client.ensure_sheet_exists()
+    rows = [_enrich_intake_row(row) for row in client.read_rows(range_suffix="A1:ZZ5000")]
+    client.overwrite_table(headers=INTAKE_SHEET_HEADERS, rows=rows)
+    print(f"INTAKE_SHEET_ID={args.intake_sheet_id or args.control_sheet_id or args.board_sheet_id}")
+    print(f"INTAKE_SHEET_NAME={args.intake_sheet_name}")
+    print(f"INTAKE_ROWS={len(rows)}")
+    return 0
+
+
+def cmd_propose_intake(args: argparse.Namespace) -> int:
+    dry_row = build_intake_proposal_row(
+        intake_id=args.intake_id,
+        title=args.title,
+        hypothesis_id=args.hypothesis_id,
+        strategy=args.strategy,
+        symbol_scope=args.symbol_scope,
+        thesis=args.thesis,
+        rules=args.rules,
+        notes=args.notes,
+        suggested_config=args.suggested_config,
+        reason_to_try=args.reason_to_try,
+        risk_or_overlap=args.risk_or_overlap,
+        max_stage=args.max_stage,
+        feasibility_tag=args.feasibility_tag,
+        feasibility_summary=args.feasibility_summary,
+        source=args.source,
+        research_ops_notes=args.research_ops_notes,
+        proposed_by=args.proposed_by,
+    )
+    if not args.apply:
+        print(json.dumps(dry_row, indent=2))
+        print("INTAKE_PROPOSAL_STATUS=dry_run")
+        print("DRY_RUN=true")
+        return 0
+
+    client = _intake_client(args)
+    client.ensure_sheet_exists()
+    client.ensure_columns(INTAKE_SHEET_HEADERS)
+    rows = client.read_rows(range_suffix="A1:ZZ5000")
+    matching: dict[str, Any] | None = None
+    for row in rows:
+        if str(row.get("intake_id", "")).strip() == dry_row["intake_id"]:
+            matching = row
+            break
+        if str(row.get("hypothesis_id", "")).strip() == dry_row["hypothesis_id"]:
+            matching = row
+            break
+    status = str((matching or {}).get("status", "")).strip()
+    if matching and status not in {"", "proposed_by_research_ops"} and not args.force:
+        print(f"INTAKE_PROPOSAL_STATUS=exists")
+        print(f"INTAKE_ROW_INDEX={matching.get('row_index', '')}")
+        print(f"INTAKE_STATUS={status}")
+        print("DRY_RUN=false")
+        return 0
+
+    row = build_intake_proposal_row(
+        intake_id=args.intake_id,
+        title=args.title,
+        hypothesis_id=args.hypothesis_id,
+        strategy=args.strategy,
+        symbol_scope=args.symbol_scope,
+        thesis=args.thesis,
+        rules=args.rules,
+        notes=args.notes,
+        suggested_config=args.suggested_config,
+        reason_to_try=args.reason_to_try,
+        risk_or_overlap=args.risk_or_overlap,
+        max_stage=args.max_stage,
+        feasibility_tag=args.feasibility_tag,
+        feasibility_summary=args.feasibility_summary,
+        source=args.source,
+        research_ops_notes=args.research_ops_notes,
+        proposed_by=args.proposed_by,
+        existing_row=matching,
+    )
+    row_index = str((matching or {}).get("row_index", "")).strip()
+    row["row_index"] = int(row_index) if row_index.isdigit() else len(rows) + 2
+    client.batch_update_rows(rows=[row], columns=INTAKE_SHEET_HEADERS)
+    print(f"INTAKE_PROPOSAL_STATUS={'updated' if matching else 'created'}")
+    print(f"INTAKE_ROW_INDEX={row['row_index']}")
+    print(f"INTAKE_ID={row['intake_id']}")
+    print(f"HYPOTHESIS_ID={row['hypothesis_id']}")
+    print("DRY_RUN=false")
+    return 0
+
+
 def cmd_process_intake(args: argparse.Namespace) -> int:
     client = _intake_client(args)
     client.ensure_sheet_exists()
@@ -2609,20 +4423,7 @@ def cmd_process_intake(args: argparse.Namespace) -> int:
     if args.apply and updates:
         client.batch_update_rows(
             rows=updates,
-            columns=[
-                "operator_action",
-                "status",
-                "feasibility_tag",
-                "feasibility_summary",
-                "search_param_keys",
-                "discovery_config_count",
-                "retune_config_count",
-                "hypothesis_id",
-                "hypothesis_path",
-                "report_path",
-                "updated_at",
-                "created_at",
-            ],
+            columns=INTAKE_SHEET_HEADERS,
         )
     if args.output:
         _write_csv(Path(args.output), updates)
@@ -2949,6 +4750,9 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--intake-google-credentials", default="")
     parser.add_argument("--intake-sheet-id", default="")
     parser.add_argument("--intake-sheet-name", default=DEFAULT_INTAKE_SHEET_NAME)
+    parser.add_argument("--options-google-credentials", default="")
+    parser.add_argument("--options-sheet-id", default="")
+    parser.add_argument("--options-sheet-name", default=DEFAULT_OPTIONS_SHEET_NAME)
     parser.add_argument("--with-catalog", action="store_true", help="Read Strategy_Catalog and mark promoted rows present/absent.")
     parser.add_argument("--with-board", action="store_true", help="Read Scout_Queue and include stale-board findings.")
     parser.add_argument("--with-control", action="store_true", help="Read Research_Control rows for digest/reporting.")
@@ -2983,10 +4787,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     next_actions.add_argument("--limit", type=int, default=0)
     next_actions.set_defaults(func=cmd_next_actions)
 
+    program_status = subparsers.add_parser("program-status", help="Write a deterministic Mala program status JSON/Markdown read model.")
+    _add_common_args(program_status)
+    program_status.add_argument("--limit", type=int, default=50, help="Maximum next-action items to classify before adding running/done summaries.")
+    program_status.add_argument("--vault", default=str(DEFAULT_OBSIDIAN_VAULT), help="Northstar vault path for local shadow brief discovery.")
+    program_status.set_defaults(func=cmd_program_status)
+
+    publish_cards = subparsers.add_parser("publish-review-cards", help="Create/update Obsidian decision cards for Needs Suman program-status items.")
+    _add_common_args(publish_cards)
+    publish_cards.add_argument("--vault", default=str(DEFAULT_OBSIDIAN_VAULT), help="Northstar vault path.")
+    publish_cards.add_argument("--limit", type=int, default=3, help="Maximum Needs Suman cards to publish.")
+    publish_cards.add_argument("--dry-run", action="store_true", help="Preview card creates/updates without writing Obsidian files.")
+    publish_cards.add_argument("--refresh", action="store_true", help="Rebuild program-status before publishing instead of using the latest JSON.")
+    publish_cards.set_defaults(func=cmd_publish_review_cards)
+
+    ingest_cards = subparsers.add_parser("ingest-review-decisions", help="Read checked Obsidian decision cards and map them to safe sheet actions.")
+    _add_common_args(ingest_cards)
+    ingest_cards.add_argument("--vault", default=str(DEFAULT_OBSIDIAN_VAULT), help="Northstar vault path.")
+    ingest_cards.add_argument("--apply", action="store_true", help="Write ready decisions to Research_Control.operator_action. Omit for dry-run.")
+    ingest_cards.set_defaults(func=cmd_ingest_review_decisions)
+
     push_control = subparsers.add_parser("push-control", help="Mirror next-actions into a Google Sheet control tab.")
     _add_common_args(push_control)
     push_control.add_argument("--limit", type=int, default=25)
     push_control.set_defaults(func=cmd_push_control)
+
+    push_options = subparsers.add_parser("push-operator-options", help="Refresh op_options and dropdowns for operator_action columns.")
+    _add_common_args(push_options)
+    push_options.set_defaults(func=cmd_push_operator_options)
 
     action_brief = subparsers.add_parser("action-brief", help="Write an evidence brief for a queued Research_Control action.")
     _add_common_args(action_brief)
@@ -3008,6 +4836,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_common_args(intake_template)
     intake_template.add_argument("--force", action="store_true", help="Overwrite the intake table even when rows already exist.")
     intake_template.set_defaults(func=cmd_push_intake_template)
+
+    intake_view = subparsers.add_parser("push-intake-view", help="Rewrite Research_Intake with operator-first columns while preserving rows.")
+    _add_common_args(intake_view)
+    intake_view.set_defaults(func=cmd_push_intake_view)
+
+    propose_intake = subparsers.add_parser("propose-intake", help="Write a review-only Research_Intake proposal row.")
+    _add_common_args(propose_intake)
+    propose_intake.add_argument("--idea-id", "--intake-id", dest="intake_id", required=True)
+    propose_intake.add_argument("--title", required=True)
+    propose_intake.add_argument("--hypothesis-id", default="")
+    propose_intake.add_argument("--strategy", "--candidate-strategy", dest="strategy", required=True)
+    propose_intake.add_argument("--symbol-scope", required=True)
+    propose_intake.add_argument("--thesis", "--hypothesis", dest="thesis", required=True)
+    propose_intake.add_argument("--rules", default="")
+    propose_intake.add_argument("--notes", default="")
+    propose_intake.add_argument("--suggested-config", default="")
+    propose_intake.add_argument("--reason-to-try", default="")
+    propose_intake.add_argument("--risk-or-overlap", default="")
+    propose_intake.add_argument("--max-stage", default="M2")
+    propose_intake.add_argument("--feasibility", "--feasibility-tag", dest="feasibility_tag", default="")
+    propose_intake.add_argument("--feasibility-reason", "--feasibility-summary", dest="feasibility_summary", default="")
+    propose_intake.add_argument("--source", default="")
+    propose_intake.add_argument("--research-ops-notes", default="")
+    propose_intake.add_argument("--proposed-by", default="research_ops")
+    propose_intake.add_argument("--apply", action="store_true", help="Actually upsert the proposal row. Omit for JSON preview.")
+    propose_intake.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
+    propose_intake.add_argument("--force", action="store_true", help="Update existing non-proposal intake rows.")
+    propose_intake.set_defaults(func=cmd_propose_intake)
 
     process_intake = subparsers.add_parser("process-intake", help="Evaluate or create approved Research_Intake rows.")
     _add_common_args(process_intake)
