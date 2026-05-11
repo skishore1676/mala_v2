@@ -40,7 +40,7 @@ from src.research.shadow_campaign import (
     build_shadow_daily_report,
     read_sheet_rows,
 )
-from src.research.time_utils import sheet_timestamp
+from src.research.time_utils import SHEET_TIMEZONE, sheet_timestamp
 from src.strategy.factory import available_strategy_names
 
 
@@ -3277,6 +3277,27 @@ def _render_research_ops_brief(item: dict[str, Any]) -> list[str]:
 
 
 
+def _local_operator_timestamp(value: datetime | None = None) -> str:
+    """Return the local Central timestamp shown on review-facing artifacts."""
+    stamp = value or datetime.now(UTC)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
+    return stamp.astimezone(SHEET_TIMEZONE).strftime("%Y-%m-%d %H:%M %Z (local)")
+
+
+def _existing_card_generated_at(existing: str) -> str:
+    """Preserve a card's original generated timestamp across idempotent rewrites."""
+    patterns = (
+        r"^generated_at:\s*[\"']?([^\"'`\n]+)[\"']?\s*$",
+        r"^-\s*generated_at:\s*`?([^`\n]+)`?\s*$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, existing, re.MULTILINE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
 def _decision_next_text(item: dict[str, Any]) -> str:
     brief = item.get("brief") if isinstance(item.get("brief"), dict) else {}
     verdict = brief.get("researcher_verdict") if isinstance(brief.get("researcher_verdict"), dict) else {}
@@ -3297,13 +3318,42 @@ def _decision_next_text(item: dict[str, Any]) -> str:
         return "Make the research decision described below; implementation command is source detail, not the approval request."
     return next_text
 
-def render_decision_card(item: dict[str, Any], existing: str = "") -> str:
+
+def _decision_card_display_path(card_path: Path | None) -> str:
+    """Return a concise Obsidian-relative card path for human-visible metadata."""
+    if card_path is None:
+        return ""
+    parts = card_path.parts
+    marker = DECISION_CARD_DIR.parts
+    for index in range(0, len(parts) - len(marker) + 1):
+        if parts[index : index + len(marker)] == marker:
+            return str(Path(*parts[index:]))
+    return card_path.name
+
+
+def render_decision_card(item: dict[str, Any], existing: str = "", card_path: Path | None = None) -> str:
     comments = _extract_preserved_block(existing, COMMENTS_START, COMMENTS_END, "-")
     receipt = _extract_preserved_block(existing, RECEIPT_START, RECEIPT_END, "- pending")
     card_id = _safe_id(str(item.get("id", item.get("key", "item"))))
+    generated_at = _existing_card_generated_at(existing) or _local_operator_timestamp()
+    canonical_card_path = str(card_path.resolve()) if card_path is not None else ""
+    display_card_path = _decision_card_display_path(card_path)
     lines = [
-        "---", f"card_id: {card_id}", "program_id: mala_next_gen_research_ops_flow", f"status_tag: {item.get('tag', 'needs_suman')}", f"owner: {item.get('owner', 'Suman')}", "generated_by: research_ops publish-review-cards", "---", "",
+        "---",
+        f"card_id: {card_id}",
+        "program_id: mala_next_gen_research_ops_flow",
+        f"status_tag: {item.get('tag', 'needs_suman')}",
+        f"owner: {item.get('owner', 'Suman')}",
+        "generated_by: research_ops publish-review-cards",
+        f"generated_at: {generated_at!r}",
+        f"canonical_card_path: {canonical_card_path!r}",
+        "edit_this_file: yes",
+        "---",
+        "",
         f"# Mala Decision Card: {item.get('title', card_id)}", "",
+        f"- generated_at: `{generated_at}`",
+        "- edit_this_file: yes — Review decisions are read from this card.",
+        f"- card: `{display_card_path}`",
         f"- stable_id: `{card_id}`", f"- why: {item.get('why', '')}", f"- next: {_decision_next_text(item)}", f"- owner: {item.get('owner', 'Suman')}", f"- source: `{item.get('source', '')}`",
         "- why_not_auto_continuing: This item requires human judgment, approval, external mutation, or risk-sensitive confirmation before Research Ops can proceed.", "",
     ]
@@ -3422,7 +3472,7 @@ def write_decision_cards(status: dict[str, Any], vault: Path, *, dry_run: bool =
         card_id = _safe_id(str(item.get("id", item.get("key", "item"))))
         path = card_dir / f"{card_id}.md"
         existing = path.read_text(encoding="utf-8") if path.exists() else ""
-        rendered = render_decision_card(item, existing)
+        rendered = render_decision_card(item, existing, card_path=path)
         action = "unchanged" if existing == rendered else ("would_update" if dry_run and path.exists() else "would_create" if dry_run else "updated" if path.exists() else "created")
         if not dry_run and existing != rendered:
             path.parent.mkdir(parents=True, exist_ok=True)

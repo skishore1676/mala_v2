@@ -30,7 +30,10 @@ from src.research.research_ops import (
     DEFAULT_RUNS_DIR,
     INTAKE_SHEET_HEADERS,
     NextAction,
+    ResearchLedger,
     _build_with_optional_sheets,
+    action_id,
+    append_disposition,
     build_next_actions,
     build_control_rows,
     process_intake_rows,
@@ -176,20 +179,7 @@ def _process_intake_sheet(args: argparse.Namespace) -> list[dict[str, Any]]:
     if args.mode == "apply-safe" and updates:
         client.batch_update_rows(
             rows=updates,
-            columns=[
-                "operator_action",
-                "status",
-                "feasibility_tag",
-                "feasibility_summary",
-                "search_param_keys",
-                "discovery_config_count",
-                "retune_config_count",
-                "hypothesis_id",
-                "hypothesis_path",
-                "report_path",
-                "updated_at",
-                "created_at",
-            ],
+            columns=INTAKE_SHEET_HEADERS,
         )
     return updates
 
@@ -197,12 +187,13 @@ def _process_intake_sheet(args: argparse.Namespace) -> list[dict[str, Any]]:
 def _sync_control_sheet(
     *,
     client: GoogleSheetTableClient,
+    ledger: ResearchLedger,
     actions: list[NextAction],
     generated_at: str,
 ) -> list[dict[str, Any]]:
     client.ensure_sheet_exists()
     existing = client.read_rows(range_suffix="A1:ZZ5000")
-    rows = build_control_rows(actions=actions, generated_at=generated_at, existing_rows=existing)
+    rows = build_control_rows(actions=actions, generated_at=generated_at, existing_rows=existing, ledger=ledger)
     client.overwrite_table(headers=CONTROL_SHEET_HEADERS, rows=rows)
     return client.read_rows(range_suffix="A1:ZZ5000")
 
@@ -236,6 +227,33 @@ def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> l
     python = sys.executable
     if operator_action == "SKIP":
         return None
+    if operator_action == "APPROVE_RUN_M1" and action.action_type == "run_m1":
+        hypothesis_path = Path(args.hypotheses_dir) / f"{action.key}.md"
+        hypothesis_arg = str(hypothesis_path) if hypothesis_path.exists() else action.key
+        return [
+            python,
+            "-m",
+            "src.research.research_runner",
+            "run-m1",
+            "--hypothesis",
+            hypothesis_arg,
+        ]
+    if operator_action.startswith("APPROVE_CONTINUE_M") and action.action_type == "resume_or_normalize":
+        stage = operator_action.rsplit("_", 1)[-1]
+        if stage not in {"M2", "M3", "M4", "M5"}:
+            return None
+        hypothesis_path = Path(args.hypotheses_dir) / f"{action.key}.md"
+        hypothesis_arg = str(hypothesis_path) if hypothesis_path.exists() else action.key
+        return [
+            python,
+            "-m",
+            "src.research.research_runner",
+            "continue-approved",
+            "--hypothesis",
+            hypothesis_arg,
+            "--max-stage",
+            stage,
+        ]
     if operator_action == "APPROVE_RETUNE" and action.action_type == "retune_plan":
         hypothesis_path = Path(args.hypotheses_dir) / f"{action.key}.md"
         hypothesis_arg = str(hypothesis_path) if hypothesis_path.exists() else action.key
@@ -335,6 +353,19 @@ def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> l
             command.extend(["--control-google-credentials", args.google_credentials])
         return command
     return None
+
+
+def _record_control_skip(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    action = _action_from_control_row(row)
+    disposition = append_disposition(
+        path=Path(args.dispositions_path),
+        key=action_id(action),
+        category="control_skip",
+        status="ignore",
+        reason="operator skipped queued action from Research_Control",
+        operator="research_control",
+    )
+    return asdict(disposition)
 
 
 def _update_control_row(
@@ -469,6 +500,7 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
         control_client = _control_client(args)
         control_rows = _sync_control_sheet(
             client=control_client,
+            ledger=ledger,
             actions=actions,
             generated_at=sheet_timestamp(),
         )
@@ -507,11 +539,23 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
         )
         if command is None:
             if executed == "none":
-                executed = "skipped_by_control" if control_action == "SKIP" else "blocked_for_reasoning"
+                if control_action == "SKIP":
+                    command_text = f"record control_skip disposition for {action_id(selected)}"
+                    if args.mode == "apply-safe" and control_row:
+                        disposition = _record_control_skip(control_row, args)
+                        executed = "skipped_by_control"
+                        returncode = 0
+                        stdout_tail = json.dumps({"disposition": disposition}, indent=2)
+                    else:
+                        executed = "planned"
+                else:
+                    executed = "blocked_for_reasoning"
         elif args.mode == "dry-run":
             executed = "planned"
             command_text = _shell_join(command)
-        elif args.mode == "apply-safe" and (control_row or selected.action_type in SAFE_AUTO_ACTIONS):
+        elif args.mode == "apply-safe" and (
+            control_row or (not args.with_control_sheet and selected.action_type in SAFE_AUTO_ACTIONS)
+        ):
             completed = subprocess.run(
                 command,
                 cwd=REPO_ROOT,
@@ -545,6 +589,8 @@ def run_once(args: argparse.Namespace) -> OrchestratorResult:
     result = _write_reports(result, Path(args.orchestrator_out_dir))
     if control_client is not None and control_row is not None:
         status = executed
+        if control_action == "APPROVE_SURFACE_EXPANSION" and returncode in (None, 0):
+            status = "surface_plan_ready"
         if returncode not in (None, 0):
             status = f"failed:{returncode}"
         control_report_path = _report_path_from_stdout(stdout_tail) or result.report_path
