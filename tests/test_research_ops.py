@@ -989,11 +989,29 @@ def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Pat
     assert len(first) == 1
     path = Path(first[0]["path"])
     text = path.read_text(encoding="utf-8")
+    relative_card_path = "Projects/Trading/Mala/Research/Decision Cards/run_m1-idea-a.md"
+    body = text.split("---\n", 2)[2]
+    assert "generated_at:" in text
+    assert "- generated_at: `" in body
+    assert f"canonical_card_path: '{path.resolve()}'" in text
+    assert str(path.resolve()) not in body
+    assert "/Users/sunny/Library/" not in body
+    assert "- canonical_card_path:" not in body
+    assert "edit_this_file: yes" in text
+    assert "Review decisions are read from this card" in body
+    assert f"- card: `{relative_card_path}`" in body
     path.write_text(text.replace(f"{COMMENTS_START}\n-\n{COMMENTS_END}", f"{COMMENTS_START}\n- human note\n{COMMENTS_END}"), encoding="utf-8")
 
     second = write_decision_cards(status, vault, limit=1)
+    updated_text = path.read_text(encoding="utf-8")
+    updated_body = updated_text.split("---\n", 2)[2]
     assert second[0]["action"] == "unchanged"
-    assert "- human note" in path.read_text(encoding="utf-8")
+    assert "- human note" in updated_text
+    assert "- generated_at: `" in updated_body
+    assert str(path.resolve()) not in updated_body
+    assert "/Users/sunny/Library/" not in updated_body
+    assert "- canonical_card_path:" not in updated_body
+    assert f"- card: `{relative_card_path}`" in updated_body
     assert len(list((vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards").glob("*.md"))) == 1
 
 def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: Path) -> None:
@@ -1318,6 +1336,151 @@ def test_program_status_researcher_verdict_flags_fragile_smoke_and_one_window(tm
     assert verdict["evidence_quality"] == "smoke_test"
     assert {"smoke_test", "thin_signals", "one_oos_window", "aggregate_disagrees"}.issubset(verdict["fragility_flags"])
     assert verdict["best_config"]["ticker"] == "SPY"
+
+
+def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_path: Path) -> None:
+    from src.research.research_ops import build_program_status
+
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    hypotheses.mkdir(parents=True)
+    hyp_path = _write_hypothesis(
+        hypotheses,
+        hypothesis_id="kinematic-ladder-current-basket-discovery",
+        state="retune",
+        decision="retune",
+        strategy="Kinematic Ladder",
+        symbol_scope="SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA",
+    )
+    hyp_path.write_text(
+        hyp_path.read_text(encoding="utf-8")
+        + "\n\n## Thesis\nIntraday continuation should improve when velocity, acceleration, and jerk align across the ladder.\n",
+        encoding="utf-8",
+    )
+    run_dir = runs / "kinematic-ladder-current-basket-discovery" / "2026-05-10T070455"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN_SUMMARY.md").write_text(
+        "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: top candidate signals=17<50; windows=1<3\n",
+        encoding="utf-8",
+    )
+    rows = [
+        {
+            "ticker": "AMD",
+            "strategy": "Kinematic Ladder rw=45/aw=10+vol",
+            "direction": "combined",
+            "oos_windows": "4",
+            "oos_signals": "96",
+            "avg_test_exp_r": "0.3169",
+            "pct_positive_oos_windows": "0.8",
+            "avg_test_confidence": "0.61",
+            "avg_test_mfe_mae_ratio": "6.2",
+            "regime_window": "45",
+            "accel_window": "10",
+            "kinematic_periods_back": "3",
+            "use_volume_filter": "true",
+            "volume_multiplier": "1.0",
+            "m1_score": "516.9",
+        },
+        {
+            "ticker": "META",
+            "strategy": "Kinematic Ladder rw=30/aw=20+vol",
+            "direction": "combined",
+            "oos_windows": "4",
+            "oos_signals": "89",
+            "avg_test_exp_r": "0.1895",
+            "pct_positive_oos_windows": "0.8",
+            "avg_test_confidence": "0.58",
+            "avg_test_mfe_mae_ratio": "5.1",
+            "regime_window": "30",
+            "accel_window": "20",
+            "kinematic_periods_back": "3",
+            "use_volume_filter": "true",
+            "volume_multiplier": "1.1",
+            "m1_score": "389.5",
+        },
+        {
+            "ticker": "NVDA",
+            "strategy": "Kinematic Ladder rw=45/aw=15+vol",
+            "direction": "combined",
+            "oos_windows": "3",
+            "oos_signals": "72",
+            "avg_test_exp_r": "0.1412",
+            "pct_positive_oos_windows": "0.67",
+            "avg_test_confidence": "0.55",
+            "avg_test_mfe_mae_ratio": "4.8",
+            "regime_window": "45",
+            "accel_window": "15",
+            "kinematic_periods_back": "2",
+            "use_volume_filter": "true",
+            "volume_multiplier": "1.0",
+            "m1_score": "341.2",
+        },
+        {
+            "ticker": "SPY",
+            "strategy": "Kinematic Ladder rw=20/aw=10+vol",
+            "direction": "combined",
+            "oos_windows": "4",
+            "oos_signals": "63",
+            "avg_test_exp_r": "-0.3369",
+            "pct_positive_oos_windows": "0.0",
+            "avg_test_confidence": "0.35",
+            "avg_test_mfe_mae_ratio": "9.2",
+            "regime_window": "20",
+            "accel_window": "10",
+            "kinematic_periods_back": "1",
+            "use_volume_filter": "true",
+            "volume_multiplier": "1.0",
+            "m1_score": "-236.9",
+        },
+    ]
+    _write_csv(run_dir / "M1_top.csv", rows)
+    _write_csv(run_dir / "M1_aggregate.csv", rows)
+    _write_csv(
+        run_dir / "M1_detail.csv",
+        [
+            {
+                "ticker": "AMD",
+                "strategy": "Kinematic Ladder rw=45/aw=10+vol",
+                "direction": "combined",
+                "window_idx": "1",
+                "test_signals": "24",
+                "test_confidence": "0.61",
+                "test_exp_r": "0.3169",
+                "test_avg_mfe_mae_ratio": "6.2",
+                "effective_cost_r": "0.05",
+                "regime_window": "45",
+                "accel_window": "10",
+                "kinematic_periods_back": "3",
+                "use_volume_filter": "true",
+                "volume_multiplier": "1.0",
+            }
+        ],
+    )
+    args = SimpleNamespace(
+        hypotheses_dir=str(hypotheses),
+        runs_dir=str(runs),
+        dispositions_path=str(tmp_path / "dispositions.jsonl"),
+        out_dir=str(tmp_path / "out"),
+        with_catalog=False,
+        with_board=False,
+        with_control=False,
+        with_intake=False,
+        limit=50,
+        vault=str(tmp_path / "vault"),
+    )
+
+    status = build_program_status(args)
+    item = next(item for item in status["items"] if item["key"] == "kinematic-ladder-current-basket-discovery")
+    brief = item["brief"]
+    verdict = brief["researcher_verdict"]
+
+    assert brief["latest_artifact"].endswith("2026-05-10T070455")
+    assert "M1 evidence not found" not in brief["metrics"]
+    assert verdict["recommendation"] == "approve_surface_expansion"
+    assert verdict["evidence_quality"] == "strong"
+    assert "missing_artifact" not in verdict["fragility_flags"]
+    assert verdict["best_config"]["ticker"] == "AMD"
+    assert verdict["stability_read"]["robust_config_count"] == 3
 
 
 def test_control_rows_use_researcher_verdict_for_smoke_retune(tmp_path: Path) -> None:
