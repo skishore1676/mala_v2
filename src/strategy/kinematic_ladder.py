@@ -82,10 +82,10 @@ class KinematicLadderStrategy(BaseStrategy):
     def parameter_space(self) -> dict[str, list[Any]]:
         return {
             "regime_window": [20, 30, 45],
-            "accel_window": [8, 12, 20],
-            "kinematic_periods_back": [1, 3, 5],
-            "use_volume_filter": [True, False],
-            "volume_multiplier": [1.0, 1.05, 1.1, 1.2],
+            "accel_window": [10, 15, 20],
+            "kinematic_periods_back": [1, 2, 3],
+            "use_volume_filter": [True],
+            "volume_multiplier": [1.0, 1.05, 1.1],
         }
 
     @property
@@ -106,28 +106,28 @@ class KinematicLadderStrategy(BaseStrategy):
                 ParameterSpec(
                     name="accel_window",
                     type="discrete",
-                    domain=DomainSpec(values=[8, 10, 12, 20]),
+                    domain=DomainSpec(values=[10, 15, 20]),
                     default=self.accel_window,
-                    prior_center=12,
+                    prior_center=15,
                 ),
                 ParameterSpec(
                     name="kinematic_periods_back",
                     type="discrete",
-                    domain=DomainSpec(values=[1, 3, 5]),
+                    domain=DomainSpec(values=[1, 2, 3]),
                     default=self.kinematic_periods_back,
-                    prior_center=1,
+                    prior_center=2,
                 ),
                 ParameterSpec(
                     name="use_volume_filter",
                     type="categorical",
-                    domain=DomainSpec(values=[True, False]),
+                    domain=DomainSpec(values=[True]),
                     default=self.use_volume_filter,
                     prior_center=True,
                 ),
                 ParameterSpec(
                     name="volume_multiplier",
                     type="discrete",
-                    domain=DomainSpec(values=[1.0, 1.05, 1.1, 1.2]),
+                    domain=DomainSpec(values=[1.0, 1.05, 1.1]),
                     default=self.volume_multiplier,
                     prior_center=1.05,
                 ),
