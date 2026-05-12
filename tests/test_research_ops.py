@@ -4,10 +4,13 @@ import csv
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from src.research.research_ops import (
     _board_sync_plan,
     _catalog_publish_plan,
     _publish_catalog_rows,
+    parse_args,
     FindingDisposition,
     append_disposition,
     apply_review_decision_records,
@@ -837,13 +840,33 @@ def test_publish_catalog_rows_blocks_rows_without_exit_artifact(tmp_path: Path) 
             catalog_google_credentials="",
             google_credentials="",
             catalog_sheet_id="sheet-id",
-            catalog_sheet_name="Strategy_Catalog",
+            catalog_sheet_name="Mala_Evidence_v1",
         ),
         dry_run=True,
     )
 
     assert results[0]["action"] == "blocked_missing_thesis_exit"
     assert "backfill" in results[0]["block_reason"]
+
+
+
+
+def test_publication_guardrail_doc_names_mala_evidence_as_canonical() -> None:
+    text = Path("docs/MALA_PUBLICATION_GUARDRAILS.md").read_text(encoding="utf-8")
+
+    assert "Mala_Evidence_v1` is the only Mala-owned evidence publication tab" in text
+    assert "Legacy `Strategy_Catalog` is historical/read-only" in text
+    assert "--no-write" in text
+
+
+def test_publish_pending_help_deprecates_strategy_catalog_and_points_to_mala_evidence(capsys) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["publish-pending", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "Mala_Evidence_v1" in help_text
+    assert "Deprecated" in help_text
+    assert "Actually upsert rows into Strategy_Catalog" not in help_text
 
 
 def test_board_sync_plan_maps_terminal_states_to_operator_columns(tmp_path: Path) -> None:

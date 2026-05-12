@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from src.config import settings
-from src.research.catalog import upsert_strategy_catalog
 from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 from src.research.google_sheets import GoogleSheetTableClient
@@ -713,7 +712,7 @@ def build_hot_start_findings(
                     severity="medium",
                     category="catalog_publish_pending",
                     key=row.catalog_key,
-                    detail=f"{row.ticker} {row.direction} {row.strategy} promoted in {row.run_ts} but absent from Strategy_Catalog.",
+                    detail=f"{row.ticker} {row.direction} {row.strategy} promoted in {row.run_ts} but absent from Mala_Evidence_v1.",
                     next_action="Review dedupe by symbol/direction/strategy, then publish if still valid.",
                 )
             )
@@ -793,8 +792,9 @@ def build_next_actions(ledger: ResearchLedger) -> list[NextAction]:
                 key=finding.key,
                 reason=finding.detail,
                 suggested_command=(
-                    "python -m src.research.research_ops publish-pending "
-                    f"--catalog-key {finding.key} --dry-run"
+                    "python -m src.research.mala_handoff "
+                    "--promote-shadow-only "
+                    f"--out-dir {DEFAULT_OUT_DIR / 'mala_handoff'}"
                 ),
                 requires_approval="yes",
                 mutates_external_state="yes",
@@ -1245,7 +1245,7 @@ def _brief_recommendation(
 ) -> tuple[str, str, str]:
     action_type = action.action_type if action else ""
     if action_type == "publish_pending":
-        return "PUBLISH_REVIEW", "APPROVE_PUBLISH", "Catalog write is external state; dedupe and review execution fields before applying."
+        return "PUBLISH_REVIEW", "APPROVE_PUBLISH", "Mala_Evidence_v1 publish is external state; confirm evidence packet and exact spreadsheet/tab before applying."
     if action_type == "sync_board":
         return "BOARD_SYNC_REVIEW", "APPROVE_BOARD_SYNC", "Board state is stale relative to Mala; sync after confirming the matched row."
     if action_type in {"repair_run_summary", "inspect_terminal"}:
@@ -3090,7 +3090,7 @@ def _render_executive_summary(item: dict[str, Any], entries: list[dict[str, Any]
         f"- {_executive_recommendation(entries)}",
         f"- {_executive_decision_needed(item, entries)}",
         f"- Confidence: {_executive_confidence(entries)}.",
-        "- Permission boundary: any approval authorizes only the named bounded research action; it does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk.",
+        "- Permission boundary: any approval authorizes only the named bounded research action; it does **not** mutate Google Sheets, Mala_Evidence_v1, active_strategy, broker state, or live risk.",
         "",
         "## Decision Data That Matters",
         "",
@@ -3180,10 +3180,10 @@ def _render_research_ops_brief(item: dict[str, Any]) -> list[str]:
 
     if item.get("action_type") == "retune_plan_batch":
         plain_english = "Plain English: this is an attention-managed retune summary. The items are grouped because they are lower-priority or similar, not because Research Ops should ignore per-item differences."
-        approval_text = "Approving a subset must be named in comments. Approval authorizes only the recommended bounded action for the named items; it does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk by itself."
+        approval_text = "Approving a subset must be named in comments. Approval authorizes only the recommended bounded action for the named items; it does **not** mutate Google Sheets, Mala_Evidence_v1, active_strategy, broker state, or live risk by itself."
     else:
         plain_english = "Plain English: this is an individual retune decision card because this candidate has a differentiated Research Ops verdict or enough unblock value to deserve standalone judgment."
-        approval_text = "Approving this card authorizes only the named bounded research action. It does **not** mutate Google Sheets, Strategy_Catalog, active_strategy, broker state, or live risk by itself."
+        approval_text = "Approving this card authorizes only the named bounded research action. It does **not** mutate Google Sheets, Mala_Evidence_v1, active_strategy, broker state, or live risk by itself."
 
     lines = _render_executive_summary(item, entries)
     lines.extend([
@@ -4075,9 +4075,12 @@ def _publish_catalog_rows(
     dry_run: bool,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    if not dry_run:
+        raise SystemExit(
+            "Legacy Strategy_Catalog writes are disabled. Publish canonical Mala_Evidence_v1 with "
+            "`python -m src.research.mala_handoff --publish-sheets` after exact-tab preflight."
+        )
     credentials = args.catalog_google_credentials or args.google_credentials
-    if not dry_run and not credentials:
-        raise SystemExit("--google-credentials or --catalog-google-credentials is required for --apply")
     for row in rows:
         run_dir = REPO_ROOT / row.artifact_dir
         selected_rows = [
@@ -4101,7 +4104,7 @@ def _publish_catalog_rows(
         }
         if not exit_opt:
             result["action"] = "blocked_missing_thesis_exit"
-            result["block_reason"] = "Run exit optimization/backfill before Strategy_Catalog publish."
+            result["block_reason"] = "Run exit optimization/backfill before Mala_Evidence_v1 publish."
             results.append(result)
             continue
         if not dry_run:
@@ -4486,6 +4489,11 @@ def cmd_process_intake(args: argparse.Namespace) -> int:
 
 
 def cmd_publish_pending(args: argparse.Namespace) -> int:
+    raise SystemExit(
+        "research_ops publish-pending is deprecated and will not write legacy Strategy_Catalog. "
+        "Use `python -m src.research.mala_handoff --publish-sheets` to publish canonical Mala_Evidence_v1, "
+        "and use `research_ops shadow-activation-packet --apply-active-strategy` only after explicit active_strategy approval."
+    )
     catalog_client = _strategy_catalog_client(args)
     catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
     catalog_keys = {
@@ -4803,7 +4811,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--options-google-credentials", default="")
     parser.add_argument("--options-sheet-id", default="")
     parser.add_argument("--options-sheet-name", default=DEFAULT_OPTIONS_SHEET_NAME)
-    parser.add_argument("--with-catalog", action="store_true", help="Read Strategy_Catalog and mark promoted rows present/absent.")
+    parser.add_argument("--with-catalog", action="store_true", help="Read canonical Mala_Evidence_v1 and mark promoted rows present/absent.")
     parser.add_argument("--with-board", action="store_true", help="Read Scout_Queue and include stale-board findings.")
     parser.add_argument("--with-control", action="store_true", help="Read Research_Control rows for digest/reporting.")
     parser.add_argument("--with-intake", action="store_true", help="Read Research_Intake rows for digest/reporting.")
@@ -4847,7 +4855,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _add_common_args(publish_cards)
     publish_cards.add_argument("--vault", default=str(DEFAULT_OBSIDIAN_VAULT), help="Northstar vault path.")
     publish_cards.add_argument("--limit", type=int, default=3, help="Maximum Needs Suman cards to publish.")
-    publish_cards.add_argument("--dry-run", action="store_true", help="Preview card creates/updates without writing Obsidian files.")
+    publish_cards.add_argument("--dry-run", action="store_true", help="Audit/validation-safe preview; do not write Obsidian files. Required for read-only checks.")
     publish_cards.add_argument("--refresh", action="store_true", help="Rebuild program-status before publishing instead of using the latest JSON.")
     publish_cards.set_defaults(func=cmd_publish_review_cards)
 
@@ -4924,10 +4932,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     process_intake.add_argument("--output", default="", help="Optional CSV output path for processed rows.")
     process_intake.set_defaults(func=cmd_process_intake)
 
-    publish = subparsers.add_parser("publish-pending", help="Dry-run or publish promoted Strategy_Catalog rows missing from the sheet.")
+    publish = subparsers.add_parser("publish-pending", help="Deprecated read-only shim; use mala_handoff --publish-sheets for canonical Mala_Evidence_v1 publishes.")
     _add_common_args(publish)
     publish.add_argument("--catalog-key", default="", help="Limit to one catalog_key.")
-    publish.add_argument("--apply", action="store_true", help="Actually upsert rows into Strategy_Catalog. Omit for dry-run.")
+    publish.add_argument("--apply", action="store_true", help="Deprecated/no-op: legacy catalog writes are blocked; publish Mala_Evidence_v1 via mala_handoff.")
     publish.add_argument("--dry-run", action="store_true", help="Explicit no-op alias; dry-run is the default.")
     publish.add_argument("--output", default="", help="Optional CSV output path for the publish plan.")
     publish.set_defaults(func=cmd_publish_pending)

@@ -579,6 +579,14 @@ def write_handoff_outputs(packets: list[MalaHandoffPacket], out_dir: str | Path)
     }
 
 
+def _require_canonical_evidence_sheet(evidence_sheet_name: str) -> None:
+    if evidence_sheet_name != DEFAULT_EVIDENCE_SHEET_NAME:
+        raise RuntimeError(
+            f"Refusing Mala evidence publish to {evidence_sheet_name!r}; "
+            f"canonical publish surface is {DEFAULT_EVIDENCE_SHEET_NAME!r}."
+        )
+
+
 def publish_review_tabs(
     packets: list[MalaHandoffPacket],
     *,
@@ -587,11 +595,13 @@ def publish_review_tabs(
     evidence_sheet_name: str = DEFAULT_EVIDENCE_SHEET_NAME,
     evidence_client: GoogleSheetTableClient | None = None,
 ) -> dict[str, int]:
+    _require_canonical_evidence_sheet(evidence_sheet_name)
     evidence_client = evidence_client or GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=evidence_sheet_name,
         credentials_path=Path(credentials_path),
     )
+    evidence_client.require_sheet_exists()
     evidence_rows = [packet_to_csv_row(packet) for packet in packets]
     evidence_client.overwrite_table(headers=handoff_csv_fieldnames(), rows=evidence_rows)
     return {
@@ -614,12 +624,13 @@ def publish_provider_validation_columns(
     Mala_Evidence_v1. Rows are matched by catalog_key and missing rows are
     reported for a separate full handoff review.
     """
+    _require_canonical_evidence_sheet(evidence_sheet_name)
     evidence_client = evidence_client or GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=evidence_sheet_name,
         credentials_path=Path(credentials_path),
     )
-    evidence_client.ensure_sheet_exists()
+    evidence_client.require_sheet_exists()
     added_columns = evidence_client.ensure_columns(M6_PROVIDER_FIELDNAMES)
     existing_rows = evidence_client.read_rows(range_suffix="A1:ZZ5000")
     if existing_rows and "catalog_key" not in existing_rows[0]:
@@ -1000,13 +1011,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", default="", help="Output directory for handoff preview artifacts.")
     parser.add_argument("--all-runs", action="store_true", help="Include older duplicate catalog_key rows instead of latest only.")
     parser.add_argument("--promote-shadow-only", action="store_true", help="Exclude watch_only candidates.")
-    parser.add_argument("--publish-sheets", action="store_true", help="Overwrite the Mala evidence review tab in Google Sheets.")
+    parser.add_argument("--publish-sheets", action="store_true", help="Overwrite canonical Mala_Evidence_v1 in Google Sheets after exact-tab preflight.")
     parser.add_argument(
         "--publish-provider-validation-only",
         action="store_true",
         help="Update only M6 provider validation columns in existing Mala_Evidence_v1 rows.",
     )
-    parser.add_argument("--sheet-id", default="", help="Google spreadsheet ID or URL. Defaults to STRATEGY_CATALOG_SHEET_ID.")
+    parser.add_argument("--sheet-id", default="", help="Google spreadsheet ID or URL for Mala_Evidence_v1. Defaults to STRATEGY_CATALOG_SHEET_ID for compatibility.")
     parser.add_argument("--google-credentials", default="", help="Google service-account JSON path. Defaults to GOOGLE_API_CREDENTIALS_PATH.")
     parser.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
     parser.add_argument(
@@ -1038,7 +1049,7 @@ def main(argv: list[str] | None = None) -> int:
         sheet_id = args.sheet_id or settings.strategy_catalog_sheet_id
         credentials = args.google_credentials or settings.google_api_credentials_path
         if not sheet_id:
-            raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID is required for --publish-sheets")
+            raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID (compat env for Mala evidence spreadsheet) is required for --publish-sheets")
         if not credentials:
             raise SystemExit("--google-credentials or GOOGLE_API_CREDENTIALS_PATH is required for --publish-sheets")
         publish_result = publish_review_tabs(
@@ -1053,7 +1064,7 @@ def main(argv: list[str] | None = None) -> int:
         sheet_id = args.sheet_id or settings.strategy_catalog_sheet_id
         credentials = args.google_credentials or settings.google_api_credentials_path
         if not sheet_id:
-            raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID is required for --publish-provider-validation-only")
+            raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID (compat env for Mala evidence spreadsheet) is required for --publish-provider-validation-only")
         if not credentials:
             raise SystemExit("--google-credentials or GOOGLE_API_CREDENTIALS_PATH is required for --publish-provider-validation-only")
         publish_result = publish_provider_validation_columns(

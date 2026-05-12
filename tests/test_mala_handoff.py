@@ -4,12 +4,15 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from src.research.mala_handoff import (
     build_handoff_packets,
     derive_signal_window,
     handoff_csv_fieldnames,
     packet_to_csv_row,
     publish_provider_validation_columns,
+    publish_review_tabs,
     review_thesis_exit_metrics,
     write_handoff_outputs,
 )
@@ -188,6 +191,38 @@ def test_mala_handoff_missing_m6_file_is_advisory_unknown(tmp_path: Path) -> Non
     assert row["provider_signal_overlap"] == ""
     assert row["provider_validation_report"] == ""
     assert row["bhiksha_ready"] in {"true", "false"}
+
+
+
+def test_publish_review_tabs_requires_canonical_mala_evidence_tab_before_write(tmp_path: Path) -> None:
+    packets = build_handoff_packets(runs_root=_write_market_impulse_run(tmp_path).parents[1])
+    client = _FakeEvidenceClient([], sheet_exists=False)
+
+    with pytest.raises(RuntimeError, match="required tab"):
+        publish_review_tabs(
+            packets,
+            spreadsheet_id="sheet",
+            credentials_path=tmp_path / "creds.json",
+            evidence_client=client,
+        )
+
+    assert client.overwritten_rows == []
+
+
+def test_publish_review_tabs_rejects_legacy_strategy_catalog_target(tmp_path: Path) -> None:
+    packets = build_handoff_packets(runs_root=_write_market_impulse_run(tmp_path).parents[1])
+    client = _FakeEvidenceClient([], sheet_exists=True)
+
+    with pytest.raises(RuntimeError, match="canonical publish surface"):
+        publish_review_tabs(
+            packets,
+            spreadsheet_id="sheet",
+            credentials_path=tmp_path / "creds.json",
+            evidence_sheet_name="Strategy_Catalog",
+            evidence_client=client,
+        )
+
+    assert client.overwritten_rows == []
 
 
 def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> None:
@@ -454,13 +489,19 @@ strategies:
 
 
 class _FakeEvidenceClient:
-    def __init__(self, rows: list[dict[str, str | int]]) -> None:
+    def __init__(self, rows: list[dict[str, str | int]], sheet_exists: bool = True) -> None:
         self.rows = rows
+        self.sheet_exists = sheet_exists
         self.updated_rows: list[dict[str, str | int]] = []
         self.updated_columns: list[str] = []
+        self.overwritten_rows: list[dict[str, str | int]] = []
 
     def ensure_sheet_exists(self) -> None:
         return None
+
+    def require_sheet_exists(self) -> None:
+        if not self.sheet_exists:
+            raise RuntimeError("required tab 'Mala_Evidence_v1' is missing")
 
     def ensure_columns(self, columns: list[str]) -> list[str]:
         return []
@@ -468,6 +509,16 @@ class _FakeEvidenceClient:
     def read_rows(self, *, range_suffix: str = "A1:Z1000") -> list[dict[str, str | int]]:
         assert range_suffix == "A1:ZZ5000"
         return self.rows
+
+    def overwrite_table(
+        self,
+        *,
+        headers: list[str],
+        rows: list[dict[str, str | int]],
+        clear_range_suffix: str = "A1:ZZ5000",
+    ) -> dict[str, object]:
+        self.overwritten_rows = rows
+        return {"updated": len(rows)}
 
     def batch_update_rows(
         self,

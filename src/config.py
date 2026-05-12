@@ -104,18 +104,18 @@ class Settings(BaseSettings):
         description="Bars to look ahead for MFE / MAE (15 × 1-min = 15 min).",
     )
 
-    # ── Google Sheets (Strategy_Catalog) ────────────────────────────────
+    # ── Google Sheets (Mala evidence; legacy env names retained) ──────────────
     google_api_credentials_path: str = Field(
         default="",
         description="Path to service-account JSON for Google Sheets access.",
     )
     strategy_catalog_sheet_id: str = Field(
         default="",
-        description="Spreadsheet ID for the Strategy_Catalog Google Sheet (set via STRATEGY_CATALOG_SHEET_ID in .env).",
+        description="Spreadsheet ID for the canonical Mala evidence workbook (Mala_Evidence_v1; legacy STRATEGY_CATALOG_SHEET_ID env name retained for compatibility).",
     )
     strategy_catalog_sheet_name: str = Field(
-        default="Strategy_Catalog",
-        description="Tab name for the strategy catalog.",
+        default="Mala_Evidence_v1",
+        description="Canonical Mala evidence tab name; legacy Strategy_Catalog is read-only/deprecated.",
     )
 
 

@@ -1,7 +1,7 @@
-"""Replay Strategy_Catalog rows under alternate volume assumptions.
+"""Replay legacy Strategy_Catalog rows under alternate volume assumptions.
 
-This is an artifact-only research tool. It does not publish to
-Strategy_Catalog and does not touch live execution state.
+This is an artifact-only legacy replay tool. It does not publish to
+Strategy_Catalog, Mala_Evidence_v1, or live execution state.
 """
 
 from __future__ import annotations
@@ -175,9 +175,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog-csv", type=Path, default=None, help="Read Strategy_Catalog rows from a local CSV")
-    parser.add_argument("--catalog-sheet-id", default=None, help="Google Strategy_Catalog spreadsheet ID/URL")
-    parser.add_argument("--catalog-sheet-name", default=None, help="Strategy_Catalog tab name")
+    parser.add_argument("--catalog-csv", type=Path, default=None, help="Read legacy Strategy_Catalog rows from a local CSV")
+    parser.add_argument("--catalog-sheet-id", default=None, help="Legacy Strategy_Catalog spreadsheet ID/URL")
+    parser.add_argument("--catalog-sheet-name", default=None, help="Legacy Strategy_Catalog tab name")
     parser.add_argument("--credentials-path", type=Path, default=None, help="Google service account JSON path")
     parser.add_argument("--env-file", type=Path, default=Path(".env"), help="Optional .env file with catalog credentials")
     parser.add_argument("--data-dir", default=None, help="Local Polygon parquet cache root")
@@ -220,7 +220,7 @@ def _load_catalog_rows(args: argparse.Namespace) -> list[CatalogRow]:
         sheet_name = args.catalog_sheet_name or os.getenv("STRATEGY_CATALOG_SHEET_NAME", "Strategy_Catalog")
         credentials_path = args.credentials_path or Path(os.getenv("GOOGLE_API_CREDENTIALS_PATH", ""))
         if not sheet_id or not str(credentials_path):
-            raise SystemExit("--catalog-csv or Strategy_Catalog Google credentials are required")
+            raise SystemExit("--catalog-csv or legacy Strategy_Catalog Google credentials are required")
         client = GoogleSheetTableClient(
             spreadsheet_id=sheet_id,
             sheet_name=sheet_name,

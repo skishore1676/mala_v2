@@ -103,20 +103,9 @@ def _command_for_action(action: NextAction, args: argparse.Namespace) -> list[st
         command = [
             python,
             "-m",
-            "src.research.research_ops",
-            "publish-pending",
-            "--catalog-key",
-            action.key,
-            "--dry-run",
+            "src.research.mala_handoff",
+            "--promote-shadow-only",
         ]
-        if args.catalog_sheet_id:
-            command.extend(["--catalog-sheet-id", args.catalog_sheet_id])
-        if args.catalog_sheet_name:
-            command.extend(["--catalog-sheet-name", args.catalog_sheet_name])
-        if args.google_credentials:
-            command.extend(["--google-credentials", args.google_credentials])
-        if args.catalog_google_credentials:
-            command.extend(["--catalog-google-credentials", args.catalog_google_credentials])
         return command
     if action.action_type == "sync_board":
         command = [
@@ -296,20 +285,16 @@ def _command_for_control_row(row: dict[str, Any], args: argparse.Namespace) -> l
         command = [
             python,
             "-m",
-            "src.research.research_ops",
-            "publish-pending",
-            "--catalog-key",
-            action.key,
-            "--apply",
+            "src.research.mala_handoff",
+            "--promote-shadow-only",
+            "--publish-sheets",
         ]
         if args.catalog_sheet_id:
-            command.extend(["--catalog-sheet-id", args.catalog_sheet_id])
-        if args.catalog_sheet_name:
-            command.extend(["--catalog-sheet-name", args.catalog_sheet_name])
+            command.extend(["--sheet-id", args.catalog_sheet_id])
         if args.google_credentials:
             command.extend(["--google-credentials", args.google_credentials])
         if args.catalog_google_credentials:
-            command.extend(["--catalog-google-credentials", args.catalog_google_credentials])
+            command.extend(["--google-credentials", args.catalog_google_credentials])
         return command
     if operator_action == "APPROVE_BOARD_SYNC" and action.action_type == "sync_board":
         command = [
@@ -408,7 +393,7 @@ def _reasoning_brief(action: NextAction | None, executed: str) -> str:
     if action.action_type == "publish_pending":
         return (
             "Agent reasoning checkpoint: dry-run only has been allowed. Review duplicate lanes, "
-            "exit reliability, and Bhiksha readiness before applying Strategy_Catalog writes."
+            "exit reliability, and Bhiksha readiness before applying Mala_Evidence_v1 publishes."
         )
     if action.action_type == "sync_board":
         return (

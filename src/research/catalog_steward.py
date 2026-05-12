@@ -1,8 +1,7 @@
-"""Catalog steward advisory workflow.
+"""Deprecated legacy catalog steward advisory workflow.
 
-Reads Strategy_Catalog plus active_strategy, writes local recommendation
-artifacts by default, and can optionally push compact advisory fields back to
-Strategy_Catalog.
+Kept for historical Strategy_Catalog review only. Current Mala evidence lives
+in Mala_Evidence_v1, and this command must not push legacy catalog writes.
 """
 
 from __future__ import annotations
@@ -333,7 +332,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--catalog-sheet-name", default=settings.strategy_catalog_sheet_name)
     parser.add_argument("--active-sheet-name", default="active_strategy")
     parser.add_argument("--out-dir", default="research/reports/catalog_steward")
-    parser.add_argument("--push-sheet", action="store_true")
+    parser.add_argument("--push-sheet", action="store_true", help="Deprecated/no-op: legacy Strategy_Catalog writes are blocked.")
     return parser.parse_args()
 
 
@@ -372,7 +371,7 @@ def main() -> int:
 
     updated = 0
     if args.push_sheet:
-        updated = push_recommendations_to_sheet(client=catalog_client, recommendations=recommendations)
+        raise SystemExit("--push-sheet is disabled: legacy Strategy_Catalog writes are blocked; use Mala_Evidence_v1 workflows.")
 
     print(f"STEWARD_REPORT={md_path}")
     print(f"STEWARD_CSV={csv_path}")

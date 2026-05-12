@@ -79,6 +79,11 @@ class ShadowDailyReportArtifacts:
     issue_count: int
 
 
+def _require_exact_sheet_name(actual: str, expected: str, *, surface: str) -> None:
+    if actual != expected:
+        raise RuntimeError(f"Refusing {surface} access to {actual!r}; canonical tab is {expected!r}.")
+
+
 def read_sheet_rows(
     *,
     spreadsheet_id: str,
@@ -87,21 +92,29 @@ def read_sheet_rows(
     active_strategy_sheet_name: str = DEFAULT_ACTIVE_STRATEGY_SHEET_NAME,
     operator_defaults_sheet_name: str = DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    evidence = GoogleSheetTableClient(
+    _require_exact_sheet_name(evidence_sheet_name, DEFAULT_EVIDENCE_SHEET_NAME, surface="Mala evidence")
+    _require_exact_sheet_name(active_strategy_sheet_name, DEFAULT_ACTIVE_STRATEGY_SHEET_NAME, surface="active_strategy")
+    _require_exact_sheet_name(operator_defaults_sheet_name, DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME, surface="operator defaults")
+    evidence_client = GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=evidence_sheet_name,
         credentials_path=Path(credentials_path),
-    ).read_rows(range_suffix="A1:ZZ5000")
-    active = GoogleSheetTableClient(
+    )
+    active_client = GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=active_strategy_sheet_name,
         credentials_path=Path(credentials_path),
-    ).read_rows(range_suffix="A1:ZZ5000")
-    defaults = GoogleSheetTableClient(
+    )
+    defaults_client = GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=operator_defaults_sheet_name,
         credentials_path=Path(credentials_path),
-    ).read_rows(range_suffix="A1:ZZ5000")
+    )
+    for client in (evidence_client, active_client, defaults_client):
+        client.require_sheet_exists()
+    evidence = evidence_client.read_rows(range_suffix="A1:ZZ5000")
+    active = active_client.read_rows(range_suffix="A1:ZZ5000")
+    defaults = defaults_client.read_rows(range_suffix="A1:ZZ5000")
     return evidence, active, defaults
 
 
@@ -309,11 +322,13 @@ def apply_active_strategy_rows(
         recommended_rows=recommended_rows,
         disable_non_recommended=disable_non_recommended,
     )
+    _require_exact_sheet_name(active_strategy_sheet_name, DEFAULT_ACTIVE_STRATEGY_SHEET_NAME, surface="active_strategy")
     client = GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=active_strategy_sheet_name,
         credentials_path=Path(credentials_path),
     )
+    client.require_sheet_exists()
     client.overwrite_table(headers=ACTIVE_STRATEGY_HEADERS, rows=merged)
     return merged
 
@@ -339,11 +354,13 @@ def apply_operator_defaults_patch(
         existing["source"] = "shadow_campaign_activation"
         updates.append(existing)
     if updates:
+        _require_exact_sheet_name(operator_defaults_sheet_name, DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME, surface="operator defaults")
         client = GoogleSheetTableClient(
             spreadsheet_id=spreadsheet_id,
             sheet_name=operator_defaults_sheet_name,
             credentials_path=Path(credentials_path),
         )
+        client.require_sheet_exists()
         client.batch_update_rows(rows=updates, columns=["value", "source"])
     return updates
 

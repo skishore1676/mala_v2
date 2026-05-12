@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from src.research.google_sheets import GoogleSheetTableClient
 
 
@@ -47,9 +49,25 @@ def test_google_sheet_client_clears_blank_batch_update_values(tmp_path: Path) ->
     }
 
 
+def test_google_sheet_client_requires_exact_existing_tab_before_mutation(tmp_path: Path) -> None:
+    service = _FakeService(headers=["catalog_key"], sheet_titles=["Mala_Evidence_v1"])
+    client = GoogleSheetTableClient(
+        spreadsheet_id="sheet-id",
+        sheet_name="Strategy_Catalog",
+        credentials_path=tmp_path / "credentials.json",
+        service=service,
+    )
+
+    with pytest.raises(RuntimeError, match="required tab 'Strategy_Catalog' is missing"):
+        client.require_sheet_exists()
+
+    assert not service.batch_updated_body
+
+
 class _FakeService:
-    def __init__(self, headers: list[str]) -> None:
+    def __init__(self, headers: list[str], sheet_titles: list[str] | None = None) -> None:
         self.headers = headers
+        self.sheet_titles = sheet_titles or ["Strategy_Catalog", "Research_Intake"]
         self.updated_range = ""
         self.updated_body: dict[str, Any] = {}
         self.cleared_ranges: list[str] = []
@@ -62,7 +80,8 @@ class _FakeService:
     def values(self) -> "_FakeService":
         return self
 
-    def get(self, *, spreadsheetId: str, range: str) -> "_FakeService":
+    def get(self, *, spreadsheetId: str, range: str | None = None) -> "_FakeService":
+        self._last_action = "metadata" if range is None else "values_get"
         return self
 
     def update(
@@ -99,4 +118,8 @@ class _FakeService:
         if self._last_action == "batchUpdate":
             self._last_action = ""
             return {"updatedData": self.batch_updated_body}
+        if self._last_action == "metadata":
+            self._last_action = ""
+            return {"sheets": [{"properties": {"title": title}} for title in self.sheet_titles]}
+        self._last_action = ""
         return {"values": [self.headers]}

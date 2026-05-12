@@ -1,9 +1,9 @@
 """
-Strategy_Catalog writer.
+Deprecated legacy Strategy_Catalog helpers.
 
-Upserts a single row into the Strategy_Catalog Google Sheet tab.
-Called when a hypothesis reaches `promote` (M5 pass).
-The row lands with lifecycle_status=candidate; a human flips it to approved.
+Current Mala publication is canonical in Mala_Evidence_v1 via
+`src.research.mala_handoff`; this module is retained only for historical
+read/replay compatibility and must not be used by current publish flows.
 
 Column schema matches the live sheet exactly:
     catalog_key, playbook_id, symbol, bias_template, strategy_key,
@@ -155,14 +155,14 @@ def _build_playbook_summary(
     exit_opt: dict[str, Any] | None = None,
     strategy_key: str = "",
 ) -> str:
-    """Build restricted Mala-owned evidence for Strategy_Catalog.
+    """Build restricted Mala-owned evidence for the deprecated Strategy_Catalog shape.
 
     Mala may publish strategy evidence and optimized underlying thesis exits.
     Runtime option vehicle, execution window, premium budget, option stops and
     targets, live/shadow mode, and conflict policy are operator/Bhiksha owned.
     """
     if not exit_opt:
-        raise ValueError("Strategy_Catalog publish requires a tested thesis exit artifact.")
+        raise ValueError("Deprecated Strategy_Catalog shape requires a tested thesis exit artifact.")
     entry_params = {
         k: v for k, v in m5_best.items()
         if k not in _M5_NON_PARAM_COLS and v not in (None, "")
@@ -265,11 +265,11 @@ def upsert_strategy_catalog(
     sheet_name: str = "Strategy_Catalog",
     exit_opt: dict[str, Any] | None = None,
 ) -> None:
-    """Write or update one row in Strategy_Catalog from M5 results.
-
-    Matches on `catalog_key`. If not found, appends a new row.
-    Credentials must be a service-account JSON path.
-    """
+    """Deprecated legacy writer; current publishes must use Mala_Evidence_v1."""
+    raise RuntimeError(
+        "Legacy Strategy_Catalog writes are disabled. Publish canonical Mala_Evidence_v1 via "
+        "`python -m src.research.mala_handoff --publish-sheets`."
+    )
     client = GoogleSheetTableClient(
         spreadsheet_id=spreadsheet_id,
         sheet_name=sheet_name,

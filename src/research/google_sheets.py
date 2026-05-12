@@ -130,6 +130,28 @@ class GoogleSheetTableClient:
         )
         return missing
 
+    def sheet_titles(self) -> list[str]:
+        metadata = (
+            self.service.spreadsheets()
+            .get(spreadsheetId=self.spreadsheet_id)
+            .execute()
+        )
+        return [
+            str(sheet.get("properties", {}).get("title", "")).strip()
+            for sheet in metadata.get("sheets", [])
+            if str(sheet.get("properties", {}).get("title", "")).strip()
+        ]
+
+    def require_sheet_exists(self) -> None:
+        """Fail before mutation if this exact tab is not already present."""
+        titles = self.sheet_titles()
+        if self.sheet_name not in titles:
+            available = ", ".join(titles) if titles else "<none>"
+            raise RuntimeError(
+                f"Preflight failed for spreadsheet {self.spreadsheet_id}: "
+                f"required tab {self.sheet_name!r} is missing. Available tabs: {available}"
+            )
+
     def overwrite_table(
         self,
         *,
@@ -159,16 +181,8 @@ class GoogleSheetTableClient:
         )
 
     def ensure_sheet_exists(self) -> None:
-        metadata = (
-            self.service.spreadsheets()
-            .get(spreadsheetId=self.spreadsheet_id)
-            .execute()
-        )
-        sheets = metadata.get("sheets", [])
-        for sheet in sheets:
-            props = sheet.get("properties", {})
-            if str(props.get("title", "")).strip() == self.sheet_name:
-                return
+        if self.sheet_name in self.sheet_titles():
+            return
         (
             self.service.spreadsheets()
             .batchUpdate(

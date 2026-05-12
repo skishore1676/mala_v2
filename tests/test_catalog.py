@@ -70,74 +70,59 @@ def test_catalog_strategy_keys_match_canonical_surface_names() -> None:
     assert catalog._to_strategy_key("Regime Router (Kinematic + Compression)") == "regime_router"
 
 
-def test_upsert_strategy_catalog_blocks_missing_thesis_exit(monkeypatch) -> None:
+def test_upsert_strategy_catalog_is_disabled_before_sheet_mutation(monkeypatch) -> None:
     FakeSheetClient.instances.clear()
     monkeypatch.setattr(catalog, "GoogleSheetTableClient", FakeSheetClient)
 
-    with pytest.raises(ValueError, match="tested thesis exit"):
+    with pytest.raises(RuntimeError, match="Legacy Strategy_Catalog writes are disabled"):
         upsert_strategy_catalog(
             catalog_key="spy-mi-short",
             symbol="SPY",
             strategy="Market Impulse (Cross & Reclaim)",
-            m5_best={
-                "ticker": "SPY",
-                "direction": "short",
-                "base_exp_r": 0.12345,
-                "holdout_win_rate": 0.61,
-                "holdout_trades": 42,
-                "mc_prob_positive_exp": 0.7321,
-                "execution_profile": "debit_spread_default",
-            },
+            m5_best={"ticker": "SPY", "direction": "short"},
             spreadsheet_id="sheet-id",
             credentials_path=Path("/tmp/service-account.json"),
         )
 
-    client = FakeSheetClient.instances[-1]
-    assert client.overwritten is None
+    assert FakeSheetClient.instances == []
 
 
-def test_upsert_strategy_catalog_marks_supported_strategy_and_exit_ready(monkeypatch) -> None:
-    FakeSheetClient.instances.clear()
-    monkeypatch.setattr(catalog, "GoogleSheetTableClient", FakeSheetClient)
-
-    upsert_strategy_catalog(
-        catalog_key="spy-mi-short",
-        symbol="SPY",
-        strategy="Market Impulse (Cross & Reclaim)",
-        m5_best={
-            "ticker": "SPY",
-            "direction": "short",
-            "base_exp_r": 0.12345,
-            "holdout_win_rate": 0.61,
-            "holdout_trades": 42,
-            "mc_prob_positive_exp": 0.7321,
-            "execution_profile": "single_option",
-            "stress_profile": "single_option",
-            "entry_buffer_minutes": 5,
-            "entry_window_minutes": 45,
-            "structure": "long_put",
-            "dte": "7-21",
-            "delta_plan": "0.35-0.55",
-            "entry_window_et": "09:45-14:30",
-            "profit_take": "50-90% premium",
-            "risk_rule": "hard stop at -35% premium",
+def test_deprecated_strategy_catalog_summary_keeps_runtime_fields_operator_required() -> None:
+    m5_best = {
+        "ticker": "SPY",
+        "direction": "short",
+        "base_exp_r": 0.12345,
+        "holdout_win_rate": 0.61,
+        "holdout_trades": 42,
+        "mc_prob_positive_exp": 0.7321,
+        "execution_profile": "single_option",
+        "stress_profile": "single_option",
+        "entry_buffer_minutes": 5,
+        "entry_window_minutes": 45,
+        "structure": "long_put",
+        "dte": "7-21",
+        "delta_plan": "0.35-0.55",
+        "entry_window_et": "09:45-14:30",
+        "profit_take": "50-90% premium",
+        "risk_rule": "hard stop at -35% premium",
+    }
+    exit_opt = {
+        "thesis_exit_policy": "fixed_rr_underlying",
+        "thesis_exit_params": {
+            "stop_loss_underlying_pct": 0.0035,
+            "take_profit_underlying_r_multiple": 1.5,
         },
-        spreadsheet_id="sheet-id",
-        credentials_path=Path("/tmp/service-account.json"),
-        exit_opt={
-            "thesis_exit_policy": "fixed_rr_underlying",
-            "thesis_exit_params": {
-                "stop_loss_underlying_pct": 0.0035,
-                "take_profit_underlying_r_multiple": 1.5,
-            },
-            "catastrophe_exit_params": {"hard_flat_time_et": "15:55", "stop_loss_pct": 0.35},
-        },
-    )
+        "catastrophe_exit_params": {"hard_flat_time_et": "15:55", "stop_loss_pct": 0.35},
+    }
+    playbook_summary_json = catalog._build_playbook_summary(m5_best, exit_opt, "market_impulse")
+    row = {
+        "strategy_key": "market_impulse",
+        "thesis_exit_policy": "fixed_rr_underlying",
+        "bhiksha_ready": "false",
+        "operator_notes": "operator runtime bridge config required",
+        "playbook_summary_json": playbook_summary_json,
+    }
 
-    client = FakeSheetClient.instances[-1]
-    assert client.overwritten is not None
-    _, rows = client.overwritten
-    row = rows[0]
     assert row["strategy_key"] == "market_impulse"
     assert row["thesis_exit_policy"] == "fixed_rr_underlying"
     assert row["bhiksha_ready"] == "false"

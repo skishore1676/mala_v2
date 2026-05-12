@@ -5,7 +5,7 @@ small policy grid (fixed reward-risk and VMA trailing where applicable),
 selects the best by expectancy, and writes per-candidate exit optimization
 artifacts to the run directory.
 
-Output fields fed into Strategy_Catalog's playbook_summary_json:
+Output fields formerly fed into legacy Strategy_Catalog playbook_summary_json:
     thesis_exit_policy     e.g. "fixed_rr_underlying"
     thesis_exit_params     e.g. {"stop_loss_underlying_pct": 0.0035, ...}
     catastrophe_exit_params e.g. {"hard_flat_time_et": "15:55", ...}
