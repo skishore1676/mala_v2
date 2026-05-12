@@ -12,7 +12,7 @@ Provides:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -20,6 +20,7 @@ import polars as pl
 from loguru import logger
 
 from src.config import DATA_DIR
+from src.trading_calendar import trading_dates
 
 # Unix-epoch ms → date helpers
 _MS_PER_DAY = 86_400_000
@@ -109,12 +110,7 @@ class LocalStorage:
     ) -> List[date]:
         """Return trading dates in [start, end] NOT yet stored."""
         existing = self.existing_dates(ticker)
-        all_dates = {
-            start + timedelta(days=i)
-            for i in range((end - start).days + 1)
-            # skip weekends
-            if (start + timedelta(days=i)).weekday() < 5
-        }
+        all_dates = set(trading_dates(start, end))
         return sorted(all_dates - existing)
 
     # ── Private Helpers ──────────────────────────────────────────────────

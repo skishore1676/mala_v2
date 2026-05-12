@@ -29,6 +29,7 @@ from src.config import DATA_DIR
 from src.newton.engine import PhysicsEngine
 from src.newton.transforms import acceleration_column_name, jerk_column_name, velocity_column_name
 from src.strategy.factory import build_strategy
+from src.trading_calendar import trading_days_ago
 
 
 ET = ZoneInfo("America/New_York")
@@ -261,75 +262,7 @@ def _resolve_replay_warmup_trading_days(
 
 
 def _replay_start_date(anchor: date, trading_days: int) -> date:
-    return _trading_days_ago(anchor, max(int(trading_days), 1))
-
-
-def _trading_days_ago(anchor: date, trading_days: int) -> date:
-    candidate = anchor
-    if not _is_trading_day(candidate):
-        candidate = _previous_trading_day(candidate)
-    for _ in range(max(trading_days - 1, 0)):
-        candidate = _previous_trading_day(candidate)
-    return candidate
-
-
-def _previous_trading_day(value: date) -> date:
-    candidate = value - timedelta(days=1)
-    while not _is_trading_day(candidate):
-        candidate -= timedelta(days=1)
-    return candidate
-
-
-def _is_trading_day(value: date) -> bool:
-    return value.weekday() < 5 and value not in _nyse_holidays(value.year)
-
-
-def _nyse_holidays(year: int) -> set[date]:
-    first_monday_may = _nth_weekday_of_month(year, 5, 0, 1)
-    last_monday_may = first_monday_may + timedelta(weeks=4)
-    if last_monday_may.month != 5:
-        last_monday_may = first_monday_may + timedelta(weeks=3)
-    return {
-        _observe(date(year, 1, 1)),
-        _nth_weekday_of_month(year, 1, 0, 3),
-        _nth_weekday_of_month(year, 2, 0, 3),
-        _easter(year) - timedelta(days=2),
-        last_monday_may,
-        _observe(date(year, 6, 19)),
-        _observe(date(year, 7, 4)),
-        _nth_weekday_of_month(year, 9, 0, 1),
-        _nth_weekday_of_month(year, 11, 3, 4),
-        _observe(date(year, 12, 25)),
-    }
-
-
-def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date:
-    first_day = date(year, month, 1)
-    offset = (weekday - first_day.weekday()) % 7
-    return first_day + timedelta(days=offset, weeks=n - 1)
-
-
-def _observe(value: date) -> date:
-    if value.weekday() == 5:
-        return value - timedelta(days=1)
-    if value.weekday() == 6:
-        return value + timedelta(days=1)
-    return value
-
-
-def _easter(year: int) -> date:
-    a = year % 19
-    b, c = divmod(year, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
+    return trading_days_ago(anchor, max(int(trading_days), 1))
 
 
 def _as_int_or_none(value: Any) -> int | None:
