@@ -111,11 +111,12 @@ Candidate feature families:
 | Feature family | Initial candidates | Notes |
 | --- | --- | --- |
 | `z_score_from_opening_vwap` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | preferred opening-drive reference if available |
-| `z_score_from_session_vwap` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | fallback/companion to opening VWAP |
+| `atr_distance_from_prior_close` | thresholds `0.75, 1.0, 1.25, 1.5, 2.0`; tail bins `2.5, 3.0` | captures overnight gap plus morning displacement |
 | `z_score_from_vpoc_4h` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | uses existing auction/VPOC direction where reliable |
 | `atr_distance_from_reference` | binned by symbol and direction | keeps surface comparable across IWM/QQQ |
 | `velocity_1m` | percentile or ATR-normalized bins | distinguishes grind from impulse |
-| `velocity_5m` | percentile or ATR-normalized bins | smoother version of the same question |
+| `velocity_5m` / `velocity_5` | percentile or ATR-normalized bins | smoother version of the same question |
+| `velocity_15m` / `velocity_15` | percentile or ATR-normalized bins | broader opening-drive pressure |
 
 Search interaction:
 
@@ -126,6 +127,9 @@ Search interaction:
 The key question is not only "was it stretched?" It is whether the edge lives in
 a rubber-band snap after a fast move, or in a slower extension that becomes
 unsupported.
+
+`z_score_from_session_vwap` can be a later companion feature, but v1 should not
+need both opening VWAP and session VWAP unless implementation is nearly free.
 
 ### 2. Context: Defining the Stage
 
@@ -138,6 +142,7 @@ Candidate filters:
 | --- | --- | --- |
 | `impulse_regime_5m` | `bullish`, `bearish`, `neutral`, `no_filter` | reusable Market Impulse vocabulary |
 | `vwma_stack_8_21_34` or `vma_stack_8_21_34` | bullish stack, bearish stack, mixed, no filter | approximates Suman's stage read |
+| `gap_state` | large gap up, small gap up, flat, small gap down, large gap down, no filter | separates true intraday stretch from gap-plus-continuation days |
 | broad-market context | aligned, opposed, neutral, no filter | optional if SPY/QQQ context is available cleanly |
 
 The important search question:
@@ -163,6 +168,7 @@ Candidate feature families:
 | `reversal_bar_breakout` | required after reversal range | entry confirmation candidate |
 | `confirming_bars` | `1`, `2` | tests whether waiting helps or gives up edge |
 | `jerk_1m` / `jerk_5m` | sign/direction bins | exhaustion/deceleration proxy |
+| `reversal_bar_relative_volume` | no filter, `> 1.0`, `> 1.25`, `> 1.5` | tests whether volume-backed reversal bars improve holdout expectancy |
 | `failure_to_extend_reclaim` | yes/no | candidate if easy to define from bars |
 
 Directional interpretation:
@@ -188,6 +194,7 @@ Candidate stop families:
 | reversal-bar midpoint | midpoint of reversal bar/range |
 | reversal range loss | loss of confirmed reversal range |
 | acceptance beyond extreme | 1 or 2 bars accepting beyond the prior extreme |
+| immediate entry-bar failure | direction-specific close back through the entry bar after breakout |
 
 Candidate invalidation families:
 
@@ -199,6 +206,12 @@ Candidate invalidation families:
 
 The output should say which invalidation family actually protected expectancy.
 It should not hard-code the user's current crude stop idea as final truth.
+
+`immediate_entry_bar_failure` is the tight "head fake" leash. For long
+reversion, it means the breakout/reclaim bar immediately closes back below the
+entry bar reference; for short reversion, it is the symmetric close back above
+the entry bar reference. The implementation should make the exact reference
+explicit.
 
 ### 5. Exit Surface
 
@@ -252,20 +265,51 @@ current-state matching is a follow-up once the surface is credible.
 - `src.chronos.storage.LocalStorage` for historical minute bars
 - `src.time_utils` for session/calendar handling
 - `src.newton.transforms` for velocity, acceleration, and jerk-style features
+- existing Newton relative-volume transforms for trigger-volume confirmation
 - `src.newton.market_impulse` and `src.strategy.market_impulse` for Market
   Impulse / VWMA stack concepts
 - `src.strategy.elastic_band_reversion` as a reference for z-score, VPOC, and
   kinematic reversion feature wiring
 - `src.newton.vpoc_daily` and auction-proxy work where the VPOC feature is
   reliable enough for research
+- `src.oracle.metrics` for MFE/MAE-style excursion evidence
+- `src.oracle.trade_simulator` and exit-policy machinery where bar-by-bar
+  trade simulation is needed
 - existing research artifact pattern under `data/results/`
+
+---
+
+## Module Ownership
+
+`src.research.playbook_surface` should stay a thin orchestration/reporting
+runner. It should not own playbook-specific math or hard-coded grids.
+
+Scalable split:
+
+- **Newton:** reusable market features such as opening VWAP, prior close
+  distance, gap state, velocity/jerk variants, relative volume, VPOC, and VWMA
+  stack features.
+- **Strategy:** playbook-specific event construction and `search_spec`
+  declaration. This intraday reversion playbook should likely become its own
+  strategy class rather than a pile of logic inside the research runner.
+- **Oracle:** mostly unchanged; owns MFE/MAE, reward-risk, trade simulation,
+  and exit-policy evaluation.
+- **Research:** loads the playbook/strategy, asks it for its search surface,
+  runs the bounded grid, and writes the conditional-surface artifacts. Surface
+  rows should preserve the main conditioning dimensions, including gap state
+  and volume-confirmation filter, rather than collapsing them into a note.
+
+This keeps Mala 2.2 from becoming tied to legacy promotion semantics while still
+reusing the parts of Mala v2 that are already strong.
 
 ---
 
 ## New Build Required
 
 - a playbook-surface CLI, likely `python -m src.research.playbook_surface`
-- a playbook spec loader or hard-coded v1 grid module for this first slice
+- a registered playbook strategy or spec loader for this first slice
+- Newton feature additions for opening VWAP, prior-close ATR distance, and
+  `gap_state`
 - feature adapters that normalize naming across existing Newton/strategy
   outputs
 - event construction for reversal-range breakout candidates
@@ -285,7 +329,10 @@ current-state matching is a follow-up once the surface is credible.
 Phase 1 is useful if it can answer:
 
 - Which stretch definition is strongest for IWM and QQQ?
+- Does gap state change the playbook's validity?
 - Does the edge require climactic velocity or work better without it?
+- Does volume confirmation improve holdout expectancy or just reduce sample
+  size?
 - Does the favorable context look like bullish rubber-band snap, bearish
   continuation, neutral transition, or no stable regime?
 - Does the 5-minute or 15-minute reversal range carry more evidence?

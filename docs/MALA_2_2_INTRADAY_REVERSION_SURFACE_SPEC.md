@@ -92,21 +92,48 @@ Reuse existing Mala/Newton surfaces where they fit the play:
 - `src.chronos.storage.LocalStorage` for historical minute bars
 - `src.time_utils` for market-session handling
 - `src.newton.transforms` for velocity, acceleration, and jerk-style features
+- Newton relative-volume transforms for trigger-volume confirmation
 - `src.newton.market_impulse` / `src.strategy.market_impulse` for 8/21/34
   VWMA stack and `impulse_regime_5m`
 - `src.strategy.elastic_band_reversion` as a reference for z-score, VPOC, and
   kinematic reversion feature wiring
 - VPOC/auction-proxy helpers where the feature is available and reliable
+- `src.oracle.metrics` for MFE/MAE-style excursion evidence
+- `src.oracle.trade_simulator` and exit-policy classes where bar-by-bar
+  simulation is needed
 - existing `data/results/` style local artifact output
 
 New build required:
 
 - playbook-surface CLI and run config
+- registered playbook strategy or spec loader for the v1 grid
+- Newton feature additions for opening VWAP, prior-close ATR distance, and
+  `gap_state`
 - feature adapters for the v1 grid
 - reversal-range event construction
 - stop, invalidation, and exit evaluation in R units
 - calibration/holdout reporting
 - receipt and CSV writers
+
+---
+
+## Architecture Decision
+
+`src.research.playbook_surface` should be a thin orchestration and artifact
+writer, not a generic dumping ground for every future playbook.
+
+Scaling model:
+
+- Newton owns reusable features.
+- Strategy owns playbook-specific event logic and `search_spec` / parameter
+  surface declaration.
+- Oracle mostly remains stable and owns excursion, reward-risk, trade
+  simulation, and exit-policy math.
+- Research owns the CLI, run loop, calibration/holdout slicing, and output
+  contract.
+
+This lets new playbooks scale by adding strategy/search surfaces and only adding
+Newton features when a reusable market concept is missing.
 
 ---
 
@@ -134,11 +161,12 @@ The event trigger must occur inside the candidate window.
 Candidate feature families:
 
 - `z_score_from_opening_vwap`
-- `z_score_from_session_vwap`
+- `atr_distance_from_prior_close`
 - `z_score_from_vpoc_4h`
 - `atr_distance_from_reference`
 - `velocity_1m`
-- `velocity_5m`
+- `velocity_5m` / `velocity_5`
+- `velocity_15m` / `velocity_15`
 
 Initial z-score thresholds:
 
@@ -147,6 +175,15 @@ Initial z-score thresholds:
 - `2.5`
 - `3.0`
 - `3.5`
+
+Initial ATR thresholds for prior-close distance:
+
+- `0.75`
+- `1.0`
+- `1.25`
+- `1.5`
+- `2.0`
+- tail bins: `2.5`, `3.0`
 
 Velocity should be evaluated as a conditioning dimension, not a single hard
 filter:
@@ -169,6 +206,11 @@ Candidate filters:
 - 8/21/34 VMA/VWMA stack bullish
 - 8/21/34 VMA/VWMA stack bearish
 - 8/21/34 VMA/VWMA stack mixed
+- `gap_state = gap_up_large`
+- `gap_state = gap_up_small`
+- `gap_state = flat`
+- `gap_state = gap_down_small`
+- `gap_state = gap_down_large`
 - broad market context using SPY/QQQ trend if available
 
 Key question: does the fade work better as a rubber-band snap in a still-bullish
@@ -186,6 +228,7 @@ Candidate trigger families:
 - 1 confirming bar
 - 2 confirming bars
 - `jerk_1m` / `jerk_5m` exhaustion direction
+- reversal-bar relative volume: no filter, `> 1.0`, `> 1.25`, `> 1.5`
 - failure-to-extend followed by reclaim/breakout
 
 ### Stop / Invalidation Candidates
@@ -198,6 +241,7 @@ Candidate stop and invalidation families:
 - VWMA/VMA stack flip
 - no favorable movement within `10`, `20`, or `30` minutes
 - acceptance beyond the extreme
+- `immediate_entry_bar_failure` for the head-fake case
 
 ### Exit Candidates
 
@@ -251,9 +295,11 @@ Minimum columns:
 - `direction`
 - `entry_cutoff_et`
 - `stage_filter`
+- `gap_state_filter`
 - `extension_family`
 - `extension_bin`
 - `reversal_range_minutes`
+- `volume_confirmation_filter`
 - `stop_family`
 - `exit_family`
 - `sample_count`
@@ -303,12 +349,19 @@ Minimum columns:
 - `entry_reference_price`
 - `extension_summary`
 - `stage_summary`
+- `gap_state`
 - `trigger_summary`
+- `volume_confirmation_summary`
 - `stop_reference_price`
 - `exit_reference_price`
 - `exit_family`
 - `outcome_label`
 - `pnl_r`
+
+Oracle already owns MFE/MAE-style excursion evidence. The playbook runner should
+reuse or reference Oracle-derived excursion artifacts rather than redefining
+that metric family in the playbook contract. If MFE/MAE columns are included in
+`sample_events.csv`, they must be derived from Oracle calculations.
 
 Do not build thinkorswim or TradingView plotting in the first implementation.
 This file is the bridge to visual review later.
