@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 
 ET = ZoneInfo("America/New_York")
+DEFAULT_TRADINGVIEW_MCP_ROOT = "/Users/suman/code/openclaw-core/workspace-main/external/tradingview-mcp"
+OLDMAC_TRADINGVIEW_MCP_ROOT = "/Users/sunny/.openclaw/workspace-main/external/tradingview-mcp"
 
 QUEUE_COLUMNS = [
     "rank",
@@ -70,6 +72,7 @@ def build_tradingview_review(
     minutes_before: int = 20,
     minutes_after: int = 90,
     screenshot_region: str = "full",
+    tradingview_mcp_root: str = DEFAULT_TRADINGVIEW_MCP_ROOT,
     tv_symbol_overrides: dict[str, str] | None = None,
 ) -> TradingViewReviewResult:
     """Build a review queue and TradingView MCP command file from sample events."""
@@ -105,7 +108,14 @@ def build_tradingview_review(
     command_file = review_dir / "tradingview_mcp_commands.sh"
     _write_command_file(command_file, rows)
     receipt = review_dir / "TRADINGVIEW_MCP_REVIEW.md"
-    _write_receipt(receipt, run_dir=run_dir, rows=rows, command_file=command_file, queue_csv=queue_csv)
+    _write_receipt(
+        receipt,
+        run_dir=run_dir,
+        rows=rows,
+        command_file=command_file,
+        queue_csv=queue_csv,
+        tradingview_mcp_root=tradingview_mcp_root,
+    )
 
     return TradingViewReviewResult(
         out_dir=review_dir,
@@ -222,6 +232,7 @@ def _write_receipt(
     rows: list[dict[str, str]],
     command_file: Path,
     queue_csv: Path,
+    tradingview_mcp_root: str,
 ) -> None:
     lines = [
         "# TradingView MCP Review Queue",
@@ -237,20 +248,20 @@ def _write_receipt(
         "",
         "## Run",
         "",
-        "From this repo checkout, against oldmac's TradingView Desktop:",
+        "From this repo checkout, against the local TradingView Desktop:",
         "",
         "```bash",
-        "ssh oldmac 'TRADINGVIEW_MCP_ROOT=/Users/sunny/.openclaw/workspace-main/external/tradingview-mcp TRADINGVIEW_CDP_HOST=127.0.0.1 TRADINGVIEW_CDP_PORT=9223 bash -s' \\",
-        f"  < {command_file}",
-        "```",
-        "",
-        "Or on any machine that has TradingView Desktop open in debug mode:",
-        "",
-        "```bash",
-        "export TRADINGVIEW_MCP_ROOT=/path/to/tradingview-mcp",
+        f"export TRADINGVIEW_MCP_ROOT={tradingview_mcp_root}",
         "export TRADINGVIEW_CDP_HOST=127.0.0.1",
         "export TRADINGVIEW_CDP_PORT=9223",
         f"{command_file}",
+        "```",
+        "",
+        "Oldmac fallback, if you intentionally want to drive that machine:",
+        "",
+        "```bash",
+        f"ssh oldmac 'TRADINGVIEW_MCP_ROOT={OLDMAC_TRADINGVIEW_MCP_ROOT} TRADINGVIEW_CDP_HOST=127.0.0.1 TRADINGVIEW_CDP_PORT=9223 bash -s' \\",
+        f"  < {command_file}",
         "```",
         "",
         "If TradingView has not loaded older intraday bars yet, the MCP range command",
@@ -357,6 +368,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--minutes-before", type=int, default=20)
     parser.add_argument("--minutes-after", type=int, default=90)
     parser.add_argument(
+        "--tradingview-mcp-root",
+        default=DEFAULT_TRADINGVIEW_MCP_ROOT,
+        help="Local tradingview-mcp checkout used in the generated receipt.",
+    )
+    parser.add_argument(
         "--screenshot-region",
         default="full",
         choices=["full", "chart", "strategy_tester"],
@@ -381,6 +397,7 @@ def main() -> None:
         minutes_before=args.minutes_before,
         minutes_after=args.minutes_after,
         screenshot_region=args.screenshot_region,
+        tradingview_mcp_root=args.tradingview_mcp_root,
         tv_symbol_overrides=_parse_symbol_overrides(args.tv_symbol),
     )
     print(f"OUT_DIR={result.out_dir}")
