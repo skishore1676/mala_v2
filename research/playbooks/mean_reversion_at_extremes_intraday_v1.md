@@ -334,6 +334,10 @@ reusing the parts of Mala v2 that are already strong.
 - run the full IWM/QQQ surface on the 2021-05-13 through current local cache
 - inspect whether favorable regions are broad or fragile
 - choose sample events for chart review
+- add an entry-quality dimension if chart review confirms late triggers:
+  bound the trigger bar's stretch after the reversal so Mala can distinguish
+  early reversal entries from snaps that already crossed too far through the
+  reference level
 - lock one candidate packet only after chart semantics match the intended play
 - add a targeted locked-packet stress runner that reuses M2/M5-style friction
   and execution-stress mechanics without publishing to old live/autonomous

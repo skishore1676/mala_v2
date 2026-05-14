@@ -318,8 +318,14 @@ def _evaluate_one_event(
     event_ts = row.get("timestamp")
     event_timestamp = event_ts.isoformat() if hasattr(event_ts, "isoformat") else str(event_ts)
     threshold = config.get("stretch_threshold", "")
+    prior_extreme = (
+        row.get("playbook_prior_min_stretch")
+        if direction == "long"
+        else row.get("playbook_prior_max_stretch")
+    )
     extension_summary = (
-        f"{config.get('stretch_source')}={_round(row.get('playbook_stretch_value'))}; "
+        f"{config.get('stretch_source')}: prior_extreme={_round(prior_extreme)}; "
+        f"trigger={_round(row.get('playbook_stretch_value'))}; "
         f"threshold={threshold}"
     )
     stage_summary = (
@@ -718,7 +724,7 @@ def _write_receipt(
             "",
             "## Notes",
             "",
-            "- This is a conditional-surface artifact, not a Strategy_Catalog or live authorization write.",
+            "- This is a conditional-surface artifact, not a Mala_Evidence_v1, active_strategy, or live authorization write.",
             "- Sample-event MFE/MAE is measured through the evaluated stop/target/time/EOD exit path.",
             "- Thin samples are marked `insufficient` instead of treated as edge.",
             "- Current-day matching, plotting, options, and Bhiksha loading are intentionally deferred.",

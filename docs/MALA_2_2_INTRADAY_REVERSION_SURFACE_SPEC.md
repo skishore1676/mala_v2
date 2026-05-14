@@ -150,12 +150,15 @@ Mala 2.2 should reuse the old research machinery without inheriting the old
 promotion model.
 
 The old M1-M5 path was designed for autonomous strategy promotion. It tried to
-break a fixed strategy before allowing it to flow toward `Mala_Evidence_v1`,
-operator authorization, and eventually Bhiksha runtime support.
+break a fixed strategy before allowing it to flow toward canonical
+`Mala_Evidence_v1`, operator authorization, and eventually Bhiksha runtime
+support.
 
 This playbook surface is different. It maps where a trader-supplied play is
 historically favorable, partial, outside, or insufficient. It should not publish
-to `Strategy_Catalog`, `Mala_Evidence_v1`, `active_strategy`, or Bhiksha.
+to `Mala_Evidence_v1`, `active_strategy`, or Bhiksha. Legacy
+`Strategy_Catalog` paths are compatibility and migration history, not the
+current playbook handoff target.
 
 ### Discovery Surface
 

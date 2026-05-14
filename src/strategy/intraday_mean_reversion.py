@@ -345,6 +345,8 @@ class IntradayMeanReversionStrategy(BaseStrategy):
                     pl.col("_reversal_low").alias("playbook_reversal_low"),
                     pl.lit(self.stretch_source).alias("playbook_stretch_source"),
                     pl.col("_stretch_value").alias("playbook_stretch_value"),
+                    pl.col("_prev_max_stretch").alias("playbook_prior_max_stretch"),
+                    pl.col("_prev_min_stretch").alias("playbook_prior_min_stretch"),
                     self._reference_price_expr().alias("playbook_reference_price"),
                 ]
             )

@@ -53,6 +53,8 @@ class TestIntradayMeanReversionStrategy:
 
         assert "short" in signals["signal_direction"].to_list()
         assert "playbook_reversal_high" in out.columns
+        assert "playbook_prior_max_stretch" in out.columns
+        assert "playbook_prior_min_stretch" in out.columns
         assert "playbook_volume_confirmation_filter" in out.columns
 
     def test_volume_confirmation_filters_weak_trigger(self) -> None:
