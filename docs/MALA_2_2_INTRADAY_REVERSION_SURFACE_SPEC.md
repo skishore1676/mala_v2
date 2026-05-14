@@ -144,6 +144,77 @@ Newton features when a reusable market concept is missing.
 
 ---
 
+## Relationship To M1-M5
+
+Mala 2.2 should reuse the old research machinery without inheriting the old
+promotion model.
+
+The old M1-M5 path was designed for autonomous strategy promotion. It tried to
+break a fixed strategy before allowing it to flow toward `Mala_Evidence_v1`,
+operator authorization, and eventually Bhiksha runtime support.
+
+This playbook surface is different. It maps where a trader-supplied play is
+historically favorable, partial, outside, or insufficient. It should not publish
+to `Strategy_Catalog`, `Mala_Evidence_v1`, `active_strategy`, or Bhiksha.
+
+### Discovery Surface
+
+`playbook_surface.py` absorbs the M1/M4 idea for the exploratory phase:
+
+- calibration expectancy and win rate show where directional edge appears
+- holdout expectancy and win rate sit next to calibration for each parameter
+  region
+- thin or contradictory regions are graded `insufficient` or `outside`
+- the output is a map, not a single promoted candidate
+
+The current repo's M3 concept is walk-forward/OOS stability rather than a pure
+regime gate. In Mala 2.2, regime features such as `impulse_regime_5m` and
+`gap_state` are primarily search dimensions. If the play only works in neutral
+contexts, that should become a mapped constraint, not a reason to kill the whole
+playbook.
+
+### Human Review
+
+After the surface run, Suman reviews:
+
+- `RECEIPT.md`
+- `conditional_surface_by_symbol.csv`
+- `feature_bins_by_symbol.csv`
+- `sample_events.csv`
+
+The chart review answers whether the math captured the intended feel. A region
+with attractive numbers but bad chart semantics should not become a locked
+packet.
+
+### Locked Packet Stress
+
+Only after chart review should a region become a locked execution packet. That
+packet can reuse the old M2/M5 mechanics in a targeted way:
+
+- M2-style cost/spread/slippage stress asks whether the edge survives realistic
+  friction
+- M5-style execution stress and Monte Carlo ask whether the locked packet is
+  robust enough for controlled execution
+
+These stress checks are evidence for a locked playbook packet. They are not
+authorization to publish an autonomous strategy.
+
+### Human-In-The-Loop Execution
+
+The later operator flow is:
+
+```text
+Suman has a bias -> current-day matcher checks locked constraints ->
+PROCEED / PARTIAL / SKIP -> Suman authorizes -> Bhiksha manages the
+predeclared stop/target for that authorized trade.
+```
+
+Live matching, Bhiksha integration, option overlay, and plotting are later
+steps. The first proof remains the historical surface plus sample-event chart
+review.
+
+---
+
 ## Search Surface
 
 These values are not manually selected by Suman. They are candidate families

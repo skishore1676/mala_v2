@@ -275,27 +275,33 @@ def _evaluate_one_event(
         if high is None or low is None or close is None:
             continue
         if direction == "long":
-            max_favorable = max(max_favorable, high - entry)
-            max_adverse = max(max_adverse, entry - low)
             if low <= stop:
+                max_adverse = max(max_adverse, risk)
                 exit_price = stop
                 exit_reason = "stop"
                 break
             if target is not None and high >= target:
+                max_favorable = max(max_favorable, target - entry)
+                max_adverse = max(max_adverse, max(0.0, entry - low))
                 exit_price = target
                 exit_reason = "target"
                 break
+            max_favorable = max(max_favorable, high - entry)
+            max_adverse = max(max_adverse, entry - low)
         else:
-            max_favorable = max(max_favorable, entry - low)
-            max_adverse = max(max_adverse, high - entry)
             if high >= stop:
+                max_adverse = max(max_adverse, risk)
                 exit_price = stop
                 exit_reason = "stop"
                 break
             if target is not None and low <= target:
+                max_favorable = max(max_favorable, entry - target)
+                max_adverse = max(max_adverse, max(0.0, high - entry))
                 exit_price = target
                 exit_reason = "target"
                 break
+            max_favorable = max(max_favorable, entry - low)
+            max_adverse = max(max_adverse, high - entry)
         exit_price = close
         bar_time = future.get("_playbook_bar_time")
         if exit_family == "time_stop" and isinstance(bar_time, time) and bar_time >= time_stop:
@@ -304,10 +310,11 @@ def _evaluate_one_event(
 
     pnl = (exit_price - entry) if direction == "long" else (entry - exit_price)
     pnl_r = pnl / risk
-    oracle_mfe = _float(row.get("forward_mfe_eod"))
-    oracle_mae = _float(row.get("forward_mae_eod"))
-    mfe_r = (oracle_mfe / risk) if oracle_mfe is not None else max_favorable / risk
-    mae_r = (oracle_mae / risk) if oracle_mae is not None else max_adverse / risk
+    # For the sample-event review, excursion must stop when this evaluated
+    # trade path stops. EOD forward excursions can include movement after a
+    # target/stop and are handled separately by Oracle-level metrics.
+    mfe_r = max_favorable / risk
+    mae_r = max_adverse / risk
     event_ts = row.get("timestamp")
     event_timestamp = event_ts.isoformat() if hasattr(event_ts, "isoformat") else str(event_ts)
     threshold = config.get("stretch_threshold", "")
@@ -421,8 +428,21 @@ def _surface_rows_for_config(
                 "holdout_expectancy_r": _round(holdout_exp),
                 "calibration_win_rate": _round(calibration_win),
                 "holdout_win_rate": _round(holdout_win),
-                "match_grade": _match_grade(len(subset), len(holdout), holdout_exp, holdout_win),
-                "evidence_note": _evidence_note(len(subset), len(holdout), holdout_exp),
+                "match_grade": _match_grade(
+                    len(subset),
+                    len(calibration),
+                    len(holdout),
+                    calibration_exp,
+                    holdout_exp,
+                    holdout_win,
+                ),
+                "evidence_note": _evidence_note(
+                    len(subset),
+                    len(calibration),
+                    len(holdout),
+                    calibration_exp,
+                    holdout_exp,
+                ),
             }
         )
     return rows
@@ -533,28 +553,53 @@ def _error_rows(
 
 def _match_grade(
     sample_count: int,
+    calibration_count: int,
     holdout_count: int,
+    calibration_expectancy: float | None,
     holdout_expectancy: float | None,
     holdout_win_rate: float | None,
 ) -> str:
-    if sample_count < 10 or holdout_count < 3 or holdout_expectancy is None:
+    if (
+        sample_count < 10
+        or calibration_count < 5
+        or holdout_count < 3
+        or calibration_expectancy is None
+        or holdout_expectancy is None
+    ):
         return "insufficient"
-    if holdout_expectancy > 0 and (holdout_win_rate or 0.0) >= 0.5:
+    if calibration_expectancy > 0 and holdout_expectancy > 0 and (holdout_win_rate or 0.0) >= 0.5:
         return "favorable"
-    if holdout_expectancy > 0:
+    if calibration_expectancy > 0 or holdout_expectancy > 0:
         return "partial"
     return "outside"
 
 
-def _evidence_note(sample_count: int, holdout_count: int, holdout_expectancy: float | None) -> str:
+def _evidence_note(
+    sample_count: int,
+    calibration_count: int,
+    holdout_count: int,
+    calibration_expectancy: float | None,
+    holdout_expectancy: float | None,
+) -> str:
     if sample_count == 0:
         return "no events for this parameter region"
     if sample_count < 10:
         return "thin total sample"
+    if calibration_count < 5:
+        return "thin calibration sample"
     if holdout_count < 3:
         return "thin holdout sample"
+    if (
+        calibration_expectancy is not None
+        and holdout_expectancy is not None
+        and calibration_expectancy > 0
+        and holdout_expectancy > 0
+    ):
+        return "positive calibration and holdout expectancy; inspect neighboring regions"
     if holdout_expectancy is not None and holdout_expectancy > 0:
-        return "positive holdout expectancy; inspect neighboring regions"
+        return "positive holdout expectancy but calibration did not confirm"
+    if calibration_expectancy is not None and calibration_expectancy > 0:
+        return "positive calibration expectancy but holdout did not confirm"
     return "holdout did not support this region"
 
 
@@ -674,7 +719,7 @@ def _write_receipt(
             "## Notes",
             "",
             "- This is a conditional-surface artifact, not a Strategy_Catalog or live authorization write.",
-            "- MFE/MAE-style event evidence is derived through the Oracle metrics layer when available.",
+            "- Sample-event MFE/MAE is measured through the evaluated stop/target/time/EOD exit path.",
             "- Thin samples are marked `insufficient` instead of treated as edge.",
             "- Current-day matching, plotting, options, and Bhiksha loading are intentionally deferred.",
             "",

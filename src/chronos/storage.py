@@ -167,6 +167,26 @@ class LocalStorage:
                 .cast(pl.Datetime("us", time_zone="UTC"))
                 .alias("timestamp")
             )
+        numeric_float_columns = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "vwap",
+        ]
+        present_float_columns = [
+            column for column in numeric_float_columns if column in df.columns
+        ]
+        if present_float_columns:
+            df = df.with_columns(
+                [
+                    pl.col(column).cast(pl.Float64).alias(column)
+                    for column in present_float_columns
+                ]
+            )
+        if "transactions" in df.columns:
+            df = df.with_columns(pl.col("transactions").cast(pl.Int64).alias("transactions"))
         return df
 
     @staticmethod

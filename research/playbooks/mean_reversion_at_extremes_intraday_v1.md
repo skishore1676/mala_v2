@@ -329,23 +329,19 @@ reusing the parts of Mala v2 that are already strong.
 
 ---
 
-## New Build Required
+## Remaining Build Required
 
-- a playbook-surface CLI, likely `python -m src.research.playbook_surface`
-- a registered playbook strategy or spec loader for this first slice
-- Newton feature additions for opening VWAP, prior-close ATR distance, and
-  `gap_state`
-- feature adapters that normalize naming across existing Newton/strategy
-  outputs
-- event construction for reversal-range breakout candidates
-- calibration/holdout split logic for parameter-surface reporting
-- stop, invalidation, and exit evaluators in R units
-- receipt and CSV writers:
-  - `RECEIPT.md`
-  - `conditional_surface_by_symbol.csv`
-  - `feature_bins_by_symbol.csv`
-  - `sample_events.csv`
-  - `config.json`
+- run the full IWM/QQQ surface on the 2021-05-13 through current local cache
+- inspect whether favorable regions are broad or fragile
+- choose sample events for chart review
+- lock one candidate packet only after chart semantics match the intended play
+- add a targeted locked-packet stress runner that reuses M2/M5-style friction
+  and execution-stress mechanics without publishing to old live/autonomous
+  surfaces
+
+Do not send broad playbook-search output into M1-M5 as if it were an autonomous
+strategy promotion candidate. The old gates become targeted evidence checks only
+after a human-reviewed packet is locked.
 
 ---
 
