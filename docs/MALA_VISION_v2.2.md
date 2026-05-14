@@ -282,7 +282,7 @@ Initial build scope:
 - both directions
 - one playbook only
 - entry features and exit/invalidation features agreed before testing
-- chart visualization in Thinkorswim or another charting surface so the trader can inspect whether the rules "look like the play"
+- chart visualization in Thinkorswim or another charting surface only after the first parameter surface produces candidates worth inspecting
 - no broad runtime deployment until the trader can visually and statistically recognize the playbook surface
 
 ### Phase 0: Playbook-spec exercise (trader, ongoing)

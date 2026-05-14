@@ -42,19 +42,42 @@ answer to one trading question.
 
 ---
 
+## Playbook Family Split
+
+Mean Reversion at Extremes is a family, not a single horizon.
+
+For Mala 2.2, split it into two separately evaluated playbooks:
+
+1. **Mean Reversion at Extremes - Intraday**
+   - The trade is formed and managed inside the same session.
+   - The setup is early-session only.
+   - The first proof slice belongs here.
+
+2. **Mean Reversion at Extremes - Multi-Day**
+   - The trade expects reversion over the next couple of days or few days.
+   - It may use daily/4h context, anchored VWAP, prior ranges, and event drift.
+   - This is explicitly deferred until the intraday surface is understood.
+
+Do not mix the two horizons in one backtest. The entry logic, outcome window,
+failure modes, and useful indicators are different enough that combining them
+would blur the evidence.
+
+---
+
 ## First Trading Question
 
 Proposed default:
 
 ```text
-When Suman has an intraday fade bias because IWM or QQQ looks overextended,
-can Mala show whether similar historical moments were favorable, partial,
-outside, or not enough evidence?
+When Suman has an early-session intraday fade/reversal bias because IWM or QQQ
+has reached an extreme, can Mala show whether similar historical moments were
+favorable, partial, outside, or not enough evidence?
 ```
 
-This starts with **Mean Reversion at Extremes** because it is close to the
-actual chart intuition that motivated Mala 2.2. It is also a useful stress test:
-the play must be recognizable visually, not just statistically.
+This starts with **Mean Reversion at Extremes - Intraday** because it is close
+to the actual chart intuition that motivated Mala 2.2. It is also a useful
+stress test: the play must be recognizable as an early-session reversal setup,
+not just a statistically convenient label.
 
 ### Proposed Defaults For Review
 
@@ -64,21 +87,26 @@ These are defaults, not final decisions.
 | --- | --- | --- |
 | Playbook | `mean_reversion_at_extremes` | Directly maps to the overextension/fade intuition. |
 | Symbols | `IWM`, `QQQ` | IWM is the motivating example; QQQ gives a clean index/tech contrast. |
-| Direction | both long fades and short fades | Avoid assuming overextension only means "short a rip." |
-| Horizon | intraday, same session | Keeps the first proof visual and bounded. |
+| Direction | both long reversals and short reversals | Avoid assuming overextension only means "short a rip." |
+| Horizon | intraday, same session | Keeps the first proof bounded. |
 | Data | underlying bars only | Options overlay is a later feasibility gate. |
 | Runtime | none | First proof is a research/review surface, not Bhiksha integration. |
-| Output | receipt + chart marks + conditional surface CSVs | Lets Suman inspect both the numbers and whether events look like the play. |
+| Output | receipt + conditional surface CSVs + sample events | Plotting in thinkorswim/TradingView comes after the surface has plausible parameters. |
 
 ### Questions For Suman
 
 Bring Suman in before implementation if any of these remain unresolved:
 
-- Is the first horizon intraday snapback, multi-hour pullback, or next-day reversion?
-- For the first pass, should "extreme" mean distance from VWAP, ATR-normalized move, z-score, prior range extension, or a small combination?
-- Is the target "back to VWAP," "partial retrace," "back to moving average," or simply "not more continuation"?
-- Which visual confirmation matters most: wick/reclaim, failure to extend, volume fading/climax, or slope/velocity rollover?
-- Should QQQ be the second symbol, or should SPY be used as the cleaner index baseline?
+- Confirm whether "before 9/9:10 CST" means before 9:00-9:10 Central time,
+  which is 10:00-10:10 ET during daylight saving time.
+- Confirm whether the first version should require the entry trigger before
+  10:00 ET or allow a wider 10:10 ET cutoff.
+- Confirm whether the trend/context gate should be the existing VWMA/VMA
+  stack 8/21/34, an operator-read override, or both.
+- Confirm whether the first reversal range should be 5-minute, 15-minute, or
+  a parameter surface across both.
+- Confirm whether the initial stop candidate should be the reversal-bar low,
+  the reversal-bar midpoint, or both as tested variants.
 
 ---
 
@@ -105,6 +133,7 @@ Reuse where it matches the play:
 
 - Newton price/volume transforms from `src.newton.engine`
 - velocity, acceleration, jerk
+- VWMA/VMA stack features where they match the 8/21/34 context read
 - VWAP/VPOC helpers only if they are part of the declared feature list
 - daily/market regime tags as context, not as rescue explanations
 - structural helpers added in this branch only as diagnostics, not as proof
@@ -114,6 +143,8 @@ Build only if needed:
 - distance-from-VWAP features
 - ATR-normalized extension
 - prior-session/range extension
+- 5-minute and 15-minute reversal-range labels
+- reversal-range breakout labels
 - event labels for chart inspection
 
 ### Evaluation Discipline
@@ -146,11 +177,26 @@ Reuse:
 Build:
 
 - playbook-specific outcome labels:
+  - breakout followed through
   - reverted to target
-  - failed to revert
-  - accepted beyond extreme
+  - failed to revert after trigger
+  - accepted beyond the reversal extreme
   - timed out
-- simple invalidation-family metrics for the first pass
+- invalidation-family metrics:
+  - reversal-bar low or midpoint breached
+  - reversal range lost after breakout
+  - VWMA/VMA stack no longer supports the trade
+  - price accepts away from the intended reversion path
+  - time stop before enough favorable movement
+
+Profit-taking should be treated as a surface to evaluate, not assumed. Initial
+candidate exits:
+
+- fixed R multiple from the tested stop
+- return to VWAP
+- return to a short moving average / VWMA reference
+- partial retrace of the opening extreme
+- time stop if the move does not validate quickly
 
 ### Provider And Execution Readiness
 
@@ -177,7 +223,7 @@ Proposed command shape:
 
 ```bash
 python -m src.research.playbook_surface \
-  mean-reversion-at-extremes \
+  mean-reversion-at-extremes-intraday \
   --symbols IWM,QQQ \
   --start 2021-05-13 \
   --end 2026-05-13 \
@@ -191,7 +237,6 @@ data/results/playbooks/mean_reversion_at_extremes/<run_ts>/
   RECEIPT.md
   conditional_surface_by_symbol.csv
   feature_bins_by_symbol.csv
-  event_marks_for_chart.csv
   sample_events.csv
   config.json
 ```
@@ -203,19 +248,52 @@ data/results/playbooks/mean_reversion_at_extremes/<run_ts>/
 - What was tested?
 - Which symbols and dates were included?
 - Which features were predeclared?
+- Which papers/notes informed the candidate feature list?
 - How many events were found?
 - What regions looked favorable, partial, outside, or insufficient?
 - Did holdout agree with calibration?
-- What examples should Suman inspect visually?
+- Which examples should Suman inspect later if the surface is promising?
 - What did the run not test?
 - What is the next operator decision?
 
-### Chart Marks Requirements
+### Paper And Indicator Research Requirements
 
-`event_marks_for_chart.csv` should make it easy to inspect events in
-thinkorswim or another charting surface.
+Before implementation, do a short literature pass focused on intraday reversal,
+opening overreaction, and technical indicators that map to this specific setup.
 
-Minimum columns:
+The research pass should not import every common indicator. Suman's current
+operator language does **not** use RSI as a primary decision input, so RSI can
+only enter as a Tier 2 candidate if there is a clear reason to test it.
+
+Initial paper/note leads:
+
+- Grant, Wolf, and Yu (2005), [intraday index futures reversals after large
+  opening price changes](https://doi.org/10.1016/j.jbankfin.2004.04.006).
+- Heston, Korajczyk, and Sadka (2010), [intraday return patterns and short-term
+  reversal from temporary liquidity imbalances](https://arxiv.org/abs/1005.3535).
+- Gao, Han, Li, and Zhou (2017), [intraday momentum from first half-hour
+  returns](https://ssrn.com/abstract=2440866). This is a warning:
+  early-session direction can also continue, so the surface must distinguish
+  reversal from continuation.
+- The operator note `Six Key Technical Indicators Explained.docx`, especially
+  EMA/VWMA stack, Bollinger-style volatility extremes, ADX/chop filtering, and
+  VWAP/anchored VWAP as context.
+
+The research pass should produce a small candidate feature list, with each
+feature tagged as:
+
+- `operator_tier_1`
+- `paper_tier_2`
+- `context_only`
+- `defer`
+
+### Later Chart Marks Requirements
+
+Do not start with thinkorswim or TradingView plotting. After the parameter
+surface has plausible candidates, produce `event_marks_for_chart.csv` for
+visual review.
+
+Minimum eventual columns:
 
 - `symbol`
 - `event_timestamp`
@@ -241,6 +319,8 @@ Do not build:
 - automatic current-market scanner
 - agent-proposed trade intake
 - live or shadow authorization
+- thinkorswim/TradingView plotting before the parameter surface is worth
+  inspecting
 
 These are not rejected forever. They are deferred until the first evidence
 surface proves that Suman can recognize and use the playbook output.
@@ -254,7 +334,6 @@ with:
 
 - a receipt
 - conditional surface CSVs
-- chart marks
 - 10-20 sample events worth inspecting
 - a clear recommendation:
   - continue
