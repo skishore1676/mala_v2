@@ -7,6 +7,7 @@ from pathlib import Path
 import polars as pl
 
 from src.research.playbook_surface import _evaluate_one_event, _match_grade, run_playbook_surface
+from src.research.playbook_tradingview_review import build_tradingview_review
 from src.strategy.intraday_mean_reversion import PLAYBOOK_ID
 
 
@@ -112,3 +113,65 @@ def test_sample_event_excursion_stops_at_evaluated_exit_path() -> None:
     assert event["pnl_r"] == "-1.0"
     assert event["max_favorable_excursion_r"] == "0.0"
     assert event["max_adverse_excursion_r"] == "1.0"
+
+
+def test_tradingview_review_queue_collapses_sample_event_variants(tmp_path: Path) -> None:
+    run_dir = tmp_path / "surface"
+    run_dir.mkdir()
+    with (run_dir / "sample_events.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "symbol",
+                "direction",
+                "event_timestamp",
+                "extension_summary",
+                "gap_state",
+                "exit_family",
+                "outcome_label",
+                "pnl_r",
+                "max_favorable_excursion_r",
+                "max_adverse_excursion_r",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "symbol": "IWM",
+                "direction": "long",
+                "event_timestamp": "2026-05-11T13:45:00+00:00",
+                "extension_summary": "opening_vwap: trigger=-1.2",
+                "gap_state": "flat",
+                "exit_family": "fixed_1r",
+                "outcome_label": "win",
+                "pnl_r": "1.0",
+                "max_favorable_excursion_r": "2.0",
+                "max_adverse_excursion_r": "0.2",
+            }
+        )
+        writer.writerow(
+            {
+                "symbol": "IWM",
+                "direction": "long",
+                "event_timestamp": "2026-05-11T13:45:00+00:00",
+                "extension_summary": "opening_vwap: trigger=-1.2",
+                "gap_state": "flat",
+                "exit_family": "time_stop",
+                "outcome_label": "loss",
+                "pnl_r": "-1.0",
+                "max_favorable_excursion_r": "1.5",
+                "max_adverse_excursion_r": "1.0",
+            }
+        )
+
+    result = build_tradingview_review(run_dir, max_events=5, tv_symbol_overrides={"IWM": "NYSEARCA:IWM"})
+
+    with result.queue_csv.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["variant_count"] == "2"
+    assert rows[0]["event_timestamp_et"] == "2026-05-11T09:45:00-04:00"
+    assert rows[0]["tv_symbol"] == "NYSEARCA:IWM"
+    assert rows[0]["pnl_r_min"] == "-1"
+    assert rows[0]["pnl_r_max"] == "1"
+    assert "npm run -s tv -- symbol NYSEARCA:IWM" in result.command_file.read_text(encoding="utf-8")

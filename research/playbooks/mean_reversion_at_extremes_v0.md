@@ -253,4 +253,6 @@ data/results/playbooks/mean_reversion_at_extremes/<run_ts>/
 ```
 
 Chart marks for thinkorswim or TradingView should come after the first
-parameter surface produces candidates worth visually inspecting.
+parameter surface produces candidates worth visually inspecting. The preferred
+TradingView path is a MCP review queue from `sample_events.csv`, not a separate
+static chart renderer.

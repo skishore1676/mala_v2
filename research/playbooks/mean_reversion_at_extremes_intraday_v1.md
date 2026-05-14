@@ -50,8 +50,9 @@ insufficient.
 - **Data:** underlying minute bars only
 - **Options overlay:** deferred
 - **Bhiksha/runtime:** deferred
-- **Visual plotting:** deferred until the parameter surface produces candidates
-  worth inspecting
+- **Visual review:** TradingView/thinkorswim after the parameter surface
+  produces candidates worth inspecting. In-repo static chart renderers should
+  not become a parallel charting surface.
 
 ---
 
@@ -258,6 +259,17 @@ Evidence:
 
 The first build only needs the historical surface and sample events. Live
 current-state matching is a follow-up once the surface is credible.
+
+Visual review should use the generated `sample_events.csv` as the source of
+truth and prepare a TradingView MCP queue with:
+
+```bash
+python -m src.research.playbook_tradingview_review \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
+```
+
+This keeps Mala responsible for research events and uses TradingView only for
+human chart inspection, screenshots, and later Pine/indicator visualization.
 
 ---
 
