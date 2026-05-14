@@ -34,6 +34,27 @@ Runtime/Bhiksha work comes later.
 
 ---
 
+## Parent Type
+
+### Type 1: Mean Reversion at Extremes
+
+- **Description:** Asset X is overextended and will revert toward a reference
+  level.
+- **Time horizon:** intraday for the first subtype; 1-3 days for the multi-day
+  subtype.
+- **Asset scope:** single name, ETF, or index.
+- **Natural features:** extension measures, exhaustion signals, breadth/context,
+  VIX/regime behavior, and reference-level distance.
+- **Example:** IWM is overextended on the upside; expect a down-move toward a
+  reference level.
+
+This parent type is close to how Mala already describes hypotheses. The change
+in Mala 2.2 is that the trader supplies the bias and play type, while the system
+searches entry, invalidation, and exit parameter surfaces and reports where the
+historical evidence is strongest.
+
+---
+
 ## Initial Scope
 
 - Playbook: `mean_reversion_at_extremes`
@@ -89,17 +110,28 @@ of that description matter and which are just chart vocabulary.
   bar.
 - Visual review: after parameter-surface optimization, not before.
 
-### Questions Still Open
+### Parameter Surface To Search
 
-- Does the first pass use a 10:00 ET cutoff, a 10:10 ET cutoff, or test both?
-- Is the first trigger a 5-minute reversal range, a 15-minute reversal range,
-  or a parameter surface across both?
-- Does "bullish/accumulation stage" require a VWMA stack, operator-read proxy,
-  or both?
-- For profit taking, should candidate exits include VWAP return, partial
-  retrace, fixed R, short moving-average return, and time stop?
-- Which invalidation is primary: loss of reversal-bar low/mid, loss of reversal
-  range, VWMA stack flip, or failure to validate within a time window?
+These are not questions for Suman to hand-pick one by one. They are candidate
+parameter families for Mala to search:
+
+- entry cutoff candidates around the early-session window
+- 5-minute and 15-minute reversal-range definitions
+- breakout confirmation from the reversal range
+- stop definitions based on reversal-bar low or midpoint
+- stage/context filters based on operator read and VMA/VWMA stack
+- exit definitions such as VWAP return, partial retrace, fixed R, short
+  moving-average/VWMA return, and time stop
+- invalidation definitions such as loss of reversal range, VWMA stack flip, or
+  failure to validate within a time window
+
+The operator-facing output should be:
+
+```text
+For this symbol and playbook, the historically strongest region is X.
+Today's conditions match / partially match / do not match that region.
+Proceed, proceed with lower conviction, or skip.
+```
 
 ### Trader-Anchored Feature Candidates
 

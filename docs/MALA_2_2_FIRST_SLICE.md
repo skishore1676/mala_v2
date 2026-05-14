@@ -62,6 +62,35 @@ Do not mix the two horizons in one backtest. The entry logic, outcome window,
 failure modes, and useful indicators are different enough that combining them
 would blur the evidence.
 
+### Parent Type Definition
+
+The parent type should stay close to the trader-facing thesis language:
+
+```text
+Type 1: Mean Reversion at Extremes
+
+Description:
+  Asset X is overextended and will revert toward a reference level.
+
+Time horizon:
+  Usually intraday or 1-3 days, depending on subtype.
+
+Asset scope:
+  Single name, ETF, or index.
+
+Natural features:
+  Extension measures, exhaustion signals, breadth/context, VIX/regime behavior,
+  and reference-level distance.
+
+Example:
+  IWM is overextended on the upside; expect a down-move toward a reference
+  level.
+```
+
+The subtype then declares the horizon and candidate parameter families. Mala
+searches the parameter regions; Suman should not need to choose exact cutoffs
+like "10:00 ET vs. 10:10 ET" by hand before the first run.
+
 ---
 
 ## First Trading Question
@@ -93,20 +122,40 @@ These are defaults, not final decisions.
 | Runtime | none | First proof is a research/review surface, not Bhiksha integration. |
 | Output | receipt + conditional surface CSVs + sample events | Plotting in thinkorswim/TradingView comes after the surface has plausible parameters. |
 
-### Questions For Suman
+### Human-Owned Definition
 
-Bring Suman in before implementation if any of these remain unresolved:
+Suman owns the play definition:
 
-- Confirm whether "before 9/9:10 CST" means before 9:00-9:10 Central time,
-  which is 10:00-10:10 ET during daylight saving time.
-- Confirm whether the first version should require the entry trigger before
-  10:00 ET or allow a wider 10:10 ET cutoff.
-- Confirm whether the trend/context gate should be the existing VWMA/VMA
-  stack 8/21/34, an operator-read override, or both.
-- Confirm whether the first reversal range should be 5-minute, 15-minute, or
-  a parameter surface across both.
-- Confirm whether the initial stop candidate should be the reversal-bar low,
-  the reversal-bar midpoint, or both as tested variants.
+- "I want to short IWM because it feels overextended."
+- The move should be a mean reversion toward a reference level, not a fresh
+  trend-following continuation.
+- For the intraday subtype, the setup is early-session only.
+- The stage/context should be accumulation or bullish, using Suman's read and
+  the 8/21/34 VMA/VWMA stack as a candidate proxy.
+- The trigger language is reversal-range breakout after a 5-minute or 15-minute
+  reversal structure forms.
+
+### System-Owned Parameter Surface
+
+Mala owns the search over exact values:
+
+- entry cutoff candidates such as 10:00 ET and 10:10 ET
+- 5-minute vs. 15-minute reversal range definitions
+- stop candidates such as reversal-bar low vs. midpoint
+- extension definitions such as ATR distance, z-score, distance from VWAP,
+  distance from moving average, or prior-range extension
+- exit candidates such as VWAP return, partial retrace, fixed R, short
+  moving-average/VWMA return, and time stop
+
+The output should not be "Suman picked the right cutoff." The output should be:
+
+```text
+For this playbook and symbol, historical evidence concentrated in this
+parameter region. Today's conditions match / partially match / do not match.
+```
+
+Bring Suman in only for semantic questions that change the play definition, not
+for every numeric threshold the system can honestly search.
 
 ---
 
@@ -197,6 +246,10 @@ candidate exits:
 - return to a short moving average / VWMA reference
 - partial retrace of the opening extreme
 - time stop if the move does not validate quickly
+
+The same principle applies to entry and invalidation. Suman defines the
+candidate families; Mala searches the values and reports where the evidence
+clusters.
 
 ### Provider And Execution Readiness
 
