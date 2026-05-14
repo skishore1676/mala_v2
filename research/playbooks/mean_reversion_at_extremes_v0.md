@@ -5,6 +5,7 @@
 **Implementation state:** No code yet
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First-slice contract:** `docs/MALA_2_2_FIRST_SLICE.md`
+**Build spec:** `docs/MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`
 
 ---
 

@@ -4,6 +4,7 @@
 **Owner:** Suman + Codex
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First playbook surface:** `research/playbooks/mean_reversion_at_extremes_v0.md`
+**Build spec:** `docs/MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`
 
 This document defines the first proof slice for Mala 2.2.
 
@@ -271,6 +272,8 @@ Do not use in the first slice:
 ## What To Build First
 
 Build a small playbook evidence generator, not a strategy.
+
+The build contract is `docs/MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`.
 
 Proposed command shape:
 
