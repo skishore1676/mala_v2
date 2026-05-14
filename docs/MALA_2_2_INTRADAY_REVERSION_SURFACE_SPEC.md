@@ -4,7 +4,8 @@
 **Owner:** Suman + Codex
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First-slice source:** `docs/MALA_2_2_FIRST_SLICE.md`
-**Playbook source:** `research/playbooks/mean_reversion_at_extremes_v0.md`
+**Family source:** `research/playbooks/mean_reversion_at_extremes_v0.md`
+**Playbook source:** `research/playbooks/mean_reversion_at_extremes_intraday_v1.md`
 
 This is the first build target for Mala 2.2.
 
@@ -84,41 +85,94 @@ provider replay.
 
 ---
 
+## Reusable Infrastructure
+
+Reuse existing Mala/Newton surfaces where they fit the play:
+
+- `src.chronos.storage.LocalStorage` for historical minute bars
+- `src.time_utils` for market-session handling
+- `src.newton.transforms` for velocity, acceleration, and jerk-style features
+- `src.newton.market_impulse` / `src.strategy.market_impulse` for 8/21/34
+  VWMA stack and `impulse_regime_5m`
+- `src.strategy.elastic_band_reversion` as a reference for z-score, VPOC, and
+  kinematic reversion feature wiring
+- VPOC/auction-proxy helpers where the feature is available and reliable
+- existing `data/results/` style local artifact output
+
+New build required:
+
+- playbook-surface CLI and run config
+- feature adapters for the v1 grid
+- reversal-range event construction
+- stop, invalidation, and exit evaluation in R units
+- calibration/holdout reporting
+- receipt and CSV writers
+
+---
+
 ## Search Surface
 
 These values are not manually selected by Suman. They are candidate families
 for the system to search.
 
-### Entry Window
+### Time Window
 
-Candidate cutoff values:
+The operator describes the opening-drive window in Central time. The repo should
+evaluate and report the equivalent Eastern-time market windows.
 
-- `10:00 ET`
-- `10:10 ET`
-- optionally `10:15 ET` if sample size is too thin
+| Operator window | Repo window |
+| --- | --- |
+| `08:30-08:45 CT` | `09:30-09:45 ET` |
+| `08:30-09:00 CT` | `09:30-10:00 ET` |
+| `08:30-09:15 CT` | `09:30-10:15 ET` |
+| `08:30-10:00 CT` | `09:30-11:00 ET` |
 
-Interpretation: the event trigger must occur before the cutoff.
+The event trigger must occur inside the candidate window.
+
+### Stretch / Extreme
+
+Candidate feature families:
+
+- `z_score_from_opening_vwap`
+- `z_score_from_session_vwap`
+- `z_score_from_vpoc_4h`
+- `atr_distance_from_reference`
+- `velocity_1m`
+- `velocity_5m`
+
+Initial z-score thresholds:
+
+- `1.5`
+- `2.0`
+- `2.5`
+- `3.0`
+- `3.5`
+
+Velocity should be evaluated as a conditioning dimension, not a single hard
+filter:
+
+- no velocity filter
+- moderate/non-climactic velocity
+- violent/climactic velocity
+
+This lets Mala test whether the play works best after a fast rubber-band move or
+after slower unsupported extension.
 
 ### Stage / Context
 
 Candidate filters:
 
 - no stage filter
-- bullish/accumulation proxy using 8/21/34 VMA or VWMA stack
-- broad market context filter using SPY/QQQ trend if available
+- `impulse_regime_5m = bullish`
+- `impulse_regime_5m = bearish`
+- `impulse_regime_5m = neutral`
+- 8/21/34 VMA/VWMA stack bullish
+- 8/21/34 VMA/VWMA stack bearish
+- 8/21/34 VMA/VWMA stack mixed
+- broad market context using SPY/QQQ trend if available
 
-The operator's chart read remains the high-prior concept. These are proxies to
-test, not replacements for the trader's judgment.
-
-### Extension Measures
-
-Candidate feature families:
-
-- ATR-normalized distance from recent reference
-- z-score extension over short windows
-- distance from VWAP
-- distance from short moving average / VWMA
-- prior-session or opening-range extension
+Key question: does the fade work better as a rubber-band snap in a still-bullish
+stage, or as continuation after the 5-minute context has already rolled over?
 
 Do not add RSI as Tier 1. RSI can only enter as Tier 2 if the literature pass
 gives a specific reason and the receipt reports it as such.
@@ -129,8 +183,10 @@ Candidate trigger families:
 
 - 5-minute reversal range breakout
 - 15-minute reversal range breakout
+- 1 confirming bar
+- 2 confirming bars
+- `jerk_1m` / `jerk_5m` exhaustion direction
 - failure-to-extend followed by reclaim/breakout
-- slope/velocity rollover, if it maps cleanly to the play
 
 ### Stop / Invalidation Candidates
 
@@ -140,17 +196,18 @@ Candidate stop and invalidation families:
 - reversal-bar midpoint
 - loss of reversal range
 - VWMA/VMA stack flip
-- no favorable movement within a time window
+- no favorable movement within `10`, `20`, or `30` minutes
 - acceptance beyond the extreme
 
 ### Exit Candidates
 
 Candidate exits:
 
-- fixed R multiple from tested stop
-- return to VWAP
+- fixed `0.5R`, `1.0R`, `1.5R`, `2.0R`
+- return to opening/session VWAP
+- return to VPOC/reference if available
 - return to short moving average / VWMA reference
-- partial retrace of the early-session extreme
+- `25%`, `50%`, `75%` retrace of the early-session extreme
 - time stop
 - end-of-day flat
 

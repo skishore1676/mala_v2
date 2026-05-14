@@ -6,6 +6,7 @@
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First-slice contract:** `docs/MALA_2_2_FIRST_SLICE.md`
 **Build spec:** `docs/MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`
+**Concrete intraday spec:** `research/playbooks/mean_reversion_at_extremes_intraday_v1.md`
 
 ---
 
@@ -28,6 +29,11 @@ The family splits into:
 
 - `mean_reversion_at_extremes_intraday`
 - `mean_reversion_at_extremes_multi_day`
+
+The concrete intraday v1 search grid lives in
+`research/playbooks/mean_reversion_at_extremes_intraday_v1.md`. This parent spec
+should stay broad enough to explain the family; the v1 file owns the exact
+initial grid.
 
 The first output should help Suman decide whether the intraday play "looks
 right" statistically before spending effort on visual plotting or runtime work.
@@ -116,11 +122,15 @@ of that description matter and which are just chart vocabulary.
 These are not questions for Suman to hand-pick one by one. They are candidate
 parameter families for Mala to search:
 
-- entry cutoff candidates around the early-session window
+- time windows from cash open through the broad morning window
+- stretch definitions such as z-score from VWAP/VPOC and ATR-normalized distance
+- velocity interaction: no filter, moderate stretch, or climactic move
 - 5-minute and 15-minute reversal-range definitions
-- breakout confirmation from the reversal range
+- breakout confirmation from the reversal range, including 1 vs 2 confirming bars
+- kinematic exhaustion using jerk/velocity where it maps cleanly to the play
 - stop definitions based on reversal-bar low or midpoint
-- stage/context filters based on operator read and VMA/VWMA stack
+- stage/context filters based on operator read, VMA/VWMA stack, and
+  `impulse_regime_5m`
 - exit definitions such as VWAP return, partial retrace, fixed R, short
   moving-average/VWMA return, and time stop
 - invalidation definitions such as loss of reversal range, VWMA stack flip, or
