@@ -1,6 +1,6 @@
-# Mala — Vision Document v0.2
+# Mala — Vision Document v2.2
 
-**Status:** Vision document. Captures the strategic direction for an operator-bias-conditioned, playbook-based trading rule system built on top of the useful parts of Mala v2.
+**Status:** Mala 2.2 doctrine. Captures the strategic direction for an operator-bias-conditioned, playbook-based trading rule system built on top of the useful research infrastructure from Mala v2.
 
 
 ## 1. The journey that led here
@@ -79,6 +79,11 @@ This is not a greenfield rebuild.
 The working name for the near-term system is:
 
 > **Mala 2.2 — operator-bias-conditioned playbooks on top of Mala's research base.**
+
+The first proof slice is defined separately in
+`docs/MALA_2_2_FIRST_SLICE.md`. That document is the build boundary for the
+near-term work: one playbook, one bounded evidence surface, and no runtime
+promotion until the proof earns it.
 
 Keep from Mala v2:
 - historical cache

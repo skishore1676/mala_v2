@@ -3,7 +3,8 @@
 **Status:** Phase 0 scaffold
 **Owner:** Suman + Codex designer
 **Implementation state:** No code yet
-**Vision source:** `docs/MALA_VISION_v0.2.md`
+**Vision source:** `docs/MALA_VISION_v2.2.md`
+**First-slice contract:** `docs/MALA_2_2_FIRST_SLICE.md`
 
 ---
 
