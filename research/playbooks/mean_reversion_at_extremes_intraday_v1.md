@@ -1,10 +1,11 @@
 # Intraday Mean Reversion at Extremes - Playbook Search Spec v1
 
-**Status:** Phase 0 search contract
+**Status:** Phase 1 spine implemented
 **Owner:** Suman + Codex
 **Family spec:** `research/playbooks/mean_reversion_at_extremes_v0.md`
 **Build spec:** `docs/MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`
-**Implementation state:** no code yet
+**Implementation state:** Newton features, strategy search surface, and thin
+playbook runner are implemented.
 
 ---
 
@@ -276,6 +277,30 @@ current-state matching is a follow-up once the surface is credible.
 - `src.oracle.trade_simulator` and exit-policy machinery where bar-by-bar
   trade simulation is needed
 - existing research artifact pattern under `data/results/`
+
+---
+
+## Implemented Entry Points
+
+- Newton features:
+  - `opening_vwap`
+  - `prior_close_atr`
+  - `prior_close`
+  - `daily_atr_14`
+  - `atr_distance_from_prior_close`
+  - `gap_state`
+- Strategy: `src.strategy.intraday_mean_reversion.IntradayMeanReversionStrategy`
+- Registry name: `Intraday Mean Reversion at Extremes`
+- Runner:
+
+```bash
+python -m src.research.playbook_surface \
+  mean-reversion-at-extremes-intraday \
+  --symbols IWM,QQQ \
+  --start 2021-05-13 \
+  --end 2026-05-13 \
+  --out-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
+```
 
 ---
 

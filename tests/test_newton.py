@@ -1,6 +1,6 @@
 """Tests for the Newton Physics Engine."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import polars as pl
@@ -265,6 +265,58 @@ def test_enrich_for_features_accepts_parameterized_market_impulse_transform_name
     assert "impulse_regime_15m" in result.columns
     assert "vma_10_15m" in result.columns
     assert "impulse_regime_5m" not in result.columns
+
+
+def test_opening_vwap_resets_by_et_session() -> None:
+    df = pl.DataFrame(
+        {
+            "timestamp": [
+                datetime(2025, 1, 2, 14, 30, tzinfo=timezone.utc),
+                datetime(2025, 1, 2, 14, 31, tzinfo=timezone.utc),
+                datetime(2025, 1, 3, 14, 30, tzinfo=timezone.utc),
+                datetime(2025, 1, 3, 14, 31, tzinfo=timezone.utc),
+            ],
+            "open": [10.0, 12.0, 20.0, 22.0],
+            "high": [10.5, 12.5, 20.5, 22.5],
+            "low": [9.5, 11.5, 19.5, 21.5],
+            "close": [10.0, 12.0, 20.0, 22.0],
+            "volume": [100.0, 100.0, 100.0, 300.0],
+        }
+    )
+
+    result = PhysicsEngine().enrich_for_features(df, {"opening_vwap"})
+
+    assert result["opening_vwap"].to_list() == [10.0, 11.0, 20.0, 21.5]
+
+
+def test_prior_close_atr_transform_adds_gap_state_and_distance() -> None:
+    rows = []
+    for day, open_price, close_price in [
+        (2, 10.0, 11.0),
+        (3, 13.0, 14.0),
+    ]:
+        for minute in range(2):
+            rows.append(
+                {
+                    "timestamp": datetime(2025, 1, day, 14, 30 + minute, tzinfo=timezone.utc),
+                    "open": open_price if minute == 0 else close_price,
+                    "high": close_price + 1.0,
+                    "low": open_price - 1.0,
+                    "close": close_price,
+                    "volume": 1000.0,
+                }
+            )
+    df = pl.DataFrame(rows)
+
+    result = PhysicsEngine().enrich_for_features(
+        df,
+        {"prior_close", "daily_atr_14", "atr_distance_from_prior_close", "gap_state"},
+    )
+    second_day = result.filter(pl.col("timestamp").dt.date() == datetime(2025, 1, 3).date())
+
+    assert second_day["prior_close"].to_list() == [11.0, 11.0]
+    assert second_day["gap_state"].to_list() == ["gap_up_small", "gap_up_small"]
+    np.testing.assert_almost_equal(second_day["atr_distance_from_prior_close"].to_list()[0], 1.0)
 
 
 def test_enrich_for_features_resolves_market_impulse_from_feature_columns() -> None:

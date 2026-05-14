@@ -9,6 +9,7 @@ from src.config import settings
 from src.strategy.base import BaseStrategy
 from src.strategy.compression_breakout import CompressionBreakoutStrategy
 from src.strategy.elastic_band_reversion import ElasticBandReversionStrategy
+from src.strategy.intraday_mean_reversion import IntradayMeanReversionStrategy
 from src.strategy.jerk_pivot_momentum import JerkPivotMomentumStrategy
 from src.strategy.kinematic_ladder import KinematicLadderStrategy
 from src.strategy.market_impulse import MarketImpulseStrategy
@@ -101,6 +102,10 @@ def _build_jerk_pivot_tight(params: dict[str, Any] | None = None) -> BaseStrateg
     return JerkPivotMomentumStrategy(**(defaults | cleaned))
 
 
+def _build_intraday_mean_reversion(params: dict[str, Any] | None = None) -> BaseStrategy:
+    return IntradayMeanReversionStrategy(**(params or {}))
+
+
 def _build_market_impulse(params: dict[str, Any] | None = None) -> BaseStrategy:
     defaults = {
         "entry_buffer_minutes": 3,
@@ -145,6 +150,7 @@ _NAMED_BUILDERS: dict[str, StrategyBuilder] = {
     "Opening Drive Classifier": _build_opening_drive,
     "Opening Drive v2 (Short Continue)": _build_opening_drive_v2,
     "Jerk-Pivot Momentum (tight)": _build_jerk_pivot_tight,
+    "Intraday Mean Reversion at Extremes": _build_intraday_mean_reversion,
     "Market Impulse (Cross & Reclaim)": _build_market_impulse,
     "Market Impulse Descendants": _build_market_impulse_descendants,
     "MI Shallow Spring": _build_market_impulse_mode(

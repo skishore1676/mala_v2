@@ -21,6 +21,8 @@ from src.newton.transforms import (
     FeatureTransform,
     JerkTransform,
     MarketImpulseTransform,
+    OpeningVwapTransform,
+    PriorCloseAtrTransform,
     RelativeVolumeTransform,
     VelocityTransform,
     VolumeMaTransform,
@@ -59,6 +61,8 @@ class PhysicsEngine:
             "relative_volume_<period>",
             "aggregated_relative_volume:<sum_window>:<ma_period>",
             "relative_volume_sum_<sum_window>_over_ma_<ma_period>",
+            "opening_vwap",
+            "prior_close_atr",
         ]
 
     def enrich(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -250,6 +254,8 @@ class PhysicsEngine:
             VolumeMaTransform(period=self.volume_ma_period),
             DirectionalMassTransform(volume_ma_period=self.volume_ma_period),
             VpocTransform(lookback=self.vpoc_lookback),
+            OpeningVwapTransform(),
+            PriorCloseAtrTransform(),
         ]
         return {transform.name: transform for transform in transforms}
 

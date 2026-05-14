@@ -6,6 +6,7 @@
 **First-slice source:** `docs/MALA_2_2_FIRST_SLICE.md`
 **Family source:** `research/playbooks/mean_reversion_at_extremes_v0.md`
 **Playbook source:** `research/playbooks/mean_reversion_at_extremes_intraday_v1.md`
+**Implementation state:** Phase 1 spine implemented.
 
 This is the first build target for Mala 2.2.
 
@@ -105,11 +106,17 @@ Reuse existing Mala/Newton surfaces where they fit the play:
 
 New build required:
 
+- broader parameter search runs and review
+- calibration of thresholds after the first real surface review
+- current-day matcher after the historical surface is credible
+- visual plotting after sample events identify candidate regions
+
+Implemented:
+
 - playbook-surface CLI and run config
-- registered playbook strategy or spec loader for the v1 grid
+- registered playbook strategy for the v1 grid
 - Newton feature additions for opening VWAP, prior-close ATR distance, and
   `gap_state`
-- feature adapters for the v1 grid
 - reversal-range event construction
 - stop, invalidation, and exit evaluation in R units
 - calibration/holdout reporting

@@ -4,6 +4,7 @@ from datetime import time
 
 from src.strategy.base import required_feature_union
 from src.strategy.factory import available_strategy_names, build_strategy, build_strategy_by_name
+from src.strategy.intraday_mean_reversion import IntradayMeanReversionStrategy
 from src.strategy.jerk_pivot_momentum import JerkPivotMomentumStrategy
 from src.strategy.kinematic_ladder import KinematicLadderStrategy
 from src.strategy.market_impulse import MarketImpulseStrategy
@@ -46,6 +47,18 @@ def test_available_strategy_names_includes_research_candidates() -> None:
     assert "Market Impulse (Cross & Reclaim)" in names
     assert "Market Impulse Descendants" in names
     assert "MI Shallow Spring" in names
+    assert "Intraday Mean Reversion at Extremes" in names
+
+
+def test_build_intraday_mean_reversion_strategy() -> None:
+    strategy = build_strategy(
+        "Intraday Mean Reversion at Extremes",
+        {"stretch_source": "prior_close_atr", "entry_window_end": "10:00"},
+    )
+
+    assert isinstance(strategy, IntradayMeanReversionStrategy)
+    assert strategy.stretch_source == "prior_close_atr"
+    assert strategy.entry_window_end == time(10, 0)
 
 
 def test_build_market_impulse_with_timeframe_override() -> None:

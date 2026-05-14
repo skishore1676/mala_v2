@@ -6,6 +6,7 @@ import polars as pl
 import pytest
 
 from src.strategy.elastic_band_reversion import ElasticBandReversionStrategy
+from src.strategy.intraday_mean_reversion import IntradayMeanReversionStrategy
 from src.strategy.kinematic_ladder import KinematicLadderStrategy
 from src.strategy.compression_breakout import CompressionBreakoutStrategy
 from src.strategy.regime_router import RegimeRouterStrategy
@@ -14,6 +15,83 @@ from src.strategy.opening_drive_classifier import OpeningDriveClassifierStrategy
 
 def _minute_series(n: int, start: datetime = datetime(2025, 1, 2, 10, 0)) -> list[datetime]:
     return [start + timedelta(minutes=i) for i in range(n)]
+
+
+class TestIntradayMeanReversionStrategy:
+    def test_generates_short_reversion_signal_after_range_break(self) -> None:
+        start = datetime(2025, 1, 2, 14, 30)  # 09:30 ET in UTC
+        close = [100.0, 101.0, 102.0, 103.0, 104.0, 103.0, 101.0, 100.5]
+        df = pl.DataFrame(
+            {
+                "timestamp": _minute_series(len(close), start=start),
+                "open": close,
+                "high": [value + 0.2 for value in close],
+                "low": [value - 0.2 for value in close],
+                "close": close,
+                "opening_vwap": [101.0] * len(close),
+                "prior_close": [100.0] * len(close),
+                "daily_atr_14": [4.0] * len(close),
+                "atr_distance_from_prior_close": [0.0, 0.5, 1.2, 1.3, 1.4, 1.2, 0.8, 0.7],
+                "gap_state": ["flat"] * len(close),
+                "impulse_regime_5m": ["neutral"] * len(close),
+                "velocity_1m": [0.0, 1.0, 1.0, 1.0, 1.0, -1.0, -2.0, -0.5],
+            }
+        )
+        strategy = IntradayMeanReversionStrategy(
+            stretch_source="prior_close_atr",
+            stretch_threshold=1.0,
+            reversal_range_minutes=3,
+            use_jerk_confirmation=False,
+            velocity_periods_back=1,
+            velocity_filter="no_filter",
+            stage_filter="no_filter",
+            gap_state_filter="no_filter",
+        )
+
+        out = strategy.generate_signals(df)
+        signals = out.filter(pl.col("signal"))
+
+        assert "short" in signals["signal_direction"].to_list()
+        assert "playbook_reversal_high" in out.columns
+        assert "playbook_volume_confirmation_filter" in out.columns
+
+    def test_volume_confirmation_filters_weak_trigger(self) -> None:
+        start = datetime(2025, 1, 2, 14, 30)
+        close = [100.0, 101.0, 102.0, 103.0, 104.0, 103.0, 101.0]
+        base = pl.DataFrame(
+            {
+                "timestamp": _minute_series(len(close), start=start),
+                "open": close,
+                "high": [value + 0.2 for value in close],
+                "low": [value - 0.2 for value in close],
+                "close": close,
+                "opening_vwap": [101.0] * len(close),
+                "prior_close": [100.0] * len(close),
+                "daily_atr_14": [4.0] * len(close),
+                "atr_distance_from_prior_close": [0.0, 0.5, 1.2, 1.3, 1.4, 1.2, 0.8],
+                "gap_state": ["flat"] * len(close),
+                "impulse_regime_5m": ["neutral"] * len(close),
+                "velocity_1m": [0.0, 1.0, 1.0, 1.0, 1.0, -1.0, -2.0],
+                "relative_volume_20": [0.8] * len(close),
+            }
+        )
+        strategy = IntradayMeanReversionStrategy(
+            stretch_source="prior_close_atr",
+            stretch_threshold=1.0,
+            reversal_range_minutes=3,
+            use_jerk_confirmation=False,
+            velocity_periods_back=1,
+            relative_volume_threshold=1.25,
+        )
+
+        out = strategy.generate_signals(base)
+
+        assert out.filter(pl.col("signal")).is_empty()
+
+    def test_missing_columns_raise(self) -> None:
+        strategy = IntradayMeanReversionStrategy()
+        with pytest.raises(ValueError, match="requires columns"):
+            strategy.generate_signals(pl.DataFrame({"close": [100.0]}))
 
 
 class TestElasticBandReversionStrategy:
