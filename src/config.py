@@ -41,9 +41,41 @@ class Settings(BaseSettings):
     )
 
     # ── API Keys ─────────────────────────────────────────────────────────
+    market_data_provider: str = Field(
+        default="public",
+        description="Market-data provider for new Chronos fetches: public or polygon.",
+    )
+    public_secret_token: str = Field(
+        default="",
+        description="Public API secret token used to mint short-lived access tokens.",
+    )
+    public_access_token: str = Field(
+        default="",
+        description="Optional pre-minted Public API access token for market data.",
+    )
+    public_api_base_url: str = Field(
+        default="https://api.public.com",
+        description="Public API base URL.",
+    )
+    public_auth_endpoint: str = Field(
+        default="https://api.public.com/userapiauthservice/personal/access-tokens",
+        description="Public API personal access-token endpoint.",
+    )
+    public_bars_period: str = Field(
+        default="FIVE_YEARS",
+        description="Public historical bars period to request before local date filtering.",
+    )
+    public_bars_aggregation: str = Field(
+        default="ONE_MINUTE",
+        description="Public historical bars aggregation.",
+    )
+    public_instrument_type: str = Field(
+        default="EQUITY",
+        description="Public instrument type for default Chronos historical bars.",
+    )
     polygon_api_key: str = Field(
         default="",
-        description="Polygon.io API key for market data.",
+        description="Optional Polygon.io API key for fallback market data.",
     )
 
     # ── Data Pipeline Defaults ───────────────────────────────────────────
