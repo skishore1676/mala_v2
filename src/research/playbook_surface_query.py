@@ -416,7 +416,12 @@ def _state_management_payload(
         operator_policy,
     )
     outcome_summary = _cohort_outcome_summary(cohort)
-    verdict, verdict_reason = _cohort_verdict(outcome_summary, operator_policy)
+    cohort_verdict, cohort_verdict_reason = _cohort_verdict(outcome_summary, operator_policy)
+    verdict, verdict_reason = _state_management_verdict(
+        cohort_verdict,
+        cohort_verdict_reason,
+        entry_window=entry_window,
+    )
     current_state = _state_snapshot_for_desk(query_row, direction)
     return {
         "playbook_id": playbook_id,
@@ -429,6 +434,8 @@ def _state_management_payload(
         "entry_window": entry_window,
         "verdict": verdict,
         "verdict_reason": verdict_reason,
+        "cohort_verdict": cohort_verdict,
+        "cohort_verdict_reason": cohort_verdict_reason,
         "active_match_count": 0,
         "current_state": current_state,
         "operator_policy": operator_policy.to_payload(),
@@ -796,7 +803,7 @@ def _evaluate_management_spec(
     target_time = _time_to_move(entry, future, direction, target_move, favorable=True)
     adverse_time = _time_to_move(entry, future, direction, target_move, favorable=False)
     captured = target_time is not None
-    survived = captured and (adverse_time is None or target_time <= adverse_time)
+    survived = captured and (adverse_time is None or target_time < adverse_time)
     return {
         "captured": captured,
         "survived": survived,
@@ -910,6 +917,26 @@ def _cohort_verdict(
     if edge <= -operator_policy.strong_continuation_edge:
         return "strong_continuation_risk", "Nearest analogs strongly favored continuation against the requested bias."
     return "continuation_lean", "Nearest analogs leaned against the requested reversion bias."
+
+
+def _state_management_verdict(
+    cohort_verdict: str,
+    cohort_verdict_reason: str,
+    *,
+    entry_window: dict[str, str],
+) -> tuple[str, str]:
+    if entry_window.get("in_entry_window") != "no":
+        return cohort_verdict, cohort_verdict_reason
+    return (
+        "out_of_window",
+        (
+            "This timestamp is outside the searched entry window "
+            f"({entry_window.get('entry_window_start_et')} to "
+            f"{entry_window.get('entry_window_end_et')} ET). "
+            f"Cohort read for management context only: {cohort_verdict} "
+            f"({cohort_verdict_reason})"
+        ),
+    )
 
 
 def _signal_rows_at_timestamp(
@@ -1198,6 +1225,7 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
         f"- question: `{payload['direction']} {payload['symbol']} at {payload['timestamp_et']}`",
         f"- desk read: `{payload['verdict']}`",
         f"- reason: {payload['verdict_reason']}",
+        f"- cohort read: `{payload.get('cohort_verdict', payload.get('verdict', ''))}`",
         f"- analogs: `{cohort.get('analog_count', 0)}` of requested `{cohort.get('requested_count', 0)}`",
         f"- candidate analogs in scope: `{cohort.get('candidate_count', 0)}`",
         f"- confidence: `{cohort.get('confidence', '')}`",
@@ -1205,6 +1233,7 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
         f"- selected-tail similarity: `{tail.get('selected_last_similarity', '')}`; rank-200 similarity: `{tail.get('rank_200_similarity', '')}`",
         f"- searched entry window: `{payload.get('entry_window', {}).get('entry_window_start_et', '')}"
         f" -> {payload.get('entry_window', {}).get('entry_window_end_et', '')} ET`",
+        f"- query inside entry window: `{payload.get('entry_window', {}).get('in_entry_window', '')}`",
         "",
         "## Current State",
         "",

@@ -342,7 +342,7 @@ def _historical_management_outcome(
         }
     target_time = _time_to_move(entry, future, direction, target_move, favorable=True)
     adverse_time = _time_to_move(entry, future, direction, target_move, favorable=False)
-    if target_time is not None and (adverse_time is None or target_time <= adverse_time):
+    if target_time is not None and (adverse_time is None or target_time < adverse_time):
         return _historical_outcome_row(future, target_time, "target", 1.0)
     if adverse_time is not None:
         return _historical_outcome_row(future, adverse_time, "stop", -1.0)

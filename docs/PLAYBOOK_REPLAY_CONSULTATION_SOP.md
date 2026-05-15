@@ -173,6 +173,9 @@ python -m src.research.playbook_consultation_log replay-close \
 - `actual_time_to_exit`
 - `actual_exit_ts_et`
 
+If target and symmetric adverse stop are both touched in the same minute bar,
+Mala treats the row conservatively as not survived.
+
 For `taken N`, it records `actual_exit_reason=no_trade`.
 
 ## Step 6: Check Open Rows
@@ -232,4 +235,3 @@ cached bars.
 
 Use `close` for live/manual logging where the actual outcome came from your
 real execution or broker record.
-

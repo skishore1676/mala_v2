@@ -362,6 +362,8 @@ the headline. Rows whose target is below the tradable floor
 two-cent VWAP retrace is bar noise, not an actionable options scalp. This is the
 preferred desk answer when Suman brings the timestamp and wants to know what
 usually happened next.
+Same-minute target/stop ambiguity is conservative: the target must print before
+the symmetric adverse move to count as survived.
 
 Each state-management query appends one row to `consultation_log.csv` in the
 run directory. The trader can later fill in taken/not-taken and actual outcome

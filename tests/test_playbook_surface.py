@@ -18,6 +18,7 @@ from src.research.playbook_consultation_log import (
     update_consultation_row,
 )
 from src.research.playbook_policy_card import build_policy_card
+from src.research.playbook_operator_policy import load_operator_policy
 from src.research.playbook_surface import (
     _entry_signal_cache_key,
     _evaluate_one_event,
@@ -27,8 +28,10 @@ from src.research.playbook_surface import (
 )
 from src.research.playbook_surface_query import (
     STATE_MANAGEMENT_FEATURES,
+    _evaluate_management_spec,
     _entry_window_scope,
     _parse_timestamp,
+    _state_management_verdict,
     query_playbook_surface,
 )
 from src.research.playbook_surface_review import build_surface_review
@@ -1330,6 +1333,56 @@ def test_playbook_surface_query_marks_out_of_window_scope() -> None:
     assert scope["entry_window_end_et"] == "11:00"
     assert scope["query_time_et"] == "12:30"
     assert scope["in_entry_window"] == "no"
+
+
+def test_state_management_verdict_marks_out_of_window_as_context_only() -> None:
+    verdict, reason = _state_management_verdict(
+        "strong_reversion_lean",
+        "Nearest analogs strongly favored reversion.",
+        entry_window={
+            "entry_window_start_et": "09:30",
+            "entry_window_end_et": "11:00",
+            "in_entry_window": "no",
+        },
+    )
+
+    assert verdict == "out_of_window"
+    assert "management context only" in reason
+    assert "strong_reversion_lean" in reason
+
+
+def test_consultation_management_treats_same_minute_target_stop_as_not_survived() -> None:
+    trade_date = date(2025, 1, 2)
+    rows = [
+        {
+            "timestamp": datetime(2025, 1, 2, 14, 30, tzinfo=timezone.utc),
+            "_playbook_trade_date": trade_date,
+            "_row_index": 0,
+            "close": 100.0,
+            "daily_rth_atr_14": 1.0,
+        },
+        {
+            "timestamp": datetime(2025, 1, 2, 14, 31, tzinfo=timezone.utc),
+            "_playbook_trade_date": trade_date,
+            "_row_index": 1,
+            "high": 100.30,
+            "low": 99.70,
+            "close": 100.0,
+        },
+    ]
+
+    result = _evaluate_management_spec(
+        rows,
+        0,
+        "long",
+        "pct",
+        0.0025,
+        load_operator_policy(),
+    )
+
+    assert result is not None
+    assert result["captured"] is True
+    assert result["survived"] is False
 
 
 def json_dumps(payload: dict[str, object]) -> str:

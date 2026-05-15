@@ -97,6 +97,7 @@ python -m src.research.playbook_consultation_log replay-close \
 `replay-close` fills `actual_exit_reason`, `actual_pnl_r`,
 `actual_time_to_exit`, and `actual_exit_ts_et` from cached historical bars. It
 uses the selected exit exactly as defined in the query's management menu.
+Same-minute target/stop ambiguity is treated conservatively as not survived.
 
 For live/manual logging, close or update one row directly:
 
