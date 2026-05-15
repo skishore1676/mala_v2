@@ -14,6 +14,7 @@ from src.research.playbook_consultation_log import (
     append_consultation_query,
     dedupe_consultation_rows,
     open_consultation_rows,
+    replay_close_consultation_row,
     update_consultation_row,
 )
 from src.research.playbook_policy_card import build_policy_card
@@ -970,6 +971,132 @@ def test_playbook_surface_state_management_returns_cohort(tmp_path: Path) -> Non
     assert len(deduped_rows) == 1
     assert deduped_rows[0]["query_id"] == query_id
     assert deduped_rows[0]["actual_pnl_r"] == "0.5"
+
+
+def test_replay_close_populates_historical_actuals(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    symbol_dir = data_dir / "IWM"
+    symbol_dir.mkdir(parents=True)
+    start_day = date(2025, 1, 2)
+    for day_offset in range(22):
+        day = start_day + timedelta(days=day_offset)
+        start = datetime(day.year, day.month, day.day, 14, 30, tzinfo=timezone.utc)
+        rows = []
+        base = 100.0 + day_offset * 0.10
+        for minute in range(50):
+            close = base + minute * 0.01
+            if day_offset == 21 and minute >= 7:
+                close = base + 0.07 - (minute - 6) * 0.08
+            rows.append(
+                {
+                    "timestamp": start + timedelta(minutes=minute),
+                    "ticker": "IWM",
+                    "open": close - 0.02,
+                    "high": close + 0.06,
+                    "low": close - 0.06,
+                    "close": close,
+                    "volume": 1000.0 + minute,
+                }
+            )
+        pl.DataFrame(rows).write_parquet(symbol_dir / f"{day.isoformat()}.parquet")
+
+    run_dir = tmp_path / "surface"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(
+        json_dumps(
+            {
+                "playbook_id": PLAYBOOK_ID,
+                "configs": {
+                    "cfg": {
+                        "entry_window_start": "09:30",
+                        "entry_window_end": "10:15",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with (run_dir / "conditional_surface_by_symbol.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["config_id", "symbol", "direction"])
+        writer.writeheader()
+
+    result = query_playbook_surface(
+        run_dir,
+        symbol="IWM",
+        direction="short",
+        timestamp=datetime(2025, 1, 23, 9, 36, tzinfo=timezone(timedelta(hours=-5))),
+        mode="state-management",
+        data_dir=data_dir,
+        analog_lookback_days=30,
+        analog_count=8,
+    )
+    query_id = result.out_dir.name
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    selected_exit = payload["cohort"]["management_rows"][0]["exit_family"]
+
+    close_result = replay_close_consultation_row(
+        run_dir,
+        query_id=query_id,
+        taken="Y",
+        selected_exit=selected_exit,
+        operator_note="would take in replay",
+        data_dir=data_dir,
+    )
+
+    assert close_result.actual_exit_reason in {"target", "stop", "time_stop_30m"}
+    assert close_result.actual_pnl_r != ""
+    assert close_result.actual_time_to_exit != ""
+    assert close_result.actual_exit_ts_et.startswith("2025-01-23T")
+    with (run_dir / "consultation_log.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["taken"] == "Y"
+    assert rows[0]["selected_exit"] == selected_exit
+    assert rows[0]["actual_exit_reason"] == close_result.actual_exit_reason
+    assert rows[0]["operator_note"] == "would take in replay"
+
+
+def test_replay_close_pass_marks_no_trade(tmp_path: Path) -> None:
+    run_dir = tmp_path / "surface"
+    query_dir = run_dir / "surface_queries" / "iwm_short_demo"
+    query_dir.mkdir(parents=True)
+    query_json = query_dir / "query_result.json"
+    review_md = query_dir / "QUERY_REVIEW.md"
+    query_json.write_text(
+        json_dumps(
+            {
+                "timestamp_et": "2025-01-23T09:36:00-05:00",
+                "timestamp_utc": "2025-01-23T14:36:00+00:00",
+                "playbook_id": PLAYBOOK_ID,
+                "symbol": "IWM",
+                "direction": "short",
+                "verdict": "mixed_cohort",
+                "cohort": {"confidence": "moderate", "analog_count": "8"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    review_md.write_text("# Review\n", encoding="utf-8")
+    append_consultation_query(
+        run_dir,
+        json.loads(query_json.read_text(encoding="utf-8")),
+        review_md,
+        query_json,
+    )
+
+    result = replay_close_consultation_row(
+        run_dir,
+        query_id="iwm_short_demo",
+        taken="N",
+        operator_note="would pass",
+    )
+
+    assert result.actual_exit_reason == "no_trade"
+    with (run_dir / "consultation_log.csv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["taken"] == "N"
+    assert rows[0]["actual_exit_reason"] == "no_trade"
+    assert rows[0]["actual_pnl_r"] == ""
+    assert rows[0]["operator_note"] == "would pass"
 
 
 def test_playbook_policy_card_writes_deterministic_operator_card(tmp_path: Path) -> None:

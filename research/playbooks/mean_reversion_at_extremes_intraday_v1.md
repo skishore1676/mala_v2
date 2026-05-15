@@ -368,8 +368,12 @@ run directory. The trader can later fill in taken/not-taken and actual outcome
 columns, turning replay/live consultations into the forward-shadow journal for
 this playbook. The log intentionally does not auto-pick a suggested exit; the
 system reports the menu and the trader records the selected management row.
-Use `python -m src.research.playbook_consultation_log close ...` to update rows
-after the trade or review. The generic journal vision lives in
+For historical review, use
+`python -m src.research.playbook_consultation_log replay-close ...`; the trader
+supplies `taken` and `selected_exit`, and Mala fills actual outcome fields from
+cached bars. For live/manual review, use
+`python -m src.research.playbook_consultation_log close ...` to update rows
+after the trade. The generic journal vision lives in
 `docs/MALA_2_2_CONSULTATION_JOURNAL.md`.
 
 For live/replay compression, create a deterministic policy card from the query:

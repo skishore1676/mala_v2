@@ -67,7 +67,35 @@ python -m src.research.playbook_consultation_log list \
   --open-only
 ```
 
-Close or update one row:
+For historical replay, close the row with machine-computed actuals. The trader
+only supplies the judgment (`taken`) and, if taken, the selected management row:
+
+```bash
+python -m src.research.playbook_consultation_log replay-close \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --query-id iwm_short_20260421T104000_ET_state_management \
+  --taken Y \
+  --selected-exit scalp_0.25pct \
+  --historical \
+  --operator-note "Would take; matches my chart read."
+```
+
+For a historical pass:
+
+```bash
+python -m src.research.playbook_consultation_log replay-close \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --query-id iwm_short_20260421T104000_ET_state_management \
+  --taken N \
+  --historical \
+  --operator-note "Would pass; cohort too mixed."
+```
+
+`replay-close` fills `actual_exit_reason`, `actual_pnl_r`,
+`actual_time_to_exit`, and `actual_exit_ts_et` from cached historical bars. It
+uses the selected exit exactly as defined in the query's management menu.
+
+For live/manual logging, close or update one row directly:
 
 ```bash
 python -m src.research.playbook_consultation_log close \

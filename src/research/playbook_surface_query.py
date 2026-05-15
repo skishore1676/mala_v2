@@ -350,6 +350,14 @@ STATE_MANAGEMENT_FEATURES = {
     "market_pulse_stage",
 }
 STATE_FORWARD_WINDOWS: tuple[int | str, ...] = (5, 10, 15, 30, 60, "eod")
+STATE_MANAGEMENT_EXIT_SPECS: tuple[tuple[str, str, str, float], ...] = (
+    ("scalp_0.15pct", "underlying move 0.15%", "pct", 0.0015),
+    ("scalp_0.25pct", "underlying move 0.25%", "pct", 0.0025),
+    ("scalp_0.35pct", "underlying move 0.35%", "pct", 0.0035),
+    ("retrace_to_vwap_25pct", "25% retrace toward opening VWAP", "vwap_retrace", 0.25),
+    ("retrace_to_vwap_50pct", "50% retrace toward opening VWAP", "vwap_retrace", 0.50),
+    ("vwap_return", "return to opening VWAP", "vwap_retrace", 1.0),
+)
 SIMILARITY_FEATURE_CONFIG = [
     {"feature": "bias_prior_close_atr", "scale": 0.45, "weight": 1.0},
     {"feature": "bias_vwap_distance_pct", "scale": 0.0035, "weight": 1.0},
@@ -709,16 +717,8 @@ def _cohort_management_rows(
     direction: str,
     operator_policy: OperatorPolicy,
 ) -> list[dict[str, str]]:
-    specs = [
-        ("scalp_0.15pct", "underlying move 0.15%", "pct", 0.0015),
-        ("scalp_0.25pct", "underlying move 0.25%", "pct", 0.0025),
-        ("scalp_0.35pct", "underlying move 0.35%", "pct", 0.0035),
-        ("retrace_to_vwap_25pct", "25% retrace toward opening VWAP", "vwap_retrace", 0.25),
-        ("retrace_to_vwap_50pct", "50% retrace toward opening VWAP", "vwap_retrace", 0.50),
-        ("vwap_return", "return to opening VWAP", "vwap_retrace", 1.0),
-    ]
     output: list[dict[str, str]] = []
-    for name, label, kind, value in specs:
+    for name, label, kind, value in STATE_MANAGEMENT_EXIT_SPECS:
         query_target = _management_target_move(query_row, kind, value)
         query_entry = _safe_float(query_row.get("close"))
         if (
