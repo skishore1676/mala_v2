@@ -506,7 +506,8 @@ Minimum columns:
 
 - `symbol`
 - `direction`
-- `event_timestamp`
+- `event_timestamp` in UTC
+- `event_timestamp_et` for chart lookup
 - `entry_reference_price`
 - `extension_summary`
 - `stage_summary`

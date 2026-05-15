@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import polars as pl
 from loguru import logger
@@ -34,6 +35,7 @@ from src.strategy.intraday_mean_reversion import (
 from src.time_utils import et_date_expr, et_time_expr
 
 PLAYBOOK_STRETCH_SOURCES = ("opening_vwap_rth", "prior_rth_close_atr", "vpoc_4h")
+ET = ZoneInfo("America/New_York")
 
 
 MIN_SAMPLE_COUNT = 50
@@ -87,6 +89,7 @@ SAMPLE_EVENT_COLUMNS = [
     "symbol",
     "direction",
     "event_timestamp",
+    "event_timestamp_et",
     "entry_reference_price",
     "extension_summary",
     "stage_summary",
@@ -436,12 +439,16 @@ def _evaluate_one_event(
         direction=direction,
         stop_family=str(config.get("stop_family", "reversal_extreme")),
         exit_family=exit_family,
+        market_pulse_stage_column=_market_pulse_stage_column(
+            str(config.get("stage_timeframe", "1m"))
+        ),
     )
     if trade_path is None:
         return None
     trade_date = row.get("_playbook_trade_date")
     event_ts = row.get("timestamp")
     event_timestamp = event_ts.isoformat() if hasattr(event_ts, "isoformat") else str(event_ts)
+    event_timestamp_et = _event_timestamp_et(event_ts)
     threshold = config.get("stretch_threshold", "")
     prior_extreme = (
         row.get("playbook_prior_min_stretch")
@@ -465,7 +472,7 @@ def _evaluate_one_event(
     )
     stage_summary = (
         f"filter={config.get('stage_filter', 'no_filter')}; "
-        f"actual={row.get('market_pulse_stage', row.get('market_pulse_stage_5m', row.get('vwma_stage_5m', '')))}"
+        f"actual={row.get(_market_pulse_stage_column(str(config.get('stage_timeframe', '1m'))), '')}"
     )
     trigger_summary = (
         f"{config.get('reversal_range_minutes')}m reversal breakout; "
@@ -477,6 +484,7 @@ def _evaluate_one_event(
         "symbol": symbol,
         "direction": direction,
         "event_timestamp": event_timestamp,
+        "event_timestamp_et": event_timestamp_et,
         "trade_date": trade_date,
         "entry_reference_price": _round(trade_path.entry),
         "extension_summary": extension_summary,
@@ -859,6 +867,19 @@ def _round(value: Any, digits: int = 4) -> str:
     if number is None:
         return ""
     return str(round(number, digits))
+
+
+def _event_timestamp_et(value: Any) -> str:
+    if not isinstance(value, datetime):
+        return ""
+    timestamp = value
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(ET).isoformat(timespec="seconds")
+
+
+def _market_pulse_stage_column(timeframe: str) -> str:
+    return "market_pulse_stage" if timeframe == "1m" else f"market_pulse_stage_{timeframe}"
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]], columns: list[str]) -> None:

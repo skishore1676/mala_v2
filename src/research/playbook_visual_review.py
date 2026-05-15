@@ -356,6 +356,7 @@ def _evaluate_one_event(
     max_favorable = 0.0
     max_adverse = 0.0
     exit_family = str(config.get("exit_family", "fixed_1r"))
+    stage_column = _market_pulse_stage_column(str(config.get("stage_timeframe", "1m")))
     time_stop = time(11, 30)
 
     for future in rows[entry_idx + 1 :]:
@@ -404,7 +405,7 @@ def _evaluate_one_event(
         bar_time = future.get("_playbook_bar_time")
         if exit_family == "market_pulse_flip" and _market_pulse_flip_exit(
             direction,
-            future.get("market_pulse_stage"),
+            future.get(stage_column),
         ):
             exit_reason = "market_pulse_flip"
             break
@@ -443,15 +444,16 @@ def _evaluate_one_event(
         "stretch_value": _float(row.get("playbook_stretch_value")),
         "stretch_raw": raw_at_trigger,
         "stage_filter": str(config.get("stage_filter", "no_filter")),
-        "stage_actual": row.get(
-            "market_pulse_stage",
-            row.get("market_pulse_stage_5m", row.get("vwma_stage_5m", "")),
-        ),
+        "stage_actual": row.get(stage_column, ""),
         "gap_state_filter": str(config.get("gap_state_filter", "no_filter")),
         "gap_state": row.get("gap_state", ""),
         "reversal_range_minutes": config.get("reversal_range_minutes", ""),
         "confirming_bars": config.get("confirming_bars", ""),
     }
+
+
+def _market_pulse_stage_column(timeframe: str) -> str:
+    return "market_pulse_stage" if timeframe == "1m" else f"market_pulse_stage_{timeframe}"
 
 
 def _event_groups(

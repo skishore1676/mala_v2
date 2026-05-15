@@ -169,7 +169,7 @@ Candidate feature families:
 | `reversal_bar_breakout` | required after reversal range | entry confirmation candidate |
 | `confirming_bars` | `1`, `2` | tests whether waiting helps or gives up edge |
 | `jerk_1m` / `jerk_5m` | sign/direction bins | exhaustion/deceleration proxy |
-| `reversal_bar_relative_volume_rth` | no filter, `> 1.0`, `> 1.25`, `> 1.5` | tests whether RTH-volume-backed reversal bars improve holdout expectancy |
+| `reversal_bar_relative_volume_rth` | no filter, `> 1.0`, `> 1.25`, `> 1.5` | tests whether RTH-volume-backed reversal bars improve holdout expectancy; baseline is rolling RTH-only bars, not a session-reset opening-volume baseline |
 | `failure_to_extend_reclaim` | yes/no | candidate if easy to define from bars |
 
 Directional interpretation:
@@ -309,7 +309,8 @@ without deleting existing TradingView drawings.
   - `daily_rth_atr_14`
   - `atr_distance_from_prior_rth_close`
   - `gap_state_rth_open`
-  - `relative_volume_rth:<period>`
+  - `relative_volume_rth:<period>` as a rolling RTH-only baseline, not a
+    session-reset opening-volume baseline
 - Strategy: `src.strategy.intraday_mean_reversion.IntradayMeanReversionStrategy`
 - Registry name: `Intraday Mean Reversion at Extremes`
 - Runner:

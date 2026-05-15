@@ -158,6 +158,7 @@ def test_sample_event_excursion_stops_at_evaluated_exit_path() -> None:
     )
 
     assert event is not None
+    assert event["event_timestamp_et"] == "2025-01-02T09:30:00-05:00"
     assert event["pnl_r"] == "-1.0"
     assert event["max_favorable_excursion_r"] == "0.0"
     assert event["max_adverse_excursion_r"] == "1.0"
@@ -222,6 +223,67 @@ def test_market_pulse_flip_exit_uses_one_minute_stage() -> None:
     assert event["exit_reference_price"] == "100.4"
     assert event["pnl_r"] == "0.4"
     assert "exit_reason=market_pulse_flip" in event["trigger_summary"]
+
+
+def test_market_pulse_flip_exit_uses_configured_stage_timeframe() -> None:
+    trade_date = date(2025, 1, 2)
+    rows = [
+        {
+            "timestamp": datetime(2025, 1, 2, 14, 30, tzinfo=timezone.utc),
+            "_playbook_trade_date": trade_date,
+            "_playbook_bar_time": time(9, 30),
+            "signal_direction": "long",
+            "close": 100.0,
+            "low": 99.8,
+            "high": 100.1,
+            "playbook_reversal_low": 99.0,
+            "playbook_stretch_value": 2.0,
+            "market_pulse_stage": "accumulation",
+            "market_pulse_stage_5m": "bullish",
+            "gap_state": "flat",
+        },
+        {
+            "timestamp": datetime(2025, 1, 2, 14, 31, tzinfo=timezone.utc),
+            "_playbook_trade_date": trade_date,
+            "_playbook_bar_time": time(9, 31),
+            "close": 100.2,
+            "low": 99.9,
+            "high": 100.4,
+            "market_pulse_stage": "accumulation",
+            "market_pulse_stage_5m": "bearish",
+        },
+        {
+            "timestamp": datetime(2025, 1, 2, 14, 32, tzinfo=timezone.utc),
+            "_playbook_trade_date": trade_date,
+            "_playbook_bar_time": time(9, 32),
+            "close": 100.4,
+            "low": 100.1,
+            "high": 100.6,
+            "market_pulse_stage": "bearish",
+            "market_pulse_stage_5m": "bullish",
+        },
+    ]
+
+    event = _evaluate_one_event(
+        "QQQ",
+        "cfg",
+        {
+            "stage_timeframe": "5m",
+            "stop_family": "reversal_extreme",
+            "exit_family": "market_pulse_flip",
+            "stretch_source": "opening_vwap",
+            "stretch_threshold": 1.5,
+            "reversal_range_minutes": 5,
+            "confirming_bars": 1,
+        },
+        rows,
+        0,
+    )
+
+    assert event is not None
+    assert event["exit_reference_price"] == "100.2"
+    assert event["pnl_r"] == "0.2"
+    assert "actual=bullish" in event["stage_summary"]
 
 
 def test_market_pulse_flip_exit_is_directional_for_shorts() -> None:

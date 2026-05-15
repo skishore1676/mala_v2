@@ -591,7 +591,7 @@ class PriorRthCloseAtrTransform(FeatureTransform):
 
 @dataclass(frozen=True, slots=True)
 class RelativeVolumeRthTransform(FeatureTransform):
-    """Relative volume over regular-session bars only."""
+    """Relative volume over a rolling baseline of regular-session bars only."""
 
     period: int
     market_open: tuple[int, int] = (9, 30)

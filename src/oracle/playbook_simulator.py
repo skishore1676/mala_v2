@@ -28,6 +28,7 @@ def simulate_intraday_reversion_event(
     direction: str,
     stop_family: str,
     exit_family: str,
+    market_pulse_stage_column: str = "market_pulse_stage",
     trade_date_key: str = "_playbook_trade_date",
     bar_time_key: str = "_playbook_bar_time",
     time_stop: time = time(11, 30),
@@ -92,7 +93,7 @@ def simulate_intraday_reversion_event(
         bar_time = future.get(bar_time_key)
         if exit_family == "market_pulse_flip" and _market_pulse_flip_exit(
             direction,
-            future.get("market_pulse_stage"),
+            future.get(market_pulse_stage_column),
         ):
             exit_reason = "market_pulse_flip"
             break
