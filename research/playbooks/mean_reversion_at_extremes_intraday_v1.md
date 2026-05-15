@@ -112,8 +112,8 @@ Candidate feature families:
 
 | Feature family | Initial candidates | Notes |
 | --- | --- | --- |
-| `z_score_from_opening_vwap` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | preferred opening-drive reference if available |
-| `atr_distance_from_prior_close` | thresholds `0.75, 1.0, 1.25, 1.5, 2.0`; tail bins `2.5, 3.0` | captures overnight gap plus morning displacement |
+| `z_score_from_opening_vwap_rth` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | preferred opening-drive reference; starts at the regular-session open and ignores premarket |
+| `atr_distance_from_prior_rth_close` | thresholds `0.75, 1.0, 1.25, 1.5, 2.0`; tail bins `2.5, 3.0` | captures RTH-open gap plus morning displacement without premarket VWAP contamination |
 | `z_score_from_vpoc_4h` | thresholds `1.5, 2.0, 2.5, 3.0, 3.5` | uses existing auction/VPOC direction where reliable |
 | `atr_distance_from_reference` | binned by symbol and direction | keeps surface comparable across IWM/QQQ |
 | `velocity_1m` | percentile or ATR-normalized bins | distinguishes grind from impulse |
@@ -142,9 +142,8 @@ Candidate filters:
 
 | Feature family | Initial candidates | Notes |
 | --- | --- | --- |
-| `impulse_regime_5m` | `bullish`, `bearish`, `neutral`, `no_filter` | reusable Market Impulse vocabulary |
-| `vwma_stack_8_21_34` or `vma_stack_8_21_34` | bullish stack, bearish stack, mixed, no filter | approximates Suman's stage read |
-| `gap_state` | large gap up, small gap up, flat, small gap down, large gap down, no filter | separates true intraday stretch from gap-plus-continuation days |
+| `market_pulse_stage` | `bullish`, `accumulation`, `distribution`, `bearish`, `no_filter` | Suman's 1m MarketPulse stage vocabulary from VWMA 8/21/34 plus VMA location |
+| `gap_state_rth_open` | large gap up, small gap up, flat, small gap down, large gap down, no filter | separates true intraday stretch from RTH gap-plus-continuation days |
 | broad-market context | aligned, opposed, neutral, no filter | optional if SPY/QQQ context is available cleanly |
 
 The important search question:
@@ -170,7 +169,7 @@ Candidate feature families:
 | `reversal_bar_breakout` | required after reversal range | entry confirmation candidate |
 | `confirming_bars` | `1`, `2` | tests whether waiting helps or gives up edge |
 | `jerk_1m` / `jerk_5m` | sign/direction bins | exhaustion/deceleration proxy |
-| `reversal_bar_relative_volume` | no filter, `> 1.0`, `> 1.25`, `> 1.5` | tests whether volume-backed reversal bars improve holdout expectancy |
+| `reversal_bar_relative_volume_rth` | no filter, `> 1.0`, `> 1.25`, `> 1.5` | tests whether RTH-volume-backed reversal bars improve holdout expectancy |
 | `failure_to_extend_reclaim` | yes/no | candidate if easy to define from bars |
 
 Directional interpretation:
@@ -202,7 +201,7 @@ Candidate invalidation families:
 
 - no favorable movement after `10`, `20`, or `30` minutes
 - new extreme after confirmation
-- VWMA/VMA stack flips into continuation
+- MarketPulse flips into continuation
 - price accepts beyond the stretch reference instead of rejecting it
 - max adverse excursion exceeds the tested stop family
 
@@ -227,6 +226,7 @@ Candidate exits:
 | return to VWAP/reference | opening VWAP, session VWAP, VPOC/reference if available |
 | partial retrace | `25%`, `50%`, `75%` retrace of the early extreme |
 | short MA/VWMA return | return to 8/21/34 reference family |
+| MarketPulse flip | long exits when 1m `market_pulse_stage` flips to `bearish`; short exits when it flips to `bullish` |
 | time stop | morning cutoff, midday cutoff, end-of-day flat |
 
 The exit surface is the most uncertain part of this playbook. Phase 1 should
@@ -260,16 +260,24 @@ Evidence:
 The first build only needs the historical surface and sample events. Live
 current-state matching is a follow-up once the surface is credible.
 
-Visual review should use the generated `sample_events.csv` as the source of
-truth and prepare a TradingView MCP queue with:
+Visual review should happen on the trader chart surface, not in a synthetic
+static renderer. Use the generated playbook run plus cached bars to prepare a
+TradingView overlay packet:
 
 ```bash
-python -m src.research.playbook_tradingview_review \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
+python -m src.research.playbook_visual_review \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --symbol QQQ \
+  --start 2026-05-04 \
+  --end 2026-05-08 \
+  --tv-symbol NASDAQ:QQQ
 ```
 
 This keeps Mala responsible for research events and uses TradingView only for
-human chart inspection, screenshots, and later Pine/indicator visualization.
+human chart inspection. The packet writes `event_review.csv`,
+`event_groups.csv`, a Pine overlay, and optional MCP apply/drawing scripts.
+The Pine overlay is preferred because it preserves the real chart context
+without deleting existing TradingView drawings.
 
 ---
 
@@ -279,8 +287,8 @@ human chart inspection, screenshots, and later Pine/indicator visualization.
 - `src.time_utils` for session/calendar handling
 - `src.newton.transforms` for velocity, acceleration, and jerk-style features
 - existing Newton relative-volume transforms for trigger-volume confirmation
-- `src.newton.market_impulse` and `src.strategy.market_impulse` for Market
-  Impulse / VWMA stack concepts
+- `src.newton.market_impulse` and `src.strategy.market_impulse` for
+  MarketPulse stack concepts
 - `src.strategy.elastic_band_reversion` as a reference for z-score, VPOC, and
   kinematic reversion feature wiring
 - `src.newton.vpoc_daily` and auction-proxy work where the VPOC feature is
@@ -295,12 +303,13 @@ human chart inspection, screenshots, and later Pine/indicator visualization.
 ## Implemented Entry Points
 
 - Newton features:
-  - `opening_vwap`
-  - `prior_close_atr`
-  - `prior_close`
-  - `daily_atr_14`
-  - `atr_distance_from_prior_close`
-  - `gap_state`
+  - `opening_vwap_rth`
+  - `prior_rth_close_atr`
+  - `prior_rth_close`
+  - `daily_rth_atr_14`
+  - `atr_distance_from_prior_rth_close`
+  - `gap_state_rth_open`
+  - `relative_volume_rth:<period>`
 - Strategy: `src.strategy.intraday_mean_reversion.IntradayMeanReversionStrategy`
 - Registry name: `Intraday Mean Reversion at Extremes`
 - Runner:
@@ -313,6 +322,72 @@ python -m src.research.playbook_surface \
   --end 2026-05-13 \
   --out-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
 ```
+
+Operator query:
+
+```bash
+python -m src.research.playbook_surface_query \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --symbol QQQ \
+  --direction short \
+  --timestamp "2026-05-11 09:45 America/New_York"
+```
+
+The query command is playbook-aware, not a separate strategy. It loads the
+surface run, asks the registered playbook adapter how to interpret the
+timestamp state, and writes `QUERY_REVIEW.md` plus `query_result.json` under
+`surface_queries/`.
+
+Recommended analyst-desk query:
+
+```bash
+python -m src.research.playbook_surface_query \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --symbol IWM \
+  --direction short \
+  --timestamp "2026-04-21 08:50 America/Chicago" \
+  --mode state-management
+```
+
+`state-management` is the trader-facing consultation mode. It does not ask
+whether an exact entry rule fired. It finds the nearest historical analogs for
+the current state and requested bias, then reports forward MFE/MAE, reversion
+versus continuation mix across 5m/10m/15m/30m/60m/session-close horizons, and
+a management menu with quick scalp thresholds, VWAP retraces, and VWAP return.
+The management menu leads with `survived`, meaning the target was reached before
+a symmetric adverse move of the same size. `captured` is secondary context, not
+the headline. Rows whose target is below the tradable floor
+`max(0.10 * daily_rth_atr_14, 0.10% * price)` are omitted, because a one- or
+two-cent VWAP retrace is bar noise, not an actionable options scalp. This is the
+preferred desk answer when Suman brings the timestamp and wants to know what
+usually happened next.
+
+Each state-management query appends one row to `consultation_log.csv` in the
+run directory. The trader can later fill in taken/not-taken and actual outcome
+columns, turning replay/live consultations into the forward-shadow journal for
+this playbook. The log intentionally does not auto-pick a suggested exit; the
+system reports the menu and the trader records the selected management row.
+Use `python -m src.research.playbook_consultation_log close ...` to update rows
+after the trade or review. The generic journal vision lives in
+`docs/MALA_2_2_CONSULTATION_JOURNAL.md`.
+
+For live/replay compression, create a deterministic policy card from the query:
+
+```bash
+python -m src.research.playbook_policy_card \
+  --query-json data/results/playbooks/mean_reversion_at_extremes/<run_ts>/surface_queries/<query_id>/query_result.json \
+  --update-log
+```
+
+This card is not an LLM agent. It applies explicit thresholds, picks a usable
+management row if one exists, and records the prefilled row in the journal.
+Future external-context agents can add caveats, but they should not silently
+overwrite the deterministic policy.
+
+Options overlay note: the packet is still underlying-first. A later options
+layer must translate the underlying entry, stop, target, and invalidation into
+contract selection, delta/expiry/spread constraints, option-PnL stops, and
+position sizing. Do not treat underlying R as option R until that layer exists.
 
 ---
 
@@ -335,6 +410,10 @@ Scalable split:
   runs the bounded grid, and writes the conditional-surface artifacts. Surface
   rows should preserve the main conditioning dimensions, including gap state
   and volume-confirmation filter, rather than collapsing them into a note.
+- **Query:** `src.research.playbook_surface_query` is a generic operator-query
+  shell with a small playbook adapter registry. The shell owns artifact loading,
+  timestamp selection, verdict formatting, and report writing. The adapter owns
+  playbook-specific state language and management-packet translation.
 
 This keeps Mala 2.2 from becoming tied to legacy promotion semantics while still
 reusing the parts of Mala v2 that are already strong.
@@ -346,10 +425,24 @@ reusing the parts of Mala v2 that are already strong.
 - run the full IWM/QQQ surface on the 2021-05-13 through current local cache
 - inspect whether favorable regions are broad or fragile
 - choose sample events for chart review
+- treat `near_favorable` rows as chart-review leads only: they missed exactly
+  one strict bound and must show that failed criterion in the review pack
+- do not rank review candidates by raw holdout expectancy; use the candidate
+  taxonomy so tail-payoff and holdout-only pockets do not masquerade as clean
+  reversion
+- compare the new `market_pulse_stage` axis against `no_filter` before concluding
+  that Suman's stage read does or does not matter
+- include `market_pulse_flip` as a normal exit family in the surface, not as a
+  side experiment, so stage can be evaluated for trade management as well as
+  entry filtering
+- split catastrophic `risk_stop` from thesis-state `invalidation` before the
+  playbook grows past first chart-review leads
 - add an entry-quality dimension if chart review confirms late triggers:
   bound the trigger bar's stretch after the reversal so Mala can distinguish
   early reversal entries from snaps that already crossed too far through the
   reference level
+- use timestamp queries to compare Mala's verdict with the trader's chart read
+  before locking any execution packet
 - lock one candidate packet only after chart semantics match the intended play
 - add a targeted locked-packet stress runner that reuses M2/M5-style friction
   and execution-stress mechanics without publishing to old live/autonomous
@@ -370,8 +463,8 @@ Phase 1 is useful if it can answer:
 - Does the edge require climactic velocity or work better without it?
 - Does volume confirmation improve holdout expectancy or just reduce sample
   size?
-- Does the favorable context look like bullish rubber-band snap, bearish
-  continuation, neutral transition, or no stable regime?
+- Does the favorable context look like bullish rubber-band snap, accumulation
+  reversal, distribution fade, bearish continuation, or no stable stage?
 - Does the 5-minute or 15-minute reversal range carry more evidence?
 - Does waiting for 2 confirming bars improve expectancy or just reduce edge?
 - Which stop/invalidation family avoids the worst failures?
@@ -390,5 +483,5 @@ nearby parameter regions and sample counts.
 - no option overlay
 - no Google Sheet publication
 - no TradingView/thinkorswim plotter
-- no global playbook registry
+- no broad global playbook registry beyond the small query-adapter registry
 - no autonomous scanner

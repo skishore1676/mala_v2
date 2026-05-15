@@ -17,6 +17,26 @@ def _minute_series(n: int, start: datetime = datetime(2025, 1, 2, 10, 0)) -> lis
     return [start + timedelta(minutes=i) for i in range(n)]
 
 
+def _rth_context(close: list[float], prior_close: float = 100.0, atr: float = 4.0) -> dict[str, object]:
+    return {
+        "opening_vwap_rth": [101.0] * len(close),
+        "prior_rth_close": [prior_close] * len(close),
+        "daily_rth_atr_14": [atr] * len(close),
+        "atr_distance_from_prior_rth_close": [(value - prior_close) / atr for value in close],
+        "gap_state_rth_open": ["flat"] * len(close),
+    }
+
+
+def _rth_context_row(close: float, prior_close: float = 100.0, atr: float = 4.0) -> dict[str, object]:
+    return {
+        "opening_vwap_rth": 100.0,
+        "prior_rth_close": prior_close,
+        "daily_rth_atr_14": atr,
+        "atr_distance_from_prior_rth_close": (close - prior_close) / atr,
+        "gap_state_rth_open": "flat",
+    }
+
+
 class TestIntradayMeanReversionStrategy:
     def test_generates_short_reversion_signal_after_range_break(self) -> None:
         start = datetime(2025, 1, 2, 14, 30)  # 09:30 ET in UTC
@@ -33,7 +53,9 @@ class TestIntradayMeanReversionStrategy:
                 "daily_atr_14": [4.0] * len(close),
                 "atr_distance_from_prior_close": [0.0, 0.5, 1.2, 1.3, 1.4, 1.2, 0.8, 0.7],
                 "gap_state": ["flat"] * len(close),
+                **_rth_context(close),
                 "impulse_regime_5m": ["neutral"] * len(close),
+                "market_pulse_stage": ["accumulation"] * len(close),
                 "velocity_1m": [0.0, 1.0, 1.0, 1.0, 1.0, -1.0, -2.0, -0.5],
             }
         )
@@ -72,9 +94,12 @@ class TestIntradayMeanReversionStrategy:
                 "daily_atr_14": [4.0] * len(close),
                 "atr_distance_from_prior_close": [0.0, 0.5, 1.2, 1.3, 1.4, 1.2, 0.8],
                 "gap_state": ["flat"] * len(close),
+                **_rth_context(close),
                 "impulse_regime_5m": ["neutral"] * len(close),
+                "market_pulse_stage": ["accumulation"] * len(close),
                 "velocity_1m": [0.0, 1.0, 1.0, 1.0, 1.0, -1.0, -2.0],
                 "relative_volume_20": [0.8] * len(close),
+                "relative_volume_rth_20": [0.8] * len(close),
             }
         )
         strategy = IntradayMeanReversionStrategy(
@@ -89,6 +114,60 @@ class TestIntradayMeanReversionStrategy:
         out = strategy.generate_signals(base)
 
         assert out.filter(pl.col("signal")).is_empty()
+
+    def test_reversal_range_does_not_leak_across_sessions(self) -> None:
+        day1_start = datetime(2025, 1, 2, 20, 55)  # 15:55 ET in UTC
+        day2_start = datetime(2025, 1, 3, 14, 30)  # 09:30 ET in UTC
+        rows = []
+        for i, close in enumerate([91.0, 90.5, 90.0, 90.8, 91.2]):
+            rows.append(
+                {
+                    "timestamp": day1_start + timedelta(minutes=i),
+                    "open": close,
+                    "high": close + 0.2,
+                    "low": close - 0.2,
+                    "close": close,
+                    "opening_vwap": 100.0,
+                    "prior_close": 100.0,
+                    "daily_atr_14": 4.0,
+                    "atr_distance_from_prior_close": (close - 100.0) / 4.0,
+                    "gap_state": "flat",
+                    **_rth_context_row(close),
+                    "impulse_regime_5m": "neutral",
+                    "market_pulse_stage": "accumulation",
+                    "velocity_1m": -0.5,
+                }
+            )
+        rows.append(
+            {
+                "timestamp": day2_start,
+                "open": 93.0,
+                "high": 93.2,
+                "low": 92.8,
+                "close": 93.0,
+                "opening_vwap": 100.0,
+                "prior_close": 100.0,
+                "daily_atr_14": 4.0,
+                "atr_distance_from_prior_close": -1.75,
+                "gap_state": "flat",
+                **_rth_context_row(93.0),
+                "impulse_regime_5m": "neutral",
+                "market_pulse_stage": "accumulation",
+                "velocity_1m": 2.0,
+            }
+        )
+        strategy = IntradayMeanReversionStrategy(
+            stretch_source="prior_close_atr",
+            stretch_threshold=1.0,
+            reversal_range_minutes=5,
+            use_jerk_confirmation=False,
+            velocity_periods_back=1,
+            velocity_filter="no_filter",
+        )
+
+        out = strategy.generate_signals(pl.DataFrame(rows))
+
+        assert out.filter(pl.col("timestamp") == day2_start).select("signal").item() is False
 
     def test_missing_columns_raise(self) -> None:
         strategy = IntradayMeanReversionStrategy()
@@ -365,6 +444,7 @@ class TestOpeningDriveClassifierStrategy:
                 "jerk_1m": trigger_jerk if i == 30 else 0.0,
                 "directional_mass": trigger_directional_mass if i == 30 else 10.0,
                 "impulse_regime_5m": trigger_regime,
+                "market_pulse_stage_5m": "bullish" if trigger_regime == "bullish" else "bearish" if trigger_regime == "bearish" else "accumulation",
             })
         return pl.DataFrame(rows)
 

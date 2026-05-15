@@ -1,0 +1,99 @@
+//@version=6
+indicator("Mala Market Pulse + Rolling VPOC", overlay=true, max_labels_count=100)
+
+showVma = input.bool(true, "Show VMA")
+showVwmaStack = input.bool(false, "Show VWMA 8/21/34")
+showStageBackground = input.bool(false, "Tint stage background")
+showStageTable = input.bool(false, "Show stage table")
+showVpoc = input.bool(false, "Show rolling VPOC")
+
+vmaLength = input.int(10, "VMA length", minval=2)
+vwmaFastLength = input.int(8, "VWMA fast", minval=1)
+vwmaMidLength = input.int(21, "VWMA mid", minval=2)
+vwmaSlowLength = input.int(34, "VWMA slow", minval=3)
+
+vpocLookbackBars = input.int(240, "VPOC lookback bars", minval=20, maxval=500)
+vpocPriceBucket = input.float(0.25, "VPOC price bucket", minval=0.01, step=0.01)
+vpocMaxBuckets = input.int(160, "VPOC max buckets", minval=20, maxval=500)
+vpocUsePriorBarsOnly = input.bool(true, "VPOC excludes current bar")
+
+diff = close - nz(close[1], close)
+upMove = math.max(diff, 0.0)
+downMove = math.max(-diff, 0.0)
+sumUp = math.sum(upMove, vmaLength)
+sumDown = math.sum(downMove, vmaLength)
+directionalStrength = (sumUp + sumDown) != 0.0 ? ((sumUp - sumDown) / (sumUp + sumDown)) * 100.0 : 0.0
+coeff = (2.0 / (vmaLength + 1.0)) * math.abs(directionalStrength) / 100.0
+
+var float vma = na
+vma := na(vma[1]) ? close : coeff * close + (1.0 - coeff) * vma[1]
+
+vwmaFast = ta.vwma(close, vwmaFastLength)
+vwmaMid = ta.vwma(close, vwmaMidLength)
+vwmaSlow = ta.vwma(close, vwmaSlowLength)
+
+bullishStack = vwmaFast > vwmaMid and vwmaMid > vwmaSlow
+bearishStack = vwmaFast < vwmaMid and vwmaMid < vwmaSlow
+
+isAcceleration = bullishStack and close >= vma
+isDeceleration = bearishStack and close <= vma
+isAccumulation = not isAcceleration and close >= vma
+
+stageText = isAcceleration ? "Stage: Acceleration" : isDeceleration ? "Stage: Deceleration" : isAccumulation ? "Stage: Accumulation" : "Stage: Distribution"
+stageColor = isAcceleration ? color.green : isDeceleration ? color.red : isAccumulation ? color.yellow : color.orange
+vmaColor = isAcceleration ? color.green : isDeceleration ? color.red : color.gray
+
+plot(showVma ? vma : na, "Market Pulse VMA", color=vmaColor, linewidth=2)
+plot(showVwmaStack ? vwmaFast : na, "VWMA fast", color=color.new(color.rgb(0, 180, 120), 0), linewidth=1)
+plot(showVwmaStack ? vwmaMid : na, "VWMA mid", color=color.new(color.rgb(255, 190, 40), 0), linewidth=1)
+plot(showVwmaStack ? vwmaSlow : na, "VWMA slow", color=color.new(color.rgb(210, 80, 80), 0), linewidth=1)
+
+bgcolor(showStageBackground ? color.new(stageColor, 90) : na, title="Market Pulse stage tint")
+
+var float[] vpocVolumeBins = array.new_float(0)
+
+float vpoc = na
+int startOffset = vpocUsePriorBarsOnly ? 1 : 0
+windowLowRaw = ta.lowest(low[startOffset], vpocLookbackBars)
+windowHighRaw = ta.highest(high[startOffset], vpocLookbackBars)
+if bar_index >= vpocLookbackBars + startOffset
+    windowLowBin = math.floor(windowLowRaw / vpocPriceBucket) * vpocPriceBucket
+    requiredBuckets = int(math.floor((windowHighRaw - windowLowBin) / vpocPriceBucket)) + 1
+    bucketCount = math.min(vpocMaxBuckets, math.max(1, requiredBuckets))
+    if array.size(vpocVolumeBins) != bucketCount
+        array.clear(vpocVolumeBins)
+        for bin = 0 to bucketCount - 1
+            array.push(vpocVolumeBins, 0.0)
+    else
+        for bin = 0 to bucketCount - 1
+            array.set(vpocVolumeBins, bin, 0.0)
+    for offset = startOffset to vpocLookbackBars + startOffset - 1
+        typicalPrice = (high[offset] + low[offset] + close[offset]) / 3.0
+        rawIndex = math.round((typicalPrice - windowLowBin) / vpocPriceBucket)
+        binIndex = int(math.max(0.0, math.min(bucketCount - 1.0, rawIndex)))
+        array.set(vpocVolumeBins, binIndex, array.get(vpocVolumeBins, binIndex) + volume[offset])
+    maxVolume = array.get(vpocVolumeBins, 0)
+    maxIndex = 0
+    for bin = 1 to bucketCount - 1
+        binVolume = array.get(vpocVolumeBins, bin)
+        if binVolume > maxVolume
+            maxVolume := binVolume
+            maxIndex := bin
+    vpoc := windowLowBin + maxIndex * vpocPriceBucket
+
+plot(showVpoc ? vpoc : na, "Rolling VPOC approx", color=color.new(color.aqua, 0), linewidth=2, style=plot.style_linebr)
+
+plotshape(ta.change(isAcceleration ? 1 : isDeceleration ? -1 : isAccumulation ? 2 : -2) != 0, title="Stage change", style=shape.circle, location=location.bottom, size=size.tiny, color=stageColor)
+
+var table stageTable = table.new(position.top_right, 2, 4, border_width=1)
+if showStageTable and barstate.islast
+    table.cell(stageTable, 0, 0, "Market Pulse", text_color=color.white, bgcolor=stageColor)
+    table.cell(stageTable, 1, 0, stageText, text_color=color.white, bgcolor=stageColor)
+    table.cell(stageTable, 0, 1, "VWMA stack", text_color=color.white, bgcolor=color.new(color.black, 35))
+    table.cell(stageTable, 1, 1, bullishStack ? "bullish" : bearishStack ? "bearish" : "mixed", text_color=color.white, bgcolor=color.new(color.black, 35))
+    table.cell(stageTable, 0, 2, "Close vs VMA", text_color=color.white, bgcolor=color.new(color.black, 35))
+    table.cell(stageTable, 1, 2, close >= vma ? "above" : "below", text_color=color.white, bgcolor=color.new(color.black, 35))
+    table.cell(stageTable, 0, 3, "VPOC", text_color=color.white, bgcolor=color.new(color.black, 35))
+    table.cell(stageTable, 1, 3, na(vpoc) ? "warming" : str.tostring(vpoc, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 35))
+else if not showStageTable and barstate.islast
+    table.clear(stageTable, 0, 0, 1, 3)

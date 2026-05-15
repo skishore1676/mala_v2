@@ -95,7 +95,7 @@ Reuse existing Mala/Newton surfaces where they fit the play:
 - `src.newton.transforms` for velocity, acceleration, and jerk-style features
 - Newton relative-volume transforms for trigger-volume confirmation
 - `src.newton.market_impulse` / `src.strategy.market_impulse` for 8/21/34
-  VWMA stack and `impulse_regime_5m`
+  VWMA stack and trader-facing 1m `market_pulse_stage`
 - `src.strategy.elastic_band_reversion` as a reference for z-score, VPOC, and
   kinematic reversion feature wiring
 - VPOC/auction-proxy helpers where the feature is available and reliable
@@ -115,8 +115,8 @@ Implemented:
 
 - playbook-surface CLI and run config
 - registered playbook strategy for the v1 grid
-- Newton feature additions for opening VWAP, prior-close ATR distance, and
-  `gap_state`
+- Newton feature additions for RTH opening VWAP, prior-RTH-close ATR distance,
+  `gap_state_rth_open`, and RTH relative volume
 - reversal-range event construction
 - stop, invalidation, and exit evaluation in R units
 - calibration/holdout reporting
@@ -138,6 +138,17 @@ Scaling model:
   simulation, and exit-policy math.
 - Research owns the CLI, run loop, calibration/holdout slicing, and output
   contract.
+- Query owns the operator-facing timestamp question through
+  `src.research.playbook_surface_query`: a generic shell plus one registered
+  adapter for this first playbook. Future playbooks should add adapters instead
+  of forking the query command.
+- Query supports two modes:
+  - `state-management`: the preferred analyst-desk mode. It ignores rule firing
+    as the primary product question, retrieves nearest historical analogs for
+    the current state and requested bias, then reports empirical forward
+    outcomes and management rows.
+  - `signal`: a sparse rule-firing debug mode for checking whether the timestamp
+    matches an active playbook entry.
 
 This lets new playbooks scale by adding strategy/search surfaces and only adding
 Newton features when a reusable market concept is missing.
@@ -171,8 +182,8 @@ current playbook handoff target.
 - the output is a map, not a single promoted candidate
 
 The current repo's M3 concept is walk-forward/OOS stability rather than a pure
-regime gate. In Mala 2.2, regime features such as `impulse_regime_5m` and
-`gap_state` are primarily search dimensions. If the play only works in neutral
+regime gate. In Mala 2.2, stage/regime features such as 1m `market_pulse_stage` and
+`gap_state_rth_open` are primarily search dimensions. If the play only works in accumulation
 contexts, that should become a mapped constraint, not a reason to kill the whole
 playbook.
 
@@ -216,6 +227,67 @@ Live matching, Bhiksha integration, option overlay, and plotting are later
 steps. The first proof remains the historical surface plus sample-event chart
 review.
 
+### Analyst Desk Pivot
+
+The consultation surface must not be a thin wrapper over entry-rule firing. A
+timestamp query should answer:
+
+```text
+I am looking at this state with this bias. What did the closest historical
+analogs do next, and what management choices would have helped?
+```
+
+The preferred query mode is therefore `state-management`, not `signal`.
+
+It returns:
+
+- a trader-readable current-state summary
+- nearest historical analog count and similarity
+- the similarity recipe, including feature scales, weights, and stage/gap
+  mismatch penalties
+- forward MFE/MAE over `5`, `10`, `15`, `30`, `60`, and session-close
+  horizons
+- reversion, continuation, and chop mix
+- empirical management rows for quick scalp thresholds, VWAP retraces, and VWAP
+  return
+- omission of management rows whose target is below the tradable floor
+  `max(0.10 * daily_rth_atr_14, 0.10% * price)`, so tiny VWAP retraces do not get
+  promoted as edge
+- honest desk reads such as `strong_reversion_lean`, `reversion_lean`,
+  `mixed_cohort`, `continuation_lean`, `strong_continuation_risk`, or
+  `too_thin`
+- an append-only `consultation_log.csv` row so replay/live questions become a
+  forward-shadow journal
+
+The consultation log should record what the desk reported, then leave
+`selected_exit`, `taken`, and actual outcome columns empty for the trader or
+post-close updater. The query path should not auto-pick the exit row.
+
+The generic journal contract and close/update CLI are defined in
+`docs/MALA_2_2_CONSULTATION_JOURNAL.md`.
+
+`wait_no_trigger` is not the primary live desk product. It remains useful for
+debugging the sparse event constructor, but the trader-facing consultation
+should browse historical analogs.
+
+### Options Layer Boundary
+
+The query packet is currently underlying-first. If Suman asks "what if I still
+enter?", Mala can return an underlying entry, stop, target, invalidation, and
+evidence context. It must not pretend that this directly solves options
+execution.
+
+The later options layer should sit on top of the locked or queried underlying
+thesis and translate:
+
+- underlying entry/stop/target into option-contract selection
+- delta, expiry, spread/liquidity, and theta exposure into expected option PnL
+- underlying thesis invalidation into option stop/adjustment rules
+- position sizing from underlying R into contract-level risk
+
+Until that layer exists, options guidance should be framed as "underlying thesis
+management only."
+
 ---
 
 ## Search Surface
@@ -241,8 +313,8 @@ The event trigger must occur inside the candidate window.
 
 Candidate feature families:
 
-- `z_score_from_opening_vwap`
-- `atr_distance_from_prior_close`
+- `z_score_from_opening_vwap_rth`
+- `atr_distance_from_prior_rth_close`
 - `z_score_from_vpoc_4h`
 - `atr_distance_from_reference`
 - `velocity_1m`
@@ -281,17 +353,15 @@ after slower unsupported extension.
 Candidate filters:
 
 - no stage filter
-- `impulse_regime_5m = bullish`
-- `impulse_regime_5m = bearish`
-- `impulse_regime_5m = neutral`
-- 8/21/34 VMA/VWMA stack bullish
-- 8/21/34 VMA/VWMA stack bearish
-- 8/21/34 VMA/VWMA stack mixed
-- `gap_state = gap_up_large`
-- `gap_state = gap_up_small`
-- `gap_state = flat`
-- `gap_state = gap_down_small`
-- `gap_state = gap_down_large`
+- `market_pulse_stage = bullish`
+- `market_pulse_stage = accumulation`
+- `market_pulse_stage = distribution`
+- `market_pulse_stage = bearish`
+- `gap_state_rth_open = gap_up_large`
+- `gap_state_rth_open = gap_up_small`
+- `gap_state_rth_open = flat`
+- `gap_state_rth_open = gap_down_small`
+- `gap_state_rth_open = gap_down_large`
 - broad market context using SPY/QQQ trend if available
 
 Key question: does the fade work better as a rubber-band snap in a still-bullish
@@ -319,7 +389,7 @@ Candidate stop and invalidation families:
 - reversal-bar low/high
 - reversal-bar midpoint
 - loss of reversal range
-- VWMA/VMA stack flip
+- MarketPulse flip into continuation
 - no favorable movement within `10`, `20`, or `30` minutes
 - acceptance beyond the extreme
 - `immediate_entry_bar_failure` for the head-fake case
@@ -333,6 +403,8 @@ Candidate exits:
 - return to VPOC/reference if available
 - return to short moving average / VWMA reference
 - `25%`, `50%`, `75%` retrace of the early-session extreme
+- `market_pulse_flip`: long exits when 1m `market_pulse_stage` flips to
+  `bearish`; short exits when it flips to `bullish`
 - time stop
 - end-of-day flat
 
@@ -391,14 +463,22 @@ Minimum columns:
 - `calibration_win_rate`
 - `holdout_win_rate`
 - `match_grade`
+- `criteria_failed_count`
+- `criteria_failed`
 - `evidence_note`
 
 `match_grade` vocabulary:
 
 - `favorable`
+- `near_favorable`
 - `partial`
 - `outside`
 - `insufficient`
+
+`near_favorable` means exactly one strict criterion missed while calibration or
+holdout expectancy remained positive. It is a chart-review lead, not proof.
+`criteria_failed` must name the failed bounds so a trader can tell a one-bound
+miss from a way-off partial result.
 
 ### `feature_bins_by_symbol.csv`
 
@@ -430,7 +510,7 @@ Minimum columns:
 - `entry_reference_price`
 - `extension_summary`
 - `stage_summary`
-- `gap_state`
+- `gap_state` derived from `gap_state_rth_open`
 - `trigger_summary`
 - `volume_confirmation_summary`
 - `stop_reference_price`
@@ -522,16 +602,35 @@ python -m src.research.playbook_surface \
 
 The smoke is not proof. It only verifies that the artifact pipeline works.
 
+Operator-query smoke after a surface exists:
+
+```bash
+python -m src.research.playbook_surface_query \
+  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --symbol QQQ \
+  --direction short \
+  --timestamp "2026-05-11 09:45 America/New_York"
+```
+
+This should write a timestamp-specific `QUERY_REVIEW.md` and
+`query_result.json`. The verdict is not live authorization; it is the surface's
+answer to the trader's stated bias at one historical or current bar.
+
 ---
 
 ## Review Gate
 
 Bring Suman back when the first run can show:
 
-- top favorable regions by symbol/direction
+- candidate regions by symbol/direction, ranked by review taxonomy rather than
+  raw holdout expectancy
 - clear unfavorable/outside regions
 - sample events
 - a short receipt that says whether this looks like a real playbook surface
+
+The receipt must not publish a simple "top holdout expectancy" leaderboard. That
+rebuilds the old M1-style artifact and over-promotes tail-payoff or holdout-only
+pockets. Use `surface_review/SURFACE_REVIEW.md` for the trader-facing taxonomy.
 
 Do not ask Suman to pick numeric thresholds that the system can search. Ask
 only if the play semantics are ambiguous.

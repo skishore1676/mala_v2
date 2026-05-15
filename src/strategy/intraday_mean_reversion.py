@@ -17,15 +17,22 @@ from loguru import logger
 from src.newton.transforms import jerk_column_name, validate_periods_back, velocity_column_name
 from src.research.models import DomainSpec, ObjectiveSpec, ParameterSpec, StrategySearchSpec
 from src.strategy.base import BaseStrategy, coerce_time
-from src.time_utils import et_time_expr
+from src.time_utils import et_date_expr, et_time_expr
 
 
 STRATEGY_NAME = "Intraday Mean Reversion at Extremes"
 PLAYBOOK_ID = "mean-reversion-at-extremes-intraday"
 
-STRETCH_SOURCES = ("opening_vwap", "prior_close_atr", "vpoc_4h")
+STRETCH_SOURCES = (
+    "opening_vwap_rth",
+    "prior_rth_close_atr",
+    "vpoc_4h",
+    "opening_vwap",
+    "prior_close_atr",
+)
 VELOCITY_FILTERS = ("no_filter", "aligned", "climactic", "non_climactic")
-STAGE_FILTERS = ("no_filter", "bullish", "bearish", "neutral")
+STAGE_FILTERS = ("no_filter", "bullish", "accumulation", "distribution", "bearish")
+STAGE_TIMEFRAMES = ("1m", "5m", "15m")
 GAP_STATE_FILTERS = (
     "no_filter",
     "gap_up_large",
@@ -45,6 +52,7 @@ EXIT_FAMILIES = (
     "fixed_2r",
     "vwap_return",
     "partial_retrace_50",
+    "market_pulse_flip",
     "time_stop",
 )
 
@@ -57,7 +65,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
         *,
         entry_window_start: time | str = "09:30",
         entry_window_end: time | str = "10:15",
-        stretch_source: str = "opening_vwap",
+        stretch_source: str = "opening_vwap_rth",
         stretch_threshold: float = 2.0,
         z_score_window: int = 30,
         reversal_range_minutes: int = 5,
@@ -66,6 +74,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
         velocity_filter: str = "no_filter",
         velocity_atr_threshold: float = 0.10,
         stage_filter: str = "no_filter",
+        stage_timeframe: str = "1m",
         gap_state_filter: str = "no_filter",
         use_jerk_confirmation: bool = True,
         jerk_periods_back: int | None = None,
@@ -92,6 +101,11 @@ class IntradayMeanReversionStrategy(BaseStrategy):
         self.velocity_filter = _require_one("velocity_filter", velocity_filter, VELOCITY_FILTERS)
         self.velocity_atr_threshold = abs(float(velocity_atr_threshold))
         self.stage_filter = _require_one("stage_filter", stage_filter, STAGE_FILTERS)
+        self.stage_timeframe = _require_one(
+            "stage_timeframe",
+            stage_timeframe,
+            STAGE_TIMEFRAMES,
+        )
         self.gap_state_filter = _require_one(
             "gap_state_filter",
             gap_state_filter,
@@ -122,39 +136,46 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             "high",
             "low",
             "close",
-            "opening_vwap",
-            "prior_close",
-            "daily_atr_14",
-            "gap_state",
-            "impulse_regime_5m",
+            "opening_vwap_rth",
+            "prior_rth_close",
+            "daily_rth_atr_14",
+            "gap_state_rth_open",
+            _market_pulse_stage_column(self.stage_timeframe),
             velocity_column_name(self.velocity_periods_back),
         }
-        if self.stretch_source == "prior_close_atr":
+        if self.stretch_source == "prior_rth_close_atr":
+            features.add("atr_distance_from_prior_rth_close")
+        elif self.stretch_source == "prior_close_atr":
             features.add("atr_distance_from_prior_close")
+            features.update({"prior_close", "daily_atr_14", "gap_state"})
         elif self.stretch_source == "vpoc_4h":
             features.add("vpoc_4h")
-        else:
+        elif self.stretch_source == "opening_vwap":
             features.add("opening_vwap")
+        else:
+            features.add("opening_vwap_rth")
         if self.use_jerk_confirmation:
             features.add(jerk_column_name(self.jerk_periods_back))
         if self.relative_volume_threshold is not None:
-            features.add(f"relative_volume_{self.relative_volume_period}")
+            features.add(f"relative_volume_rth_{self.relative_volume_period}")
         return features
 
     @property
     def feature_requests(self) -> set[str]:
         requests = {
-            "opening_vwap",
-            "prior_close_atr",
-            "market_impulse:5m",
+            "opening_vwap_rth",
+            "prior_rth_close_atr",
+            _market_pulse_stage_column(self.stage_timeframe),
             _kinematic_spec("velocity", self.velocity_periods_back),
         }
+        if self.stretch_source in {"opening_vwap", "prior_close_atr"}:
+            requests.update({"opening_vwap", "prior_close_atr"})
         if self.stretch_source == "vpoc_4h":
             requests.add("vpoc")
         if self.use_jerk_confirmation:
             requests.add(_kinematic_spec("jerk", self.jerk_periods_back))
         if self.relative_volume_threshold is not None:
-            requests.add(f"relative_volume:{self.relative_volume_period}")
+            requests.add(f"relative_volume_rth:{self.relative_volume_period}")
         return requests
 
     @property
@@ -181,7 +202,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
                     type="categorical",
                     domain=DomainSpec(values=list(STRETCH_SOURCES)),
                     default=self.stretch_source,
-                    prior_center="opening_vwap",
+                    prior_center="opening_vwap_rth",
                 ),
                 ParameterSpec(
                     name="stretch_threshold",
@@ -281,6 +302,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             "velocity_filter": self.velocity_filter,
             "velocity_atr_threshold": self.velocity_atr_threshold,
             "stage_filter": self.stage_filter,
+            "stage_timeframe": self.stage_timeframe,
             "gap_state_filter": self.gap_state_filter,
             "use_jerk_confirmation": self.use_jerk_confirmation,
             "jerk_periods_back": self.jerk_periods_back,
@@ -299,38 +321,49 @@ class IntradayMeanReversionStrategy(BaseStrategy):
 
         velocity_col = velocity_column_name(self.velocity_periods_back)
         jerk_col = jerk_column_name(self.jerk_periods_back)
-        relvol_col = f"relative_volume_{self.relative_volume_period}"
+        relvol_col = f"relative_volume_rth_{self.relative_volume_period}"
         range_window = self.reversal_range_minutes
 
         context = (
-            df.with_columns(et_time_expr("timestamp").alias("_bar_time"))
+            df.with_columns(
+                [
+                    et_date_expr("timestamp").alias("_trade_date"),
+                    et_time_expr("timestamp").alias("_bar_time"),
+                ]
+            )
             .with_columns(self._stretch_raw_expr().alias("_stretch_raw"))
             .with_columns(self._stretch_value_expr().alias("_stretch_value"))
             .with_columns(
                 [
                     pl.col("high")
-                    .rolling_max(window_size=range_window, min_samples=1)
+                    .rolling_max(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_reversal_high"),
                     pl.col("low")
-                    .rolling_min(window_size=range_window, min_samples=1)
+                    .rolling_min(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_reversal_low"),
                     pl.col("_stretch_value")
-                    .rolling_max(window_size=range_window, min_samples=1)
+                    .rolling_max(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_prev_max_stretch"),
                     pl.col("_stretch_value")
-                    .rolling_min(window_size=range_window, min_samples=1)
+                    .rolling_min(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_prev_min_stretch"),
                     pl.col(velocity_col)
-                    .rolling_max(window_size=range_window, min_samples=1)
+                    .rolling_max(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_prev_max_velocity"),
                     pl.col(velocity_col)
-                    .rolling_min(window_size=range_window, min_samples=1)
+                    .rolling_min(window_size=range_window, min_samples=range_window)
                     .shift(1)
+                    .over("_trade_date")
                     .alias("_prev_min_velocity"),
                 ]
             )
@@ -344,6 +377,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
                     pl.col("_reversal_high").alias("playbook_reversal_high"),
                     pl.col("_reversal_low").alias("playbook_reversal_low"),
                     pl.lit(self.stretch_source).alias("playbook_stretch_source"),
+                    pl.col("_stretch_raw").alias("playbook_stretch_raw"),
                     pl.col("_stretch_value").alias("playbook_stretch_value"),
                     pl.col("_prev_max_stretch").alias("playbook_prior_max_stretch"),
                     pl.col("_prev_min_stretch").alias("playbook_prior_min_stretch"),
@@ -367,11 +401,19 @@ class IntradayMeanReversionStrategy(BaseStrategy):
         long_breakout = pl.col("close") > pl.col("_reversal_high")
         short_breakout = pl.col("close") < pl.col("_reversal_low")
         if self.confirming_bars >= 2:
-            long_breakout = long_breakout & (pl.col("close").shift(1) > pl.col("_reversal_high").shift(1))
-            short_breakout = short_breakout & (pl.col("close").shift(1) < pl.col("_reversal_low").shift(1))
+            long_breakout = long_breakout & (
+                pl.col("close").shift(1).over("_trade_date")
+                > pl.col("_reversal_high").shift(1).over("_trade_date")
+            )
+            short_breakout = short_breakout & (
+                pl.col("close").shift(1).over("_trade_date")
+                < pl.col("_reversal_low").shift(1).over("_trade_date")
+            )
 
         long_stretch = pl.col("_prev_min_stretch") <= -self.stretch_threshold
         short_stretch = pl.col("_prev_max_stretch") >= self.stretch_threshold
+        long_reference_unresolved = pl.col("_stretch_raw") < 0
+        short_reference_unresolved = pl.col("_stretch_raw") > 0
         long_velocity = self._velocity_filter_expr("long")
         short_velocity = self._velocity_filter_expr("short")
         if self.use_jerk_confirmation:
@@ -388,6 +430,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             & gap_filter
             & volume_filter
             & long_stretch
+            & long_reference_unresolved
             & long_breakout
             & long_velocity
             & long_jerk
@@ -399,6 +442,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             & gap_filter
             & volume_filter
             & short_stretch
+            & short_reference_unresolved
             & short_breakout
             & short_velocity
             & short_jerk
@@ -426,7 +470,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
                     ),
                 ]
             )
-            .drop(["_bar_time", "_stretch_raw"])
+            .drop(["_trade_date", "_bar_time", "_stretch_raw"])
         )
 
         total = result.filter(pl.col("signal")).height
@@ -445,6 +489,8 @@ class IntradayMeanReversionStrategy(BaseStrategy):
     def _stretch_raw_expr(self) -> pl.Expr:
         if self.stretch_source == "prior_close_atr":
             return pl.col("atr_distance_from_prior_close")
+        if self.stretch_source == "prior_rth_close_atr":
+            return pl.col("atr_distance_from_prior_rth_close")
         reference = self._reference_price_expr()
         return (
             pl.when(reference > 0)
@@ -455,15 +501,17 @@ class IntradayMeanReversionStrategy(BaseStrategy):
     def _stretch_value_expr(self) -> pl.Expr:
         if self.stretch_source == "prior_close_atr":
             return pl.col("_stretch_raw")
+        if self.stretch_source == "prior_rth_close_atr":
+            return pl.col("_stretch_raw")
         min_samples = min(5, self.z_score_window)
         mean = pl.col("_stretch_raw").rolling_mean(
             window_size=self.z_score_window,
             min_samples=min_samples,
-        )
+        ).over("_trade_date")
         std = pl.col("_stretch_raw").rolling_std(
             window_size=self.z_score_window,
             min_samples=min_samples,
-        )
+        ).over("_trade_date")
         return pl.when(std > 0).then((pl.col("_stretch_raw") - mean) / std).otherwise(None)
 
     def _reference_price_expr(self) -> pl.Expr:
@@ -471,17 +519,23 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             return pl.col("vpoc_4h")
         if self.stretch_source == "prior_close_atr":
             return pl.col("prior_close")
-        return pl.col("opening_vwap")
+        if self.stretch_source == "prior_rth_close_atr":
+            return pl.col("prior_rth_close")
+        if self.stretch_source == "opening_vwap":
+            return pl.col("opening_vwap")
+        return pl.col("opening_vwap_rth")
 
     def _stage_filter_expr(self) -> pl.Expr:
         if self.stage_filter == "no_filter":
             return pl.lit(True)
-        return (pl.col("impulse_regime_5m") == self.stage_filter).fill_null(False)
+        return (
+            pl.col(_market_pulse_stage_column(self.stage_timeframe)) == self.stage_filter
+        ).fill_null(False)
 
     def _gap_filter_expr(self) -> pl.Expr:
         if self.gap_state_filter == "no_filter":
             return pl.lit(True)
-        return (pl.col("gap_state") == self.gap_state_filter).fill_null(False)
+        return (pl.col("gap_state_rth_open") == self.gap_state_filter).fill_null(False)
 
     def _velocity_filter_expr(self, direction: str) -> pl.Expr:
         if self.velocity_filter == "no_filter":
@@ -495,7 +549,7 @@ class IntradayMeanReversionStrategy(BaseStrategy):
         if self.velocity_filter == "aligned":
             return aligned.fill_null(False)
 
-        normalized = (velocity.abs() / pl.col("daily_atr_14")).fill_null(0.0)
+        normalized = (velocity.abs() / pl.col("daily_rth_atr_14")).fill_null(0.0)
         if self.velocity_filter == "climactic":
             return (aligned & (normalized >= self.velocity_atr_threshold)).fill_null(False)
         return (aligned & (normalized < self.velocity_atr_threshold)).fill_null(False)
@@ -508,6 +562,10 @@ class IntradayMeanReversionStrategy(BaseStrategy):
 
 def _kinematic_spec(kind: str, periods_back: int) -> str:
     return kind if periods_back == 1 else f"{kind}:{periods_back}"
+
+
+def _market_pulse_stage_column(timeframe: str) -> str:
+    return "market_pulse_stage" if timeframe == "1m" else f"market_pulse_stage_{timeframe}"
 
 
 def _require_one(name: str, value: str, legal: tuple[str, ...]) -> str:

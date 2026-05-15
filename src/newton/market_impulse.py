@@ -9,9 +9,15 @@ Two components:
   2. VWMA Stack (8 / 21 / 34) – volume-weighted moving averages that
      define the market regime (bullish / bearish / neutral).
 
-Combined, these produce four market stages:
+Combined, these produce four Market Pulse stages:
   - Acceleration:  Bullish regime + Close ≥ VMA
   - Deceleration:  Bearish regime + Close ≤ VMA
+  - Accumulation:  Close ≥ VMA but NOT bullish
+  - Distribution:  Close < VMA
+
+Mala playbooks expose the same state in Suman's MarketPulse language:
+  - Bullish:       bullish VWMA stack + Close ≥ VMA
+  - Bearish:       bearish VWMA stack + Close ≤ VMA
   - Accumulation:  Close ≥ VMA but NOT bullish
   - Distribution:  Close < VMA
 """
@@ -178,6 +184,45 @@ def classify_stage(
     return stage
 
 
+def classify_market_pulse_stage(
+    regime: np.ndarray,
+    close: np.ndarray,
+    vma: np.ndarray,
+) -> np.ndarray:
+    """
+    Classify each bar into Suman's MarketPulse stage vocabulary:
+      Bullish:       bullish VWMA stack + close >= VMA
+      Bearish:       bearish VWMA stack + close <= VMA
+      Accumulation:  close >= VMA + NOT bullish
+      Distribution:  close < VMA
+    """
+    n = len(close)
+    stage = np.full(n, "distribution", dtype=object)
+
+    for i in range(n):
+        if np.isnan(vma[i]):
+            continue
+        if regime[i] == "bullish" and close[i] >= vma[i]:
+            stage[i] = "bullish"
+        elif regime[i] == "bearish" and close[i] <= vma[i]:
+            stage[i] = "bearish"
+        elif close[i] >= vma[i]:
+            stage[i] = "accumulation"
+        else:
+            stage[i] = "distribution"
+
+    return stage
+
+
+def classify_vwma_stage(
+    regime: np.ndarray,
+    close: np.ndarray,
+    vma: np.ndarray,
+) -> np.ndarray:
+    """Backward-compatible alias for the MarketPulse stage classifier."""
+    return classify_market_pulse_stage(regime, close, vma)
+
+
 # ── High-Level Enrichment Functions ────────────────────────────────────────
 
 
@@ -197,6 +242,8 @@ def enrich_impulse_columns(
       - vwma_{p}{suffix}  for each p in vwma_periods
       - impulse_regime{suffix}
       - impulse_stage{suffix}
+      - market_pulse_stage{suffix}
+      - vwma_stage{suffix}
     """
     validated_periods = validate_vwma_periods(vwma_periods)
     close = df["close"].to_numpy().astype(np.float64)
@@ -217,6 +264,7 @@ def enrich_impulse_columns(
         vwmas[validated_periods[2]],
     )
     stage = classify_stage(regime, close, vma)
+    market_pulse_stage = classify_market_pulse_stage(regime, close, vma)
 
     # Attach columns
     new_cols = [
@@ -226,6 +274,8 @@ def enrich_impulse_columns(
         new_cols.append(pl.Series(f"vwma_{p}{suffix}", vwmas[p]))
     new_cols.append(pl.Series(f"impulse_regime{suffix}", regime))
     new_cols.append(pl.Series(f"impulse_stage{suffix}", stage))
+    new_cols.append(pl.Series(f"market_pulse_stage{suffix}", market_pulse_stage))
+    new_cols.append(pl.Series(f"vwma_stage{suffix}", market_pulse_stage))
 
     df = df.with_columns(new_cols)
 

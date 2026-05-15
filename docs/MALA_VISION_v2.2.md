@@ -40,12 +40,12 @@ This system exists to **amplify a trader's market bias with historical probabili
 The system:
 1. Maintains a small library of *playbooks* (market behavior patterns the trader plays)
 2. For each playbook, characterizes historical conditions under which the playbook has worked or failed, parameterized by symbol where appropriate
-3. When the trader arrives with a bias toward applying a playbook to a current situation, the system reports whether current conditions match the historical favorable-conditions region
-4. The trader decides whether to take the trade and at what conviction (size)
-5. The system proposes an execution rule packet (entry trigger, invalidation conditions, exit conditions, hard stop), and the trader approves, edits, or rejects it
-6. The system executes those rules without further trader involvement
+3. When the trader arrives with a bias toward applying a playbook to a current situation, the system can answer in consultation mode: nearest historical analogs, forward outcome distributions, management menu, and policy-card guidance when configured
+4. When a surface region has earned it, the system can also propose an execution rule packet (entry trigger, invalidation conditions, exit conditions, hard stop), and the trader approves, edits, or rejects it
+5. The trader either uses the consultation evidence to manage the discretionary trade, or explicitly arms a locked packet
+6. If a locked packet is armed, the system executes those rules without further trader involvement
 
-The trader brings: the bias, the conviction, and final approval. The system brings: the historical conditional analysis, proposed rule packets, vehicle feasibility checks, rule execution, and the discipline of not deviating once committed.
+The trader brings: the bias, the conviction, final approval, and the decision to consult versus arm. The system brings: historical analog evidence, conditional analysis, empirical management options, proposed rule packets, vehicle feasibility checks, rule execution, and the discipline of not deviating once committed.
 
 ### The crucial design principles
 
@@ -62,6 +62,8 @@ The trader brings: the bias, the conviction, and final approval. The system brin
 **6. Vehicle feasibility is separate from playbook validity.** A playbook can be historically useful on the underlying and still be a bad options trade. Option-overlay survival is checked before option execution, but it should not block the first playbook-surface work.
 
 **7. Provider parity is a gate when features depend on provider-sensitive data.** Price-derived features are usually portable. Volume-derived features such as VWMA, VPOC, directional mass, and volume regime require Schwab-vs-Polygon parity checks before execution.
+
+**8. Consultation and execution packets are separate operating lanes.** The operator-led consultation lane can be useful before any strategy is ready for automation. It answers, "I am looking at this setup now; what did similar historical states do, and how would different management choices have behaved?" The armed execution-packet lane asks a stricter question: "Has this exact rule packet survived enough evidence, stress, and operator review to let the machine manage it?" These lanes share evidence, but they do not share readiness standards.
 
 ### What this system is explicitly not
 
@@ -285,6 +287,16 @@ Initial build scope:
 - chart visualization in Thinkorswim or another charting surface only after the first parameter surface produces candidates worth inspecting
 - no broad runtime deployment until the trader can visually and statistically recognize the playbook surface
 
+### Two operating lanes
+
+Mala 2.2 has one evidence layer and two downstream operating lanes:
+
+**Lane A — operator-led consultation.** This is the default product. The trader brings a symbol, direction, playbook, and timestamp or live state. Mala returns a cohort of similar historical states, not merely a rule-fired verdict. The useful output is a desk card: read, confidence, cohort size, forward reversion/continuation behavior, empirical management menu, and a consultation-log row that can be closed after the trade. A deterministic policy layer may recommend "take / skip / review" when configured, but it remains a policy card, not an autonomous agent.
+
+**Lane B — armed execution packet.** This is earned, not assumed. A favorable surface region must survive chart review, holdout discipline, multiple-comparisons scrutiny, cost and slippage checks, Monte Carlo stress, provider parity when relevant, and vehicle feasibility if options are used. Only then does Mala propose a locked packet for Bhiksha/Kamandal to shadow or execute with human authorization.
+
+The future LLM-agent layer belongs above the policy card, not inside the core proof engine. Its job is to add context the deterministic policy cannot see: macro events, earnings, unusual news flow, correlated-asset stress, or analog-cohort anomalies. It can caveat or escalate a consultation. It cannot silently promote a play into execution.
+
 ### Phase 0: Playbook-spec exercise (trader, ongoing)
 
 Before significant code is written, the trader produces written specifications for each playbook they actually trade. The spec includes:
@@ -319,6 +331,18 @@ Develop only the minimum code needed, then run the declared feature set against 
 - Report multi-dimensional confidence
 
 Output: a conditional surface document per playbook × symbol, with explicit confidence reporting.
+
+### Phase 2A: Operator-led consultation surface
+
+Turn the conditional surface into an operator desk tool before treating it as an execution source. For any trader-supplied timestamp or live state, the tool should:
+
+- Retrieve nearest historical analogs for the same playbook, symbol family, direction, and relevant state features
+- Report forward behavior over multiple horizons, including fast scalp windows and longer hold windows
+- Show empirical MFE, MAE, time-to-peak, time-to-fail, and management-menu outcomes
+- Make thin or split cohorts explicit instead of returning fake certainty
+- Write a consultation journal row that captures what the system said, what the trader chose, and what happened after close
+
+This lane is valuable even when no locked entry rule fires. It is the way the system supports trades the operator would actually consider, without forcing every question through an autonomous-strategy gate.
 
 ### Phase 2.5: Provider and vehicle feasibility
 
@@ -365,7 +389,7 @@ Historical option choice cannot be perfect. The goal is not to know the exact co
 
 ### Phase 3: Rule packet generation (system + agent, trader-approved)
 
-The system, using the conditional surfaces and feasibility checks, proposes an executable rule packet:
+For regions that survive review strongly enough to move beyond consultation, the system uses the conditional surfaces and feasibility checks to propose an executable rule packet:
 - Entry trigger (specific, operationalized)
 - Invalidation conditions
 - Profit-taking conditions (or absence thereof)
@@ -375,6 +399,8 @@ The system, using the conditional surfaces and feasibility checks, proposes an e
 - Provider-parity warning, if applicable
 
 The trader approves, edits, or rejects the packet. The rules must be written in language the trader trusts and can defend. They are not directly derived from optimization — they're informed by the analysis, proposed by the system, and approved by the trader.
+
+Passing a historical surface is not enough to arm execution. The packet is the unit that must survive cost/slippage analysis, Monte Carlo stress, provider parity where relevant, and vehicle feasibility. The old M-gates are reused here as readiness tools for a locked packet, not as broad kill gates for every exploratory playbook surface.
 
 ### Phase 4: Execution wiring (engineering)
 
@@ -405,14 +431,15 @@ Phases 1-5 are per-playbook. Once one playbook is working end-to-end, repeat for
 Once the first playbook reaches shadow mode, the operating loop is:
 
 1. Morning: trader selects symbol + bias + playbook.
-2. System generates the evidence packet from the playbook surface.
-3. Trader arms or skips the play.
-4. If armed, Bhiksha runs the rule packet in shadow mode first.
-5. Post-close: system writes one review artifact showing signal, entry/skip, exit reason, and outcome.
+2. System generates the consultation card from the playbook surface: analog cohort, read, management menu, and policy guidance if configured.
+3. Trader either skips, takes the trade manually with consultation-informed management, or arms a previously locked packet.
+4. If a packet is armed, Bhiksha runs the rule packet in shadow mode first.
+5. Post-close: system writes or updates one review artifact showing consultation, decision, entry/skip, exit reason, and outcome.
 
 The first few weeks of shadow mode are not a P&L proof. They test:
 
 - whether the playbook surface is useful to the trader
+- whether the consultation journal improves the trader's actual entry and management decisions
 - whether Bhiksha can consume Mala-produced rule packets
 - whether live conditions match the research definitions
 - whether the trader can stay out of hot-mind chart-watching
