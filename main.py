@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.chronos.client import PolygonClient
+from src.chronos.client import build_market_data_client
 from src.chronos.storage import LocalStorage
 from src.config import DATA_DIR, settings
 from src.newton.engine import PhysicsEngine
@@ -44,7 +44,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fetch", action="store_true",
-        help="Force re-fetch from Polygon even if cached",
+        help="Force re-fetch from the configured market-data provider even if cached",
+    )
+    parser.add_argument(
+        "--data-provider",
+        choices=("public", "polygon"),
+        default=settings.market_data_provider,
+        help="Market-data provider for --fetch",
     )
     return parser.parse_args()
 
@@ -55,7 +61,7 @@ def main() -> None:
     run_ts = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     storage = LocalStorage()
-    client = PolygonClient(api_key=settings.polygon_api_key)
+    client = build_market_data_client(args.data_provider) if args.fetch else None
     physics = PhysicsEngine()
     metrics = MetricsCalculator()
 
@@ -68,12 +74,14 @@ def main() -> None:
         print(f"\n── {ticker} ──")
 
         if args.fetch:
+            if client is None:
+                raise RuntimeError("Market-data client was not initialized")
             bars = client.fetch_aggs(ticker, args.start, args.end)
             storage.save_bars(ticker, bars)
 
         raw = storage.load_bars(ticker, args.start, args.end)
         if raw.is_empty():
-            print(f"  No data — run with --fetch to download from Polygon")
+            print("  No data — run with --fetch to download from the configured provider")
             continue
 
         df = physics.enrich_for_features(raw, required_feature_union([strategy]))

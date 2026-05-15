@@ -5,7 +5,7 @@ Organises data as:
     data/<TICKER>/<YYYY-MM-DD>.parquet
 
 Provides:
-  - save_bars()    → persist raw API results
+  - save_bars()    → persist normalized raw provider results
   - load_bars()    → read back into a Polars DataFrame
   - missing_dates() → identify gaps for incremental downloads
 """
@@ -37,7 +37,7 @@ class LocalStorage:
 
     def save_bars(self, ticker: str, raw_bars: List[dict]) -> int:
         """
-        Persist raw Polygon bar dicts to per-day Parquet files.
+        Persist normalized raw bar dicts to per-day Parquet files.
         Returns the number of files written.
         """
         if not raw_bars:
@@ -120,10 +120,10 @@ class LocalStorage:
 
     @staticmethod
     def _bars_to_dataframe(raw_bars: List[dict], ticker: str) -> pl.DataFrame:
-        """Convert Polygon bar dicts to a typed Polars DataFrame."""
+        """Convert provider bar dicts to a typed Polars DataFrame."""
         df = pl.DataFrame(raw_bars)
-        # Polygon uses 't' for Unix-ms timestamp, 'o/h/l/c' for prices,
-        # 'v' for volume, 'vw' for VWAP, 'n' for num transactions
+        # Chronos clients normalize bars to Polygon-style keys:
+        # 't' for Unix-ms timestamp, 'o/h/l/c' for prices, 'v' for volume.
         rename_map: Dict[str, str] = {
             "t": "timestamp",
             "o": "open",

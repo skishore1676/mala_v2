@@ -9,7 +9,7 @@ You are working in a research-only backtesting engine. No deployment plumbing an
 Takes a trading hypothesis → validates it through M1-M5 gates → local CSV results.
 
 ```
-Polygon.io (Parquet cache) → Newton (physics features) → Strategy → Oracle (MFE/MAE)
+Public API or Polygon fallback (Parquet cache) → Newton (physics features) → Strategy → Oracle (MFE/MAE)
   → M1 walk-forward → M2 cost convergence → M3 OOS → M4 holdout → M5 exec stress
   → research/results/hypothesis_runs/{id}/{timestamp}/
 ```
@@ -34,7 +34,9 @@ python main.py --tickers SPY --start 2024-01-01 --end 2024-12-31
 python -m pytest tests/ -v
 ```
 
-`.env` needs only `POLYGON_API_KEY=...`
+`.env` defaults to `MARKET_DATA_PROVIDER=public`. For fresh downloads, set
+`PUBLIC_SECRET_TOKEN=...` or `PUBLIC_ACCESS_TOKEN=...`. `POLYGON_API_KEY` is
+optional fallback only.
 
 ---
 
