@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # ── API Keys ─────────────────────────────────────────────────────────
     market_data_provider: str = Field(
-        default="public",
+        default="polygon",
         description="Market-data provider for new Chronos fetches: public or polygon.",
     )
     public_secret_token: str = Field(
