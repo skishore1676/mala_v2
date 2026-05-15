@@ -3,6 +3,9 @@
 The consultation journal is the feedback loop for every operator-facing
 playbook, not a feature of one reversion study.
 
+For the trader-facing replay workflow, use
+`docs/PLAYBOOK_REPLAY_CONSULTATION_SOP.md`.
+
 The surface answers, "what did similar states do?" The journal answers the more
 important follow-up: "when the trader asked this question and either acted or
 passed, did the consultation improve the decision?"
