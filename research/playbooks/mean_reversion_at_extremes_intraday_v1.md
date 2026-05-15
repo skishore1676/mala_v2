@@ -385,6 +385,15 @@ management row if one exists, and records the prefilled row in the journal.
 Future external-context agents can add caveats, but they should not silently
 overwrite the deterministic policy.
 
+Default operator policy:
+
+```text
+research/playbooks/operator_policies/mean_reversion_intraday_operator_v1.yaml
+```
+
+The query and policy-card JSON artifacts embed the policy id, version, source
+path, and full config so the desk read is auditable after the fact.
+
 Options overlay note: the packet is still underlying-first. A later options
 layer must translate the underlying entry, stop, target, and invalidation into
 contract selection, delta/expiry/spread constraints, option-PnL stops, and

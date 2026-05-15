@@ -43,6 +43,18 @@ The policy card is the machine-compression layer. It can say `take`, `pass`,
 `selected_exit` / `reported_survived_pct` in the journal. It does not mark the
 trade as taken and it does not add external context.
 
+Those thresholds are loaded from a versioned playbook policy YAML, not hidden
+inside the Python implementation. The default first-slice policy lives at:
+
+```text
+research/playbooks/operator_policies/mean_reversion_intraday_operator_v1.yaml
+```
+
+Every state-management `query_result.json` and `policy_card.json` embeds the
+policy id, version, source path, and config used for the read. Use
+`--operator-policy-config <path>` only when deliberately replaying or comparing
+a different policy.
+
 External-context agents may later attach caveats such as macro events, news, or
 analog-regime anomalies. They should add warnings beside the deterministic card,
 not silently rewrite the policy.

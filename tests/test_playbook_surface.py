@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -908,9 +909,14 @@ def test_playbook_surface_state_management_returns_cohort(tmp_path: Path) -> Non
     assert "Management Menu" in text
     assert "scalp_0.25pct" in text
     assert "Survived" in text
+    assert "Operator Policy" in text
+    assert "mean_reversion_intraday_operator_v1" in text
     assert "Similarity Recipe" in text
     assert "tradable target floor" in text
     assert "This mode does not ask whether a rule fired." in text
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert payload["operator_policy"]["policy_id"] == "mean_reversion_intraday_operator_v1"
+    assert payload["operator_policy"]["config"]["take_policy"]["min_cohort_n"] == 60
     with (run_dir / "consultation_log.csv").open(newline="", encoding="utf-8") as handle:
         log_rows = list(csv.DictReader(handle))
     assert log_rows
@@ -1013,6 +1019,9 @@ def test_playbook_policy_card_writes_deterministic_operator_card(tmp_path: Path)
     assert "POLICY:  take" in text
     assert "EXIT:    scalp_0.25pct" in text
     assert "EOD reversion erodes to 48%" in text
+    assert "mean_reversion_intraday_operator_v1" in text
+    policy_payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert policy_payload["operator_policy"]["policy_id"] == "mean_reversion_intraday_operator_v1"
     with (run_dir / "consultation_log.csv").open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert rows[0]["selected_exit"] == "scalp_0.25pct"
@@ -1061,6 +1070,80 @@ def test_playbook_policy_card_does_not_prefill_pass_policy(tmp_path: Path) -> No
     with (run_dir / "consultation_log.csv").open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert rows[0]["selected_exit"] == ""
+
+
+def test_playbook_policy_card_can_load_operator_policy_override(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    query_dir = run_dir / "surface_queries" / "iwm_short_override_state_management"
+    query_dir.mkdir(parents=True)
+    query_json = query_dir / "query_result.json"
+    policy_config = tmp_path / "strict_policy.yaml"
+    policy_config.write_text(
+        """
+policy_id: strict_demo_policy
+policy_version: v1
+playbook_id: mean-reversion-at-extremes-intraday
+cohort:
+  min_forward_n: 15
+  confidence_min_counts:
+    moderate: 60
+    light: 30
+read_thresholds:
+  decision_window: "15"
+  mixed_band_pp: 10
+  strong_reversion_edge_pp: 20
+  strong_continuation_edge_pp: 20
+take_policy:
+  take_verdicts:
+    - strong_reversion_lean
+  min_confidence: moderate
+  min_cohort_n: 60
+  min_exit_survived_pct: 60
+management:
+  min_target_atr_fraction: 0.10
+  min_target_price_fraction: 0.0010
+  exit_selection: max_survived_then_target_move
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    query_json.write_text(
+        json_dumps(
+            {
+                "playbook_id": PLAYBOOK_ID,
+                "source_run": str(run_dir),
+                "symbol": "IWM",
+                "direction": "short",
+                "timestamp_et": "2026-04-21T10:40:00-04:00",
+                "verdict": "strong_reversion_lean",
+                "cohort": {
+                    "confidence": "moderate",
+                    "analog_count": 75,
+                    "candidate_count": 100,
+                    "outcome_summary": {"15": {"reversion_pct": "62.0%"}, "eod": {"reversion_pct": "51.0%"}},
+                    "management_rows": [
+                        {
+                            "exit_family": "scalp_0.25pct",
+                            "survived_pct": "46.8%",
+                            "median_target_move": "0.5715",
+                            "median_stop_move": "0.5715",
+                            "median_time_to_target_min": "12",
+                            "stop_reference": "symmetric adverse",
+                            "reward_risk": "1.0",
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = build_policy_card(query_json, operator_policy_config=policy_config)
+
+    assert result.policy == "wait"
+    card = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert card["operator_policy"]["policy_id"] == "strict_demo_policy"
+    assert "below 60%" in card["policy_reason"]
 
 
 def test_state_management_features_are_causal_at_query_bar() -> None:

@@ -9,14 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from src.research.playbook_consultation_log import update_consultation_row
-
-
-POLICY_RULE_ID = "policy_v1_strong_lean_moderate_confidence"
-CONFIDENCE_RANK = {"low": 0, "light": 1, "moderate": 2, "high": 3}
-TAKE_VERDICTS = {"strong_reversion_lean"}
-MIN_CONFIDENCE = "moderate"
-MIN_COHORT_N = 60
-MIN_EXIT_SURVIVED = 0.45
+from src.research.playbook_operator_policy import OperatorPolicy, operator_policy_from_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,9 +27,14 @@ def build_policy_card(
     out_dir: Path | None = None,
     update_log: bool = False,
     run_dir: Path | None = None,
+    operator_policy_config: Path | None = None,
 ) -> PolicyCardResult:
     payload = json.loads(query_json.read_text(encoding="utf-8"))
-    card = _policy_card_payload(payload, query_json)
+    operator_policy = operator_policy_from_payload(
+        payload,
+        override_path=operator_policy_config,
+    )
+    card = _policy_card_payload(payload, query_json, operator_policy)
     destination = out_dir or query_json.parent
     destination.mkdir(parents=True, exist_ok=True)
     json_path = destination / "policy_card.json"
@@ -63,11 +61,15 @@ def build_policy_card(
     )
 
 
-def _policy_card_payload(payload: dict[str, Any], query_json: Path) -> dict[str, Any]:
+def _policy_card_payload(
+    payload: dict[str, Any],
+    query_json: Path,
+    operator_policy: OperatorPolicy,
+) -> dict[str, Any]:
     cohort = payload.get("cohort", {})
     management_rows = list(cohort.get("management_rows", []))
-    selected_exit = _select_exit(management_rows)
-    policy, policy_reason = _policy_decision(payload, selected_exit)
+    selected_exit = _select_exit(management_rows, operator_policy)
+    policy, policy_reason = _policy_decision(payload, selected_exit, operator_policy)
     journal_selected_exit = selected_exit.get("exit_family", "") if policy == "take" else ""
     journal_survived = selected_exit.get("survived_pct", "") if policy == "take" else ""
     watch = _watch_lines(payload)
@@ -85,7 +87,8 @@ def _policy_card_payload(payload: dict[str, Any], query_json: Path) -> dict[str,
             "candidate_count": int(_safe_float(cohort.get("candidate_count")) or 0),
         },
         "policy": policy,
-        "rule_id": POLICY_RULE_ID,
+        "rule_id": operator_policy.rule_id,
+        "operator_policy": operator_policy.to_payload(),
         "policy_reason": policy_reason,
         "best_exit": selected_exit.get("exit_family", ""),
         "selected_exit": journal_selected_exit,
@@ -110,6 +113,7 @@ def _policy_card_payload(payload: dict[str, Any], query_json: Path) -> dict[str,
 def _policy_decision(
     payload: dict[str, Any],
     selected_exit: dict[str, str],
+    operator_policy: OperatorPolicy,
 ) -> tuple[str, str]:
     cohort = payload.get("cohort", {})
     verdict = str(payload.get("verdict", ""))
@@ -119,29 +123,42 @@ def _policy_decision(
     entry_window = payload.get("entry_window", {})
     if entry_window.get("in_entry_window") == "no":
         return "out_of_scope", "query timestamp is outside the playbook entry window"
-    if verdict not in TAKE_VERDICTS:
-        return "pass", f"desk_read {verdict!r} is not in take set {sorted(TAKE_VERDICTS)}"
-    if CONFIDENCE_RANK.get(confidence, -1) < CONFIDENCE_RANK[MIN_CONFIDENCE]:
-        return "pass", f"confidence {confidence!r} is below {MIN_CONFIDENCE}"
-    if cohort_n < MIN_COHORT_N:
-        return "pass", f"cohort {cohort_n} is below minimum {MIN_COHORT_N}"
+    if verdict not in operator_policy.take_verdicts:
+        return "pass", (
+            f"desk_read {verdict!r} is not in take set {sorted(operator_policy.take_verdicts)}"
+        )
+    if not operator_policy.confidence_at_least(confidence):
+        return "pass", f"confidence {confidence!r} is below {operator_policy.min_confidence}"
+    if cohort_n < operator_policy.min_cohort_n:
+        return "pass", f"cohort {cohort_n} is below minimum {operator_policy.min_cohort_n}"
     if not selected_exit:
         return "pass", "no usable management row survived the tradability filters"
-    if survived is None or survived < MIN_EXIT_SURVIVED:
-        return "wait", f"best exit survived {selected_exit.get('survived_pct', '')}, below {MIN_EXIT_SURVIVED:.0%}"
+    if survived is None or survived < operator_policy.min_exit_survived:
+        return "wait", (
+            f"best exit survived {selected_exit.get('survived_pct', '')}, "
+            f"below {operator_policy.min_exit_survived:.0%}"
+        )
     return (
         "take",
         (
-            f"matches rule v1: lean >= strong, conf >= {MIN_CONFIDENCE}, "
-            f"cohort >= {MIN_COHORT_N}, exit survived >= {MIN_EXIT_SURVIVED:.0%}"
+            f"matches {operator_policy.rule_id}: "
+            f"desk_read in {sorted(operator_policy.take_verdicts)}, "
+            f"conf >= {operator_policy.min_confidence}, "
+            f"cohort >= {operator_policy.min_cohort_n}, "
+            f"exit survived >= {operator_policy.min_exit_survived:.0%}"
         ),
     )
 
 
-def _select_exit(rows: list[dict[str, str]]) -> dict[str, str]:
+def _select_exit(
+    rows: list[dict[str, str]],
+    operator_policy: OperatorPolicy,
+) -> dict[str, str]:
     usable = [row for row in rows if _parse_pct(row.get("survived_pct")) is not None]
     if not usable:
         return {}
+    if operator_policy.exit_selection != "max_survived_then_target_move":
+        raise ValueError(f"Unsupported exit_selection: {operator_policy.exit_selection}")
     return max(
         usable,
         key=lambda row: (
@@ -219,6 +236,13 @@ def _policy_card_markdown(card: dict[str, Any]) -> str:
         f"- selected_exit: `{card.get('journal_prefill', {}).get('selected_exit', '')}`",
         f"- reported_survived_pct: `{card.get('journal_prefill', {}).get('reported_survived_pct', '')}`",
         "",
+        "## Operator Policy",
+        "",
+        f"- policy_id: `{card.get('operator_policy', {}).get('policy_id', '')}`",
+        f"- policy_version: `{card.get('operator_policy', {}).get('policy_version', '')}`",
+        f"- source_path: `{card.get('operator_policy', {}).get('source_path', '')}`",
+        f"- rule_id: `{card.get('rule_id', '')}`",
+        "",
         "## Agent Caveat Contract",
         "",
         card.get("agent_caveat_contract", ""),
@@ -260,6 +284,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--update-log", action="store_true")
     parser.add_argument("--run-dir", type=Path, default=None)
+    parser.add_argument(
+        "--operator-policy-config",
+        type=Path,
+        default=None,
+        help="Optional YAML policy file. Defaults to the policy embedded in query_result.json.",
+    )
     return parser.parse_args(argv)
 
 
@@ -270,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=args.out_dir,
         update_log=args.update_log,
         run_dir=args.run_dir,
+        operator_policy_config=args.operator_policy_config,
     )
     print(f"POLICY_CARD={result.markdown_path}")
     print(f"POLICY_JSON={result.json_path}")

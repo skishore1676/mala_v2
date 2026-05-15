@@ -26,6 +26,7 @@ from src.config import DATA_DIR
 from src.newton.engine import PhysicsEngine
 from src.oracle.metrics import MetricsCalculator
 from src.research.playbook_consultation_log import append_consultation_query
+from src.research.playbook_operator_policy import OperatorPolicy, load_operator_policy
 from src.research.playbook_surface import _entry_signal_cache_key
 from src.strategy.base import required_feature_union
 from src.strategy.factory import build_strategy
@@ -185,6 +186,7 @@ def query_playbook_surface(
     analog_lookback_days: int = 1825,
     analog_count: int = 75,
     write_log: bool = True,
+    operator_policy_config: Path | None = None,
 ) -> PlaybookQueryResult:
     """Build an operator query artifact for one playbook/symbol/direction/timestamp."""
     if mode not in {"signal", "state-management"}:
@@ -204,6 +206,10 @@ def query_playbook_surface(
         raise ValueError(
             f"Unsupported playbook {playbook_id!r}; available adapters: {sorted(ADAPTERS)}"
         )
+    operator_policy = load_operator_policy(
+        playbook_id=playbook_id,
+        path=operator_policy_config,
+    )
 
     normalized_symbol = symbol.strip().upper()
     normalized_direction = _normalize_direction(direction)
@@ -237,6 +243,7 @@ def query_playbook_surface(
             max_nearest_seconds=max_nearest_seconds,
             analog_lookback_days=analog_lookback_days,
             analog_count=analog_count,
+            operator_policy=operator_policy,
         )
         review_md = query_dir / "QUERY_REVIEW.md"
         json_path = query_dir / "query_result.json"
@@ -343,8 +350,6 @@ STATE_MANAGEMENT_FEATURES = {
     "market_pulse_stage",
 }
 STATE_FORWARD_WINDOWS: tuple[int | str, ...] = (5, 10, 15, 30, 60, "eod")
-MANAGEMENT_MIN_TARGET_ATR_FRACTION = 0.10
-MANAGEMENT_MIN_TARGET_PRICE_FRACTION = 0.0010
 SIMILARITY_FEATURE_CONFIG = [
     {"feature": "bias_prior_close_atr", "scale": 0.45, "weight": 1.0},
     {"feature": "bias_vwap_distance_pct", "scale": 0.0035, "weight": 1.0},
@@ -369,6 +374,7 @@ def _state_management_payload(
     max_nearest_seconds: int,
     analog_lookback_days: int,
     analog_count: int,
+    operator_policy: OperatorPolicy,
 ) -> dict[str, Any]:
     query_date = query_ts.date()
     bars = LocalStorage(base_dir=data_dir or DATA_DIR).load_bars(
@@ -394,9 +400,15 @@ def _state_management_payload(
     )
     analog_rows = analog_candidates[: max(1, analog_count)]
     cohort = [_analog_payload(rows, analog, direction) for analog in analog_rows]
-    management_rows = _cohort_management_rows(rows, analog_rows, query_row, direction)
+    management_rows = _cohort_management_rows(
+        rows,
+        analog_rows,
+        query_row,
+        direction,
+        operator_policy,
+    )
     outcome_summary = _cohort_outcome_summary(cohort)
-    verdict, verdict_reason = _cohort_verdict(outcome_summary)
+    verdict, verdict_reason = _cohort_verdict(outcome_summary, operator_policy)
     current_state = _state_snapshot_for_desk(query_row, direction)
     return {
         "playbook_id": playbook_id,
@@ -411,12 +423,13 @@ def _state_management_payload(
         "verdict_reason": verdict_reason,
         "active_match_count": 0,
         "current_state": current_state,
+        "operator_policy": operator_policy.to_payload(),
         "similarity_config": _similarity_config_payload(),
         "cohort": {
             "requested_count": analog_count,
             "candidate_count": len(analog_candidates),
             "analog_count": len(cohort),
-            "confidence": _cohort_confidence(len(cohort)),
+            "confidence": operator_policy.confidence_for_count(len(cohort)),
             "similarity_median": _format_float(_median([row.get("similarity") for row in cohort])),
             "similarity_tail": _similarity_tail(analog_candidates, analog_count),
             "outcome_summary": outcome_summary,
@@ -694,6 +707,7 @@ def _cohort_management_rows(
     analog_rows: list[dict[str, Any]],
     query_row: dict[str, Any],
     direction: str,
+    operator_policy: OperatorPolicy,
 ) -> list[dict[str, str]]:
     specs = [
         ("scalp_0.15pct", "underlying move 0.15%", "pct", 0.0015),
@@ -710,11 +724,18 @@ def _cohort_management_rows(
         if (
             query_target is None
             or query_entry is None
-            or query_target < _management_target_floor(query_row, query_entry)
+            or query_target < _management_target_floor(query_row, query_entry, operator_policy)
         ):
             continue
         evaluations = [
-            _evaluate_management_spec(rows, int(row["_row_index"]), direction, kind, value)
+            _evaluate_management_spec(
+                rows,
+                int(row["_row_index"]),
+                direction,
+                kind,
+                value,
+                operator_policy,
+            )
             for row in analog_rows
         ]
         evaluations = [item for item in evaluations if item is not None]
@@ -758,6 +779,7 @@ def _evaluate_management_spec(
     direction: str,
     kind: str,
     value: float,
+    operator_policy: OperatorPolicy,
 ) -> dict[str, Any] | None:
     row = rows[row_index]
     entry = _safe_float(row.get("close"))
@@ -766,7 +788,7 @@ def _evaluate_management_spec(
     target_move = _management_target_move(row, kind, value)
     if target_move is None or target_move <= 0:
         return None
-    target_floor = _management_target_floor(row, entry)
+    target_floor = _management_target_floor(row, entry, operator_policy)
     if target_move < target_floor:
         return None
     future = _future_rows_same_day(rows, row_index, 30)
@@ -800,14 +822,18 @@ def _management_target_move(row: dict[str, Any], kind: str, value: float) -> flo
     return abs(entry - reference) * value
 
 
-def _management_target_floor(row: dict[str, Any], entry: float) -> float:
+def _management_target_floor(
+    row: dict[str, Any],
+    entry: float,
+    operator_policy: OperatorPolicy,
+) -> float:
     atr = _safe_float(row.get("daily_rth_atr_14"))
     if atr is None:
         atr = _safe_float(row.get("daily_atr_14"))
-    price_floor = entry * MANAGEMENT_MIN_TARGET_PRICE_FRACTION
+    price_floor = entry * operator_policy.min_target_price_fraction
     if atr is None or atr <= 0:
         return price_floor
-    return max(atr * MANAGEMENT_MIN_TARGET_ATR_FRACTION, price_floor)
+    return max(atr * operator_policy.min_target_atr_fraction, price_floor)
 
 
 def _time_to_move(
@@ -854,33 +880,36 @@ def _state_snapshot_for_desk(row: dict[str, Any], direction: str) -> dict[str, s
     }
 
 
-def _cohort_verdict(outcome_summary: dict[str, Any]) -> tuple[str, str]:
-    window = outcome_summary.get("15", {})
+def _cohort_verdict(
+    outcome_summary: dict[str, Any],
+    operator_policy: OperatorPolicy,
+) -> tuple[str, str]:
+    window_label = operator_policy.decision_window
+    window = outcome_summary.get(window_label, {})
     n = _safe_int(window.get("n"))
     reversion = _parse_pct(window.get("reversion_pct"))
     continuation = _parse_pct(window.get("continuation_pct"))
-    if n < 15:
-        return "too_thin", f"Only {n} analogs had usable 15-minute forward data."
+    if n < operator_policy.min_forward_n:
+        return "too_thin", (
+            f"Only {n} analogs had usable {window_label}-minute forward data; "
+            f"policy requires {operator_policy.min_forward_n}."
+        )
     if reversion is None or continuation is None:
-        return "too_thin", "Not enough analogs had usable 15-minute forward data."
+        return "too_thin", f"Not enough analogs had usable {window_label}-minute forward data."
     edge = reversion - continuation
-    if abs(edge) < 0.10:
+    if abs(edge) < operator_policy.mixed_band:
         return "mixed_cohort", "Nearest analogs were split; no clean directional edge."
-    if edge >= 0.20:
-        return "strong_reversion_lean", "Nearest analogs strongly favored reversion over the first 15 minutes."
+    if edge >= operator_policy.strong_reversion_edge:
+        return "strong_reversion_lean", (
+            f"Nearest analogs strongly favored reversion over the first {window_label} minutes."
+        )
     if edge > 0:
-        return "reversion_lean", "Nearest analogs leaned toward reversion over the first 15 minutes."
-    if edge <= -0.20:
+        return "reversion_lean", (
+            f"Nearest analogs leaned toward reversion over the first {window_label} minutes."
+        )
+    if edge <= -operator_policy.strong_continuation_edge:
         return "strong_continuation_risk", "Nearest analogs strongly favored continuation against the requested bias."
     return "continuation_lean", "Nearest analogs leaned against the requested reversion bias."
-
-
-def _cohort_confidence(count: int) -> str:
-    if count >= 60:
-        return "moderate"
-    if count >= 30:
-        return "light"
-    return "low"
 
 
 def _signal_rows_at_timestamp(
@@ -1154,6 +1183,11 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
     state = payload.get("current_state", {})
     summary = cohort.get("outcome_summary", {})
     similarity = payload.get("similarity_config", {})
+    operator_policy = payload.get("operator_policy", {})
+    policy_config = operator_policy.get("config", {}) if isinstance(operator_policy, dict) else {}
+    management_policy = policy_config.get("management", {}) if isinstance(policy_config, dict) else {}
+    min_target_atr_fraction = float(management_policy.get("min_target_atr_fraction", 0.10))
+    min_target_price_fraction = float(management_policy.get("min_target_price_fraction", 0.0010))
     tail = cohort.get("similarity_tail", {})
     lines = [
         "# Playbook State Management Query",
@@ -1238,11 +1272,18 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
             "- `captured` means the target was touched within 30 minutes, even if comparable heat appeared first.",
             (
                 "- Management rows below the tradable target floor are omitted. The current floor is "
-                f"`max({MANAGEMENT_MIN_TARGET_ATR_FRACTION:g} * daily_rth_atr_14, "
-                f"{MANAGEMENT_MIN_TARGET_PRICE_FRACTION:.2%} * price)` so tiny VWAP retraces do not "
+                f"`max({min_target_atr_fraction:g} * daily_rth_atr_14, "
+                f"{min_target_price_fraction:.2%} * price)` so tiny VWAP retraces do not "
                 "look like edge just because bar noise touched them first."
             ),
             "- This is underlying-thesis evidence only; options translation remains a separate layer.",
+            "",
+            "## Operator Policy",
+            "",
+            f"- policy_id: `{operator_policy.get('policy_id', '')}`",
+            f"- policy_version: `{operator_policy.get('policy_version', '')}`",
+            f"- source_path: `{operator_policy.get('source_path', '')}`",
+            f"- rule_id: `{operator_policy.get('rule_id', '')}`",
             "",
             "## Similarity Recipe",
             "",
@@ -1436,6 +1477,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--analog-lookback-days", type=int, default=1825)
     parser.add_argument("--analog-count", type=int, default=75)
     parser.add_argument(
+        "--operator-policy-config",
+        type=Path,
+        default=None,
+        help="Optional YAML policy file for state-management desk reads and management filters.",
+    )
+    parser.add_argument(
         "--no-log",
         action="store_true",
         help="Write query artifacts without appending consultation_log.csv",
@@ -1458,6 +1505,7 @@ def main(argv: list[str] | None = None) -> int:
         analog_lookback_days=args.analog_lookback_days,
         analog_count=args.analog_count,
         write_log=not args.no_log,
+        operator_policy_config=args.operator_policy_config,
     )
     print(f"QUERY_REVIEW={result.review_md}")
     print(f"QUERY_JSON={result.json_path}")

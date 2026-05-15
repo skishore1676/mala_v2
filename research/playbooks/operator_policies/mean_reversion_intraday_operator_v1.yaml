@@ -1,0 +1,32 @@
+policy_id: mean_reversion_intraday_operator_v1
+policy_version: v1
+playbook_id: mean-reversion-at-extremes-intraday
+description: >
+  Deterministic operator policy for Mala 2.2 intraday mean-reversion
+  consultation cards. This policy compresses the analog cohort into a
+  take/pass/wait/out_of_scope read; it does not authorize autonomous execution.
+
+cohort:
+  min_forward_n: 15
+  confidence_min_counts:
+    high: 120
+    moderate: 60
+    light: 30
+
+read_thresholds:
+  decision_window: "15"
+  mixed_band_pp: 10
+  strong_reversion_edge_pp: 20
+  strong_continuation_edge_pp: 20
+
+take_policy:
+  take_verdicts:
+    - strong_reversion_lean
+  min_confidence: moderate
+  min_cohort_n: 60
+  min_exit_survived_pct: 45
+
+management:
+  min_target_atr_fraction: 0.10
+  min_target_price_fraction: 0.0010
+  exit_selection: max_survived_then_target_move
