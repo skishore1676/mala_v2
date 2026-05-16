@@ -365,10 +365,12 @@ Direction:
   bearish play  -> put
 
 DTE:
-  start with 7-21 calendar days
+  scalp: 2-7 calendar days
+  swing: 8-21 calendar days
+  long-term: >21 calendar days
 
 Delta target:
-  start with 0.30-0.40 delta
+  vary by horizon and symbol, with 0.30-0.40 delta as the first default
 
 Liquidity:
   require non-empty option bars during entry/exit window
@@ -419,16 +421,8 @@ The operating boundary is now explicit:
 ```text
 Mala = analyst and evidence compiler
 Bhiksha = live playbook runtime, feature transformer, option selector, execution manager, and audit logger
-Public broker adapter = order-routing substrate behind Bhiksha
-Trader Desk = operator cockpit inside or immediately above Bhiksha
+Trader Desk = operator cockpit inside or immediately above Bhiksha for trading and portfolio risk management
 ```
-
-Mala should not call the broker directly and should not become a broker
-runtime. Mala publishes a reviewable, versioned playbook packet. Bhiksha
-consumes that packet only after the trader arms it, recomputes the required
-features from live data, selects the option contract by the approved vehicle
-policy, manages exits, and records both machine feedback and trader/analyst
-feedback.
 
 The Mala-to-Bhiksha bridge must be tight enough to expand as Mala grows into
 new strategies. That means every executable packet needs a stable contract:
@@ -443,36 +437,16 @@ new strategies. That means every executable packet needs a stable contract:
 - audit keys tying consultation, operator decision, Bhiksha trade id, live
   feedback, and post-close review together
 
-Bhiksha must fail closed when it cannot compute a required feature, cannot match
-the packet version, cannot satisfy the vehicle policy, or sees unresolved
-provider-parity risk. This keeps new Mala strategies from leaking into live
-execution as vague recommendations. A new strategy becomes executable only when
-Bhiksha has a runtime adapter, feature parity, shadow evidence, and reviewable
-feedback.
-
-Bhiksha is the right execution surface because it already owns the active plan,
-strategy registry, live bar polling, option selection/preflight, position
-monitoring, Public broker adapter, reconciliation, and post-close feedback loop.
-The work needed for Mala 2.2 is therefore to make Bhiksha feature-parity capable
-for locked playbook packets and to expose a trader-desk surface over that
-contract, not to create a second runtime inside Mala.
-
-`public_api_trading_v3` remains valuable as a source of product and execution
-lessons, not as a competing playbook runtime. Its strongest pieces are the
-operator UI, manual intervention flows, Public-specific order lifecycle,
-reconciliation, and GDS option telemetry. Those should be harvested into
-Bhiksha:
+The principle is fail-closed, not vague recommendation drift: if Bhiksha cannot
+compute the required features, satisfy the vehicle constraints, or match the
+packet version, the packet stays advisory. A new Mala strategy becomes
+executable only by adding the matching Bhiksha runtime capability, shadow
+evidence, and reviewable feedback loop.
 
 - Trader Desk controls for take/pass, arm/disarm, square-off, and emergency
   intervention
 - GDS-style option health metrics as a management overlay on the selected
   option contract
-- live logs, portfolio/position visibility, and stuck-trade intervention
-- Public.com lifecycle hardening where Bhiksha's broker adapter is thinner
-
-This keeps the roles clean: Mala decides what the evidence says, Bhiksha turns
-armed evidence into controlled execution, and Public-specific mechanics stay
-behind Bhiksha's broker/execution boundary.
 
 ### Phase 5: Live evaluation (small shadow and then real-money trades)
 
