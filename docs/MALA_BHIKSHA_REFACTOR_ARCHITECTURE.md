@@ -27,6 +27,7 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Added the Bhiksha operator decision layer; consultation artifacts can now become red/green shadow intents with a required allowed management policy and `order_submission_allowed=false`.
 - 2026-05-16: Added the Bhiksha option-preview layer; `shadow_intent_ready` artifacts can now resolve an option candidate and run chain/quote/risk checks while still requiring live approval.
 - 2026-05-16: Split the post-preview path into parallel shadow and live lanes: shadow records executable option PnL, while live creates an explicit approval ticket that is not yet a broker submission.
+- 2026-05-16: Added the Bhiksha packet-native lifecycle submitter; future `live_approval_gated` packets can turn approved live tickets into managed entries with stop/target rules, while the current shadow-only packet is refused.
 
 ## Purpose
 

@@ -130,7 +130,14 @@ Bhiksha now treats shadow and live as parallel lanes after option preview:
 - shadow lane records the option exit mark and PnL so the playbook can be
   judged by actual executable vehicle outcomes
 - live lane creates an explicit approval ticket, but the submitter and broker
-  reconciliation remain a separate layer
+  reconciliation remain a separate layer until the packet is promoted to
+  `live_approval_gated`
+
+For a future `live_approval_gated` packet, Bhiksha can consume the approved live
+ticket and start the managed lifecycle: entry submission, fill/reconciliation,
+protective stop, target or virtual target, trade-state persistence, and later
+position management. The current reversion packet remains shadow-only and is
+blocked from that submitter.
 
 That next bridge is:
 
@@ -141,7 +148,7 @@ closed consultation batch
   -> Bhiksha operator decision and shadow intent
   -> Bhiksha option preview and risk check
   -> Bhiksha shadow outcome PnL and/or live approval ticket
-  -> Bhiksha submitter, management adapter, and broker reconciliation
+  -> Bhiksha packet-native submitter and lifecycle management
   -> feedback artifact back to Mala
 ```
 
