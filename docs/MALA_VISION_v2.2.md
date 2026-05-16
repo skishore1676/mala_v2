@@ -454,6 +454,9 @@ consultation grows into automation only after Bhiksha parity, while the older
 M1-M5 strategy lane continues through `Mala_Evidence_v1`, `active_strategy`, and
 Bhiksha shadow/live promotion.
 
+The proposed long-term refactor is captured in
+[`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md).
+
 ### Phase 5: Live evaluation (small shadow and then real-money trades)
 
 Run a small number of real trades through the playbook. Evaluate:

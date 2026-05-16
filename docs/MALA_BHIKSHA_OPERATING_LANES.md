@@ -1,6 +1,8 @@
 # Mala / Bhiksha Operating Lanes
 
 This note keeps two different routes from collapsing into one blurry handoff.
+The larger target architecture is in
+[`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md).
 
 ## Lane 1: Playbook Consultant to Automation
 
