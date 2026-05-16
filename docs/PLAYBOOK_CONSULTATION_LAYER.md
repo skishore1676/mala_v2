@@ -107,9 +107,14 @@ Check the batch:
 
 ## What Bhiksha Does Not Do Yet
 
-Bhiksha can recompute the entry signal for this playbook in shadow parity mode.
-It does not yet select an option, arm an execution packet, manage exits, or
-write the full live feedback loop for this playbook.
+Bhiksha can recompute the entry signal for this playbook in shadow parity mode
+and can call this consultation layer from an approved shadow execution packet.
+That is the backend for a future Trader Desk button: the operator supplies the
+chart read, Bhiksha verifies the packet, Mala produces the query/policy card,
+and Bhiksha records the bridge artifact.
+
+Bhiksha does not yet select an option, place an order, manage exits, or write
+the full live feedback loop for this playbook.
 
 That next bridge is:
 
