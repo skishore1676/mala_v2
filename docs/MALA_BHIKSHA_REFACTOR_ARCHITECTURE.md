@@ -2,6 +2,15 @@
 
 Status: proposal draft for review, not an implementation commitment.
 
+## Milestone Log
+
+- 2026-05-16: Created refactor work surfaces: `mala_v2` and `bhiksha` on `codex/shared-contract-refactor`, plus new `mala-bhiksha-kernel` repo.
+- 2026-05-16: Landed the first minimal kernel: packet schemas, capability manifest, signal parity primitives, registry helpers, and green kernel tests.
+- 2026-05-16: Wired Mala to write the IWM/QQQ mean-reversion playbook packet and generated the first canonical packet registry index.
+- 2026-05-16: Wired Bhiksha packet compilation to validate shared-kernel packets and fail closed unless an approved execution packet has declared runtime capability.
+- 2026-05-16: Added the first signal-parity artifact path for the reversion playbook; current report is blocked with `runtime_adapter_missing`, not passed.
+- 2026-05-16: Verified the refactor path end to end: kernel `3 passed`, Mala `336 passed`, and Bhiksha `253 passed`.
+
 ## Purpose
 
 This proposal describes how Mala and Bhiksha should look if we had the chance

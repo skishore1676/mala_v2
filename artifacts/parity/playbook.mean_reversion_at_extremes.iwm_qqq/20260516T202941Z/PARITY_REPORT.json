@@ -1,0 +1,22 @@
+{
+  "report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.20260516T202941Z",
+  "packet_ref": {
+    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+    "version": 1,
+    "kind": "playbook"
+  },
+  "status": "blocked",
+  "generated_at": "2026-05-16T20:29:41.659674Z",
+  "compared_event_count": 1714,
+  "missing_count": 1714,
+  "extra_count": 0,
+  "drift_categories": [
+    "runtime_adapter_missing"
+  ],
+  "artifacts": {
+    "signal_diff": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T202941Z/signal_diff.csv",
+    "report_json": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T202941Z/PARITY_REPORT.json",
+    "report_md": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T202941Z/PARITY_REPORT.md"
+  },
+  "notes": "Blocked, not failed: the playbook packet is structurally valid, but Bhiksha has no runtime event file for this adapter yet."
+}
