@@ -10,6 +10,11 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Wired Bhiksha packet compilation to validate shared-kernel packets and fail closed unless an approved execution packet has declared runtime capability.
 - 2026-05-16: Added the first signal-parity artifact path for the reversion playbook; current report is blocked with `runtime_adapter_missing`, not passed.
 - 2026-05-16: Verified the refactor path end to end: kernel `3 passed`, Mala `336 passed`, and Bhiksha `253 passed`.
+- 2026-05-16: Added Bhiksha RTH feature transforms for `opening_vwap_rth`, prior-RTH-close ATR/gap state, and relative RTH volume; focused Bhiksha tests pass.
+- 2026-05-16: Added and registered Bhiksha's `intraday_mean_reversion_extremes` adapter with a focused synthetic signal test.
+- 2026-05-16: Added a Bhiksha runtime-event export tool for mean-reversion parity CSVs; focused export test passes.
+- 2026-05-16: Added Bhiksha's shared-kernel capability manifest generation; reversion remains explicitly blocked with `signal_parity_not_passed`.
+- 2026-05-16: Re-verified after the adapter lift: kernel `3 passed`, Mala `336 passed`, and Bhiksha `260 passed`.
 
 ## Purpose
 
