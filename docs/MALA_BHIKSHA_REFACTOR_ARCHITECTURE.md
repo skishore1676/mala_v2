@@ -15,8 +15,9 @@ to refactor them cleanly around the work we have now learned the hard way:
   strategy names, or trust that a runtime adapter "probably means the same
   thing."
 
-The core refactor is to introduce a shared kernel and make parity a first-class
-gate.
+The core refactor is to introduce a small shared contract kernel, make packet
+authorization explicit, and make signal-level parity a first-class gate. Feature
+extraction should come after parity evidence, not before it.
 
 ## North Star
 
@@ -24,7 +25,7 @@ gate.
 Mala = research lab + analyst + evidence compiler
 Bhiksha = live runtime + feature recomputation + option/execution manager
 Trader Desk = operator cockpit
-Shared Kernel = feature/strategy/packet contracts both must obey
+Shared Contract Kernel = packet, capability, and parity contracts both must obey
 ```
 
 The important architectural boundary is not "Mala vs Bhiksha." The durable
@@ -42,6 +43,29 @@ Mala and Bhiksha should become applications on top of shared contracts rather
 than two systems each carrying their own version of Newton, session semantics,
 and strategy interpretation.
 
+## Five Contracts, Four Promotion Gates
+
+The refactor should be argued as contracts between truths, not as a folder
+layout question.
+
+```text
+Research truth  --[evidence packet]---------------> Operator truth
+Operator truth  --[playbook packet / arm decision]-> Runtime truth
+Runtime truth   --[execution packet + parity]-----> Execution truth
+Execution truth --[fill / fire / outcome events]--> Feedback truth
+Feedback truth  --[review artifact]---------------> Research truth
+```
+
+The first four crossings are gates that promote or authorize behavior. The last
+crossing is the learning loop back into research.
+
+This framing lets us debate each crossing independently:
+
+- what artifact crosses the boundary
+- who is allowed to approve it
+- what can block it
+- what must be recorded afterward
+
 ## Target Diagram
 
 ```mermaid
@@ -51,22 +75,21 @@ flowchart LR
         Evidence["Evidence Builder\nM1-M5, playbook surfaces, policy cards"]
     end
 
-    subgraph Kernel["Shared Kernel"]
-        Bars["Canonical Bar Schema\nsessions, calendars, providers"]
-        Features["Newton Feature Library\nVWAP, VPOC, VMA/VWMA, kinematics"]
+    subgraph Kernel["Shared Contract Kernel"]
         Contracts["Packet + Strategy Contracts\nschemas, versions, feature specs"]
-        Parity["Parity Harness\nsame bars, same params, same signals"]
+        Capabilities["Capability Manifest\nwhat Bhiksha can recompute"]
+        Parity["Signal Parity Harness\nsame bars, same params, same decisions"]
     end
 
     subgraph Registry["Packet Store"]
-        EvidencePacket["Evidence Packet\nMala_Evidence_v1 lineage"]
+        EvidencePacket["Evidence Packet\nM1-M5 lineage"]
         PlaybookPacket["Playbook Packet\nconsultant and review"]
         ExecutionPacket["Execution Packet\nruntime-approved"]
     end
 
     subgraph Runtime["Runtime Truth"]
         Bhiksha["Bhiksha\nlive feature recompute and orchestration"]
-        Adapter["Runtime Adapter\nstrategy or playbook implementation"]
+        Adapter["Streaming Adapter\nlive data over batch contract"]
         OptionSelector["Option Selector\nDTE, delta, liquidity, risk"]
     end
 
@@ -85,9 +108,8 @@ flowchart LR
     Evidence --> PlaybookPacket
     Mala --> Contracts
     Bhiksha --> Contracts
-    Bhiksha --> Features
-    Features --> Parity
-    Bars --> Parity
+    Bhiksha --> Capabilities
+    Capabilities --> Parity
     Contracts --> Parity
     EvidencePacket --> Parity
     PlaybookPacket --> Parity
@@ -105,21 +127,38 @@ flowchart LR
 
 ## Main Refactor Bet
 
-Create a shared kernel used by both Mala and Bhiksha.
+Create a shared contract kernel used by both Mala and Bhiksha.
 
-The shared kernel should own:
+The minimum viable kernel should own:
 
-- canonical OHLCV bar schema
-- timestamp, timezone, market-session, and trading-calendar semantics
-- provider normalization rules
-- Newton transforms
 - feature names and feature specs
-- strategy/playbook contracts
 - packet schemas and versioning
+- capability manifest schema
+- parity report schema
 - parity fixtures and comparison tools
 
-This removes the most dangerous current failure mode: Mala fixes or evolves a
-feature while Bhiksha keeps recomputing an older or merely similar version.
+It should not initially own all Newton transforms, calendars, provider
+normalization, and strategy implementations. Those are extraction candidates,
+not starting assumptions.
+
+This keeps the first move small enough to land cleanly and still attacks the
+real problem: unversioned handoff plus unmeasured runtime drift.
+
+## Explicit Bets
+
+Before moving code, the proposal rests on three bets:
+
+- **Bet A: drift is a dominant failure mode.** If wrong Bhiksha fires mostly
+  came from Mala/Bhiksha recomputation drift, parity will expose it and shared
+  extraction will pay off. If wrong fires mostly came from weak research edges,
+  the fix is research quality, not architecture.
+- **Bet B: consultation is a durable product.** If the trader keeps using the
+  playbook consultant lane as its own workflow, playbook packets are worth
+  naming separately. If consultation is just a temporary review state, one
+  packet type with states may be simpler.
+- **Bet C: Trader Desk is load-bearing.** If the desk gates execution decisions,
+  it belongs in the refactor path. If it is only a better viewer, it should
+  come after parity and packet authorization.
 
 ## Proposed Package Shape
 
@@ -127,41 +166,54 @@ The exact repo layout can be decided later, but conceptually:
 
 ```text
 mala_bhiksha_kernel/
-  bars/
-    schema.py
-    sessions.py
-    calendars.py
-    provider_normalization.py
-  features/
-    newton.py
-    market_pulse.py
-    vpoc.py
-    vwap.py
-    kinematics.py
   contracts/
     packets.py
     strategies.py
     playbooks.py
     capabilities.py
   parity/
-    feature_compare.py
     signal_compare.py
+    feature_diagnostics.py
     replay_fixture.py
+    report_schema.py
 ```
 
 Then:
 
 ```text
 mala_v2
-  imports shared kernel for research transforms, staged evidence, and playbooks
+  imports shared kernel for packet writing, capability checks, and parity reports
 
 bhiksha
-  imports shared kernel for live feature recompute, packet validation, and parity
+  imports shared kernel for packet validation, capability manifest, and parity reports
 ```
 
-If Bhiksha cannot use an exact shared implementation for a live provider
-constraint, that adapter must be explicitly marked as an adapter and pass a
-parity tolerance test against the shared kernel.
+Later, parity evidence may justify moving specific feature modules into the
+kernel:
+
+```text
+mala_bhiksha_kernel/
+  bars/
+  sessions/
+  features/
+```
+
+But that extraction should happen one strategy family at a time.
+
+## Operational Setup
+
+The implementation should start with isolated work surfaces:
+
+```text
+mala_v2 branch:    codex/shared-contract-refactor
+bhiksha branch:    codex/shared-contract-refactor
+new repo/package:  mala-bhiksha-kernel
+```
+
+The first working branch should not change live behavior. It should produce
+parity reports against current behavior. Once a family is migrated and proven,
+the old duplicated path for that family should be deleted rather than kept as a
+parallel wire.
 
 ## Packet Types
 
@@ -220,26 +272,31 @@ mode and controls."
 
 ## Parity As A Gate
 
-The core acceptance test should be:
+Parity pass/fail should be judged at the signal and decision layer:
 
 ```text
 same input bars + same params
-  -> same feature values within tolerance
   -> same signal timestamps/directions
+  -> same invalidation timestamps
   -> same thesis-exit decisions where applicable
 ```
+
+Feature diffs are diagnostics for disagreements. They should explain why a
+signal missed or fired extra; they should not be the primary pass/fail
+primitive. A tiny feature delta can be harmless far from a threshold and
+catastrophic at the threshold.
 
 Parity output should be an artifact, not just a unit-test pass:
 
 ```text
 artifacts/parity/<packet_id>/<timestamp>/
-  feature_diff.csv
   signal_diff.csv
+  feature_diagnostics.csv
   exit_diff.csv
   PARITY_REPORT.md
 ```
 
-The report should classify mismatches:
+The report should classify signal disagreements:
 
 - `feature_drift`
 - `provider_drift`
@@ -254,23 +311,67 @@ Promotion rule:
 - No M1-M5 strategy gets live promotion if its active packet has unresolved
   parity misses or extra Bhiksha fires.
 
+## Packet Registry
+
+Packet registry is load-bearing because packet id + version should become the
+unit of authorization.
+
+Recommended default:
+
+```text
+canonical packet body: git-tracked JSON
+operator index:        generated Google Sheet row
+runtime compile:       Bhiksha reads approved packet id + version
+```
+
+Sheets remain the human control tower, but the full packet payload should not
+be an editable row blob. The sheet should expose status, owner, approval,
+summary, and links. The immutable JSON body should preserve what was actually
+approved.
+
+If we are not willing to build the registry, then we should not pretend packet
+ids are authoritative. In that fallback world, `active_strategy` remains the
+authorization unit and the refactor is smaller.
+
+## Streaming Adapter
+
+The runtime adapter should be named as a streaming adapter, not a vague strategy
+adapter.
+
+Batch research assumes completed bars and stable historical windows. Live
+runtime deals with partial bars, late ticks, missing volume, provider gaps, and
+ordering. The adapter's job is to reconcile live streaming data into the batch
+contract that parity tested.
+
+That distinction matters:
+
+- semantic mismatch means the strategy or feature contract is wrong
+- streaming mismatch means live data shape differs from historical batch shape
+- provider mismatch means the same contract is fed different market data
+
 ## Trader Desk
 
 Trader Desk should sit inside or immediately above Bhiksha.
 
 It should not be a research dashboard. It is the operating cockpit.
 
-Minimum surface:
+Critical-path surface:
+
+- arm/disarm
+- emergency square-off
+- packet status
+- current position-state dump
+- runtime block reason
+
+Product surface, after parity and authorization are stable:
 
 - current packet card
 - take/pass
-- arm/disarm
 - management-policy selection
 - option contract preview and selection rationale
 - portfolio and buying-power context
-- live position state
 - stop/target/invalidation state
-- square-off and emergency intervention
+- GDS-style option health metrics
 - post-trade feedback capture
 
 For playbooks, the desk should feel like:
@@ -306,9 +407,9 @@ playbook refinement, and packet revisions.
 
 ## Migration Plan
 
-### Phase 0: Freeze The Vocabulary
+### Phase 0: Freeze Vocabulary And Authorization
 
-Decide and document the names:
+Decide and document:
 
 - evidence packet
 - playbook packet
@@ -316,12 +417,14 @@ Decide and document the names:
 - active strategy row
 - runtime deployment
 - Trader Desk
-- shared kernel
+- shared contract kernel
 - parity report
+- packet id + version as the preferred authorization unit
+- canonical packet body vs generated operator index
 
 Deliverable: docs only.
 
-### Phase 1: Parity Harness Before Shared-Kernel Extraction
+### Phase 1: Parity Harness Before Extraction
 
 Before moving files around, build the comparison tool against the current repos.
 
@@ -335,51 +438,66 @@ Start with the active older strategies:
 Deliverable: a parity report that can say whether old wrong fires were likely
 feature drift, provider drift, session drift, strategy drift, or execution drift.
 
-### Phase 2: Extract Shared Kernel
+### Phase 2: Minimal Kernel And Registry
 
-Move the safest shared pieces first:
+Create the small shared contract kernel:
 
-- bar schema
-- session/calendar helpers
 - feature names
-- Newton transforms
-- market-pulse/VMA/VWMA/VPOC helpers
+- packet schemas
+- capability manifest schema
+- parity report schema
+- replay fixtures
 
-Deliverable: Mala and Bhiksha both importing the same feature code for at least
-one strategy family.
+Create the first packet registry path:
 
-### Phase 3: Packet Registry
+- immutable JSON packet body
+- generated sheet/index row
+- Bhiksha reads approved packet id and version
 
-Formalize packet schemas and write/read paths.
+Deliverable: one packet can be written, indexed, approved, and compiled without
+changing live execution behavior.
 
-Likely sources:
+### Phase 3: Evidence-Based Feature Extraction
 
-- `Mala_Evidence_v1` remains the human-visible sheet surface for older strategy
-  evidence.
-- A local or sheet-backed packet registry stores full JSON packet payloads.
-- Bhiksha compiles from approved packet ids, not loose row blobs.
+Extract only the features parity proves are risky.
 
-Deliverable: packet schema plus one compiled active-plan path using packet id
-and version.
+Likely first families:
 
-### Phase 4: Trader Desk
+- Market Impulse VMA/VWMA/stage semantics
+- session and warmup helpers
+- VPOC and directional mass if they explain mismatches
+
+Deliverable: Mala and Bhiksha both import the same implementation for one
+drift-proven feature family.
+
+### Phase 4: Hard Cutover Per Family
+
+For each migrated family:
+
+```text
+old path remains only until replacement passes
+new path becomes default
+old duplicated wire is deleted
+failures become loud in test and fail-closed in runtime
+```
+
+Deliverable: no permanent dual-path confusion.
+
+### Phase 5: Minimal Trader Desk
 
 Build the operator cockpit on top of Bhiksha.
 
-Reuse useful product ideas from `public_api_trading_v3`, but keep the execution
-truth in Bhiksha:
+Critical path only:
 
-- take/pass
 - arm/disarm
-- position health
-- order lifecycle
-- GDS-style option health metrics
+- packet status
+- position-state dump
 - emergency controls
-- review logging
+- runtime block reason
 
 Deliverable: supervised shadow desk before live automation.
 
-### Phase 5: Playbook Automation
+### Phase 6: Product Trader Desk And Playbook Automation
 
 Only after the first playbook adapter passes parity, allow the consultant lane
 to produce execution packets.
@@ -400,21 +518,22 @@ menu, shadow first.
 
 1. Should the shared kernel live as its own repo, a package inside `mala_v2`, or
    a package inside `openclaw-core`?
-2. Should packet registry truth live in Google Sheets, SQLite, local JSON, or a
-   hybrid where Sheets is the operator index and JSON is the payload?
-3. Should Trader Desk be a Bhiksha-native UI or a separate surface above
+2. Should we commit to git-tracked JSON as canonical packet body and Sheets as
+   generated operator index?
+3. Is Trader Desk architecture-critical or product-after-parity?
+4. Should Trader Desk be a Bhiksha-native UI or a separate surface above
    Bhiksha APIs?
-4. Which strategy family should be the first parity harness target:
+5. Which strategy family should be the first parity harness target:
    Market Impulse, Opening Drive, or the new IWM/QQQ mean-reversion playbook?
-5. How strict should feature tolerance be for provider-sensitive volume
-   features?
+6. How should streaming-vs-batch mismatch be represented in parity reports?
 
 ## Recommendation
 
-Do not start by extracting the shared kernel.
+Do not start by extracting Newton.
 
-Start by building the parity harness against the current repos. It will tell us
-which duplicated features are actually dangerous, which wrong fires were caused
-by provider/session drift, and which pieces deserve extraction first.
+Start by building contracts, packet registry, and signal-level parity against
+the current repos. That will tell us which duplicated features are actually
+dangerous, which wrong fires were caused by provider/session drift, and which
+pieces deserve extraction first.
 
-Then extract the shared kernel with evidence, not assumptions.
+Then extract shared features with evidence, not assumptions.
