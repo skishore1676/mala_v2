@@ -448,6 +448,12 @@ evidence, and reviewable feedback loop.
 - GDS-style option health metrics as a management overlay on the selected
   option contract
 
+The two operating lanes are kept separate in
+[`MALA_BHIKSHA_OPERATING_LANES.md`](MALA_BHIKSHA_OPERATING_LANES.md): playbook
+consultation grows into automation only after Bhiksha parity, while the older
+M1-M5 strategy lane continues through `Mala_Evidence_v1`, `active_strategy`, and
+Bhiksha shadow/live promotion.
+
 ### Phase 5: Live evaluation (small shadow and then real-money trades)
 
 Run a small number of real trades through the playbook. Evaluate:
