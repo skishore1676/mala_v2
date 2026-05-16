@@ -125,6 +125,13 @@ For a `shadow_intent_ready` row, Bhiksha can also build an option preview using
 its existing chain, quote, and risk checks. The preview still requires live
 approval and keeps `order_submission_allowed=false`.
 
+Bhiksha now treats shadow and live as parallel lanes after option preview:
+
+- shadow lane records the option exit mark and PnL so the playbook can be
+  judged by actual executable vehicle outcomes
+- live lane creates an explicit approval ticket, but the submitter and broker
+  reconciliation remain a separate layer
+
 That next bridge is:
 
 ```text
@@ -133,7 +140,8 @@ closed consultation batch
   -> execution packet review/approval
   -> Bhiksha operator decision and shadow intent
   -> Bhiksha option preview and risk check
-  -> Bhiksha live approval and management adapter
+  -> Bhiksha shadow outcome PnL and/or live approval ticket
+  -> Bhiksha submitter, management adapter, and broker reconciliation
   -> feedback artifact back to Mala
 ```
 
