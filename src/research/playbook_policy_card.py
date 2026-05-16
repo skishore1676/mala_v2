@@ -85,7 +85,13 @@ def _policy_card_payload(
             "confidence": str(cohort.get("confidence", "")),
             "cohort_n": int(_safe_float(cohort.get("analog_count")) or 0),
             "candidate_count": int(_safe_float(cohort.get("candidate_count")) or 0),
+            "analog_quality": str(cohort.get("analog_quality", {}).get("label", "")),
+            "similarity_median": str(cohort.get("similarity_median", "")),
+            "rank_200_similarity": str(
+                cohort.get("similarity_tail", {}).get("rank_200_similarity", "")
+            ),
         },
+        "state": _state_payload(payload),
         "policy": policy,
         "rule_id": operator_policy.rule_id,
         "operator_policy": operator_policy.to_payload(),
@@ -200,6 +206,48 @@ def _watch_lines(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _state_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    state_percentiles = payload.get("state_percentiles", {})
+    metrics = state_percentiles.get("metrics", []) if isinstance(state_percentiles, dict) else []
+    return {
+        "percentile_scope": state_percentiles.get("reference_scope", "")
+        if isinstance(state_percentiles, dict)
+        else "",
+        "percentiles": [
+            {
+                "label": str(metric.get("label", "")),
+                "value": str(metric.get("value", "")),
+                "percentile": str(metric.get("percentile", "")),
+                "reference_n": str(metric.get("reference_n", "")),
+            }
+            for metric in metrics
+            if metric.get("label")
+        ],
+    }
+
+
+def _state_line(card: dict[str, Any]) -> str:
+    metrics = card.get("state", {}).get("percentiles", [])
+    parts: list[str] = []
+    for metric in metrics:
+        label = metric.get("label", "")
+        percentile = metric.get("percentile", "")
+        value = metric.get("value", "")
+        if not label or not percentile:
+            continue
+        suffix = f" ({value})" if value else ""
+        parts.append(f"{label} {percentile}{suffix}")
+    return "  |  ".join(parts) if parts else "not available"
+
+
+def _analog_line(card: dict[str, Any]) -> str:
+    read = card.get("read", {})
+    quality = read.get("analog_quality") or "unlabeled"
+    median = read.get("similarity_median") or "?"
+    rank_200 = read.get("rank_200_similarity") or "?"
+    return f"{quality} cohort  |  median similarity {median}  |  rank-200 similarity {rank_200}"
+
+
 def _policy_card_markdown(card: dict[str, Any]) -> str:
     read = card["read"]
     exit_row = card.get("exit", {})
@@ -225,6 +273,8 @@ def _policy_card_markdown(card: dict[str, Any]) -> str:
             f"READ:    {read.get('desk_read', '')}  |  {read.get('confidence', '')} confidence  |  "
             f"cohort {read.get('cohort_n', '')}/{candidate_count}"
         ),
+        f"STATE:   {_state_line(card)}",
+        f"ANALOG:  {_analog_line(card)}",
         f"POLICY:  {card.get('policy', '')}  ({card.get('policy_reason', '')})",
         f"EXIT:    {exit_line}",
         f"STOP:    {stop_line}",

@@ -28,10 +28,12 @@ from src.research.playbook_surface import (
 )
 from src.research.playbook_surface_query import (
     STATE_MANAGEMENT_FEATURES,
+    _analog_quality,
     _evaluate_management_spec,
     _entry_window_scope,
     _parse_timestamp,
     _state_management_verdict,
+    _state_percentiles,
     query_playbook_surface,
 )
 from src.research.playbook_surface_review import build_surface_review
@@ -1120,6 +1122,9 @@ def test_playbook_policy_card_writes_deterministic_operator_card(tmp_path: Path)
             "confidence": "moderate",
             "analog_count": 75,
             "candidate_count": 112654,
+            "similarity_median": "0.31",
+            "similarity_tail": {"rank_200_similarity": "0.49"},
+            "analog_quality": {"label": "tight"},
             "outcome_summary": {
                 "15": {"reversion_pct": "61.3%"},
                 "60": {"reversion_pct": "52.0%"},
@@ -1137,6 +1142,23 @@ def test_playbook_policy_card_writes_deterministic_operator_card(tmp_path: Path)
                 }
             ],
         },
+        "state_percentiles": {
+            "reference_scope": "Prior historical bars for the same symbol/requested bias.",
+            "metrics": [
+                {
+                    "label": "VWAP stretch",
+                    "value": "0.42%",
+                    "percentile": "86th",
+                    "reference_n": "112654",
+                },
+                {
+                    "label": "prior-close ATR stretch",
+                    "value": "1.21",
+                    "percentile": "78th",
+                    "reference_n": "112654",
+                },
+            ],
+        },
     }
     query_json.write_text(json_dumps(payload), encoding="utf-8")
     append_consultation_query(run_dir, payload, review_md, query_json)
@@ -1146,6 +1168,8 @@ def test_playbook_policy_card_writes_deterministic_operator_card(tmp_path: Path)
     assert result.policy == "take"
     text = result.markdown_path.read_text(encoding="utf-8")
     assert "READ:    strong_reversion_lean" in text
+    assert "STATE:   VWAP stretch 86th (0.42%)" in text
+    assert "ANALOG:  tight cohort" in text
     assert "POLICY:  take" in text
     assert "EXIT:    scalp_0.25pct" in text
     assert "EOD reversion erodes to 48%" in text
@@ -1333,6 +1357,49 @@ def test_playbook_surface_query_marks_out_of_window_scope() -> None:
     assert scope["entry_window_end_et"] == "11:00"
     assert scope["query_time_et"] == "12:30"
     assert scope["in_entry_window"] == "no"
+
+
+def test_state_percentiles_use_direction_aware_reference_rows() -> None:
+    query_row = {
+        "bias_vwap_distance_pct": 0.004,
+        "bias_prior_close_atr": 1.2,
+        "bias_velocity_5_atr": 0.06,
+        "bias_velocity_15_atr": -0.01,
+    }
+    reference_rows = [
+        {
+            "bias_vwap_distance_pct": value / 1000,
+            "bias_prior_close_atr": value / 10,
+            "bias_velocity_5_atr": value / 100,
+            "bias_velocity_15_atr": value / 100,
+        }
+        for value in [1, 2, 3, 4, 5]
+    ]
+
+    result = _state_percentiles(query_row, reference_rows)
+
+    metrics = {row["feature"]: row for row in result["metrics"]}
+    assert metrics["bias_vwap_distance_pct"]["percentile"] == "70th"
+    assert metrics["bias_vwap_distance_pct"]["value"] == "0.40%"
+    assert metrics["bias_prior_close_atr"]["percentile"] == "100th"
+    assert metrics["bias_velocity_15_atr"]["percentile"] == "0th"
+
+
+def test_analog_quality_labels_tight_and_loose_cohorts() -> None:
+    tight = _analog_quality(
+        0.31,
+        {"selected_last_similarity": "0.42", "rank_200_similarity": "0.53"},
+        75,
+    )
+    loose = _analog_quality(
+        0.7,
+        {"selected_last_similarity": "0.9", "rank_200_similarity": "1.5"},
+        75,
+    )
+
+    assert tight["label"] == "tight"
+    assert tight["rank_200_tail_spread"] == "0.11"
+    assert loose["label"] == "loose"
 
 
 def test_state_management_verdict_marks_out_of_window_as_context_only() -> None:

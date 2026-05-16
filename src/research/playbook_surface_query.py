@@ -358,6 +358,12 @@ STATE_MANAGEMENT_EXIT_SPECS: tuple[tuple[str, str, str, float], ...] = (
     ("retrace_to_vwap_50pct", "50% retrace toward opening VWAP", "vwap_retrace", 0.50),
     ("vwap_return", "return to opening VWAP", "vwap_retrace", 1.0),
 )
+STATE_PERCENTILE_SPECS: tuple[dict[str, str], ...] = (
+    {"feature": "bias_vwap_distance_pct", "label": "VWAP stretch", "unit": "pct"},
+    {"feature": "bias_prior_close_atr", "label": "prior-close ATR stretch", "unit": "float"},
+    {"feature": "bias_velocity_5_atr", "label": "5m velocity", "unit": "float"},
+    {"feature": "bias_velocity_15_atr", "label": "15m velocity", "unit": "float"},
+)
 SIMILARITY_FEATURE_CONFIG = [
     {"feature": "bias_prior_close_atr", "scale": 0.45, "weight": 1.0},
     {"feature": "bias_vwap_distance_pct", "scale": 0.0035, "weight": 1.0},
@@ -408,6 +414,8 @@ def _state_management_payload(
     )
     analog_rows = analog_candidates[: max(1, analog_count)]
     cohort = [_analog_payload(rows, analog, direction) for analog in analog_rows]
+    similarity_tail = _similarity_tail(analog_candidates, analog_count)
+    similarity_median = _median([row.get("similarity") for row in cohort])
     management_rows = _cohort_management_rows(
         rows,
         analog_rows,
@@ -438,6 +446,7 @@ def _state_management_payload(
         "cohort_verdict_reason": cohort_verdict_reason,
         "active_match_count": 0,
         "current_state": current_state,
+        "state_percentiles": _state_percentiles(query_row, analog_candidates),
         "operator_policy": operator_policy.to_payload(),
         "similarity_config": _similarity_config_payload(),
         "cohort": {
@@ -445,8 +454,9 @@ def _state_management_payload(
             "candidate_count": len(analog_candidates),
             "analog_count": len(cohort),
             "confidence": operator_policy.confidence_for_count(len(cohort)),
-            "similarity_median": _format_float(_median([row.get("similarity") for row in cohort])),
-            "similarity_tail": _similarity_tail(analog_candidates, analog_count),
+            "similarity_median": _format_float(similarity_median),
+            "similarity_tail": similarity_tail,
+            "analog_quality": _analog_quality(similarity_median, similarity_tail, len(cohort)),
             "outcome_summary": outcome_summary,
             "management_rows": management_rows,
             "analogs": cohort[: min(analog_count, 20)],
@@ -565,6 +575,60 @@ def _similarity_tail(
         "rank_25_similarity": by_rank(25),
         "rank_75_similarity": by_rank(75),
         "rank_200_similarity": by_rank(200),
+    }
+
+
+def _state_percentiles(
+    query_row: dict[str, Any],
+    reference_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    metrics: list[dict[str, str]] = []
+    for spec in STATE_PERCENTILE_SPECS:
+        feature = spec["feature"]
+        query_value = _safe_float(query_row.get(feature))
+        values = [_safe_float(row.get(feature)) for row in reference_rows]
+        values = [value for value in values if value is not None]
+        percentile = _percentile_rank(values, query_value)
+        metrics.append(
+            {
+                "feature": feature,
+                "label": spec["label"],
+                "value": _format_state_percentile_value(query_value, spec["unit"]),
+                "percentile": _format_percentile(percentile),
+                "reference_n": str(len(values)),
+            }
+        )
+    return {
+        "reference_scope": (
+            "Prior historical bars for the same symbol/requested bias inside the "
+            "searched entry window."
+        ),
+        "metrics": metrics,
+    }
+
+
+def _analog_quality(
+    median_similarity: float | None,
+    similarity_tail: dict[str, str],
+    analog_count: int,
+) -> dict[str, str]:
+    selected_last = _safe_float(similarity_tail.get("selected_last_similarity"))
+    rank_200 = _safe_float(similarity_tail.get("rank_200_similarity"))
+    spread = rank_200 - selected_last if selected_last is not None and rank_200 is not None else None
+    if analog_count < 30 or median_similarity is None or selected_last is None:
+        label = "thin"
+    elif median_similarity <= 0.35 and (spread is None or spread <= 0.20):
+        label = "tight"
+    elif median_similarity <= 0.55 and (spread is None or spread <= 0.35):
+        label = "workable"
+    else:
+        label = "loose"
+    return {
+        "label": label,
+        "median_similarity": _format_float(median_similarity),
+        "selected_tail_similarity": similarity_tail.get("selected_last_similarity", ""),
+        "rank_200_similarity": similarity_tail.get("rank_200_similarity", ""),
+        "rank_200_tail_spread": _format_float(spread),
     }
 
 
@@ -1205,9 +1269,24 @@ def _write_query_md(path: Path, payload: dict[str, Any], adapter: PlaybookQueryA
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _state_percentile_display_line(state_percentiles: dict[str, Any]) -> str:
+    metrics = state_percentiles.get("metrics", []) if isinstance(state_percentiles, dict) else []
+    parts: list[str] = []
+    for metric in metrics:
+        label = metric.get("label", "")
+        percentile = metric.get("percentile", "")
+        value = metric.get("value", "")
+        if not label or not percentile:
+            continue
+        suffix = f" ({value})" if value else ""
+        parts.append(f"`{label} {percentile}{suffix}`")
+    return " | ".join(parts) if parts else "`not available`"
+
+
 def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
     cohort = payload.get("cohort", {})
     state = payload.get("current_state", {})
+    state_percentiles = payload.get("state_percentiles", {})
     summary = cohort.get("outcome_summary", {})
     similarity = payload.get("similarity_config", {})
     operator_policy = payload.get("operator_policy", {})
@@ -1216,6 +1295,8 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
     min_target_atr_fraction = float(management_policy.get("min_target_atr_fraction", 0.10))
     min_target_price_fraction = float(management_policy.get("min_target_price_fraction", 0.0010))
     tail = cohort.get("similarity_tail", {})
+    quality = cohort.get("analog_quality", {})
+    percentile_line = _state_percentile_display_line(state_percentiles)
     lines = [
         "# Playbook State Management Query",
         "",
@@ -1230,6 +1311,7 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
         f"- candidate analogs in scope: `{cohort.get('candidate_count', 0)}`",
         f"- confidence: `{cohort.get('confidence', '')}`",
         f"- median similarity: `{cohort.get('similarity_median', '')}`",
+        f"- analog quality: `{quality.get('label', '')}`",
         f"- selected-tail similarity: `{tail.get('selected_last_similarity', '')}`; rank-200 similarity: `{tail.get('rank_200_similarity', '')}`",
         f"- searched entry window: `{payload.get('entry_window', {}).get('entry_window_start_et', '')}"
         f" -> {payload.get('entry_window', {}).get('entry_window_end_et', '')} ET`",
@@ -1239,6 +1321,7 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
         "",
         f"- price: `{state.get('close', '')}`; RTH opening VWAP: `{state.get('opening_vwap', '')}`; prior RTH close: `{state.get('prior_close', '')}`",
         f"- bias-adjusted prior-RTH-close stretch: `{state.get('bias_prior_close_atr', '')} ATR`; bias-adjusted VWAP distance: `{state.get('bias_vwap_distance', '')}`",
+        f"- state percentile: {percentile_line}",
         f"- MarketPulse: `{state.get('market_pulse_stage', '')}`; gap: `{state.get('gap_state', '')}`",
         f"- bias-adjusted velocity: `5m {state.get('velocity_5_atr', '')} ATR`, `15m {state.get('velocity_15_atr', '')} ATR`",
         "",
@@ -1297,6 +1380,10 @@ def _write_state_management_md(path: Path, payload: dict[str, Any]) -> None:
             "",
             "- This mode does not ask whether a rule fired.",
             "- It asks what happened after the closest historical states for the same symbol and requested bias.",
+            (
+                "- State percentiles compare this timestamp with prior historical bars for the same "
+                "symbol/requested bias inside the searched entry window."
+            ),
             "- `survived` means the target was touched before a symmetric adverse move of the same size.",
             "- `captured` means the target was touched within 30 minutes, even if comparable heat appeared first.",
             (
@@ -1439,6 +1526,31 @@ def _quantile(values: list[Any], q: float) -> float | None:
         return float(cleaned[int(position)])
     weight = position - lower
     return float(cleaned[lower] * (1 - weight) + cleaned[upper] * weight)
+
+
+def _percentile_rank(values: list[float | None], query_value: float | None) -> float | None:
+    cleaned = sorted(value for value in (_safe_float(value) for value in values) if value is not None)
+    if query_value is None or not cleaned:
+        return None
+    below = sum(1 for value in cleaned if value < query_value)
+    equal = sum(1 for value in cleaned if value == query_value)
+    return (below + 0.5 * equal) / len(cleaned)
+
+
+def _format_percentile(value: float | None) -> str:
+    if value is None:
+        return ""
+    pct = max(0, min(100, round(value * 100)))
+    suffix = "th"
+    if pct % 100 not in {11, 12, 13}:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(pct % 10, "th")
+    return f"{pct}{suffix}"
+
+
+def _format_state_percentile_value(value: float | None, unit: str) -> str:
+    if unit == "pct":
+        return _format_pct(value)
+    return _format_float(value)
 
 
 def _format_float(value: float | None, *, digits: int = 4) -> str:

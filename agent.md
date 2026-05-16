@@ -101,6 +101,12 @@ against `active_strategy`. That role is advisory: it can write local
 recommendation artifacts by default and must not change runtime authorization
 unless explicitly asked.
 
+Use `skills/playbook-replay-consultation/SKILL.md` when the user is manually
+reviewing Thinkorswim or chart replay timestamps against a playbook
+consultation surface. That role is chart-first and human-in-the-loop: the
+trader supplies timestamp, symbol, direction, and chart read; Mala runs the
+query/policy/close commands and computes historical actuals.
+
 Use `src.research.research_ops` whenever you need the research memory layer:
 
 ```bash

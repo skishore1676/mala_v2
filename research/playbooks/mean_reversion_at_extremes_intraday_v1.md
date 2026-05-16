@@ -391,6 +391,12 @@ management row if one exists, and records the prefilled row in the journal.
 Future external-context agents can add caveats, but they should not silently
 overwrite the deterministic policy.
 
+The card also includes a compact `STATE` and `ANALOG` read. `STATE` reports
+where the queried timestamp ranks against prior same-symbol, same-bias,
+same-entry-window history for VWAP stretch, prior-close ATR stretch, and
+velocity. `ANALOG` reports whether the nearest historical cohort is tight,
+workable, loose, or thin based on similarity quality.
+
 Default operator policy:
 
 ```text

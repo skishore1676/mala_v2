@@ -100,6 +100,18 @@ The policy card is a deterministic compression of the cohort. It is not an
 agent and it is not an order ticket. It should make the decision easier to
 review, not make the decision for you.
 
+Read it as:
+
+- `READ`: cohort read, confidence, and sample size.
+- `STATE`: percentile rank versus prior same-symbol, same-bias, same-entry-window
+  history for VWAP stretch, prior-close ATR stretch, and velocity.
+- `ANALOG`: whether the nearest historical cohort is tight, workable, loose, or
+  thin based on similarity quality.
+- `POLICY`: deterministic take/pass/wait/out-of-scope rule.
+- `EXIT`: the management row the policy would prefill if it says take.
+- `STOP`: the paired stop reference for that management row.
+- `WATCH`: horizon warning, especially whether edge decays after the scalp window.
+
 ## Step 4: Decide Take Or Pass
 
 If you would pass, you do not need to choose a management row.
