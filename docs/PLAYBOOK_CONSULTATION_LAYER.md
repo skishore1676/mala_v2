@@ -121,15 +121,15 @@ closed consultation batch
   -> feedback artifact back to Mala
 ```
 
-The current execution-packet draft is:
+The current shadow execution packet is:
 
 ```text
 packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v1.json
 ```
 
-It is intentionally `status=review` with pending operator approval. Bhiksha
-should compile it as blocked until the operator approves the packet and the
-legacy-retirement gate is clear.
+It is `status=approved` for Bhiksha shadow-only activation. It is not approved
+for live automated execution, and its runtime controls keep `shadow_only=true`
+and `live_automated_allowed=false`.
 
 ## Promotion Rule
 

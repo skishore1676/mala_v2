@@ -6,6 +6,7 @@ import argparse
 import csv
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -151,6 +152,7 @@ def write_mean_reversion_shadow_execution_packet(
         operator_approval=OperatorApproval(
             status="approved" if status == PacketStatus.APPROVED else "pending",
             actor=operator,
+            approved_at=datetime.now(UTC) if status == PacketStatus.APPROVED else None,
             notes=operator_notes,
         ),
         metadata={
