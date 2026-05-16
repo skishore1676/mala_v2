@@ -27,10 +27,11 @@ def write_playbook_parity_report(
     packet_path: Path,
     run_dir: Path,
     out_root: Path,
+    research_events_path: Path | None = None,
     runtime_events_path: Path | None = None,
 ) -> Path:
     packet = read_packet_file(packet_path)
-    research_events = _load_signal_events(run_dir / "sample_events.csv")
+    research_events = _load_signal_events(research_events_path or run_dir / "sample_events.csv")
     runtime_events = _load_signal_events(runtime_events_path) if runtime_events_path else []
     generated_at = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_dir = out_root / packet.packet_id / generated_at
@@ -105,7 +106,7 @@ def _load_signal_events(path: Path | None) -> list[SignalEvent]:
                 symbol=str(row.get("symbol", "")).strip().upper(),
                 direction=_direction(str(row.get("direction", ""))),
                 event_type=str(row.get("event_type") or "entry"),
-                policy_id=row.get("policy_id") or row.get("exit_family") or None,
+                policy_id=row.get("policy_id") or row.get("config_id") or row.get("exit_family") or None,
                 metadata={
                     key: value
                     for key, value in row.items()
@@ -176,6 +177,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--packet", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--out-root", type=Path, default=Path("artifacts/parity"))
+    parser.add_argument("--research-events", type=Path)
     parser.add_argument("--runtime-events", type=Path)
     return parser.parse_args()
 
@@ -186,6 +188,7 @@ def main() -> None:
         packet_path=args.packet,
         run_dir=args.run_dir,
         out_root=args.out_root,
+        research_events_path=args.research_events,
         runtime_events_path=args.runtime_events,
     )
     print(report_path)

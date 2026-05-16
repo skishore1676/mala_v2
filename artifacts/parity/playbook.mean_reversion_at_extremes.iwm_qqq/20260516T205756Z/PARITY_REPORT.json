@@ -1,0 +1,20 @@
+{
+  "report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.20260516T205756Z",
+  "packet_ref": {
+    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+    "version": 1,
+    "kind": "playbook"
+  },
+  "status": "passed",
+  "generated_at": "2026-05-16T20:57:56.633251Z",
+  "compared_event_count": 21127,
+  "missing_count": 0,
+  "extra_count": 0,
+  "drift_categories": [],
+  "artifacts": {
+    "signal_diff": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/signal_diff.csv",
+    "report_json": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json",
+    "report_md": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.md"
+  },
+  "notes": null
+}

@@ -56,6 +56,27 @@ def test_playbook_parity_passes_when_runtime_events_match(tmp_path: Path) -> Non
     assert report["extra_count"] == 0
 
 
+def test_playbook_parity_accepts_explicit_research_events(tmp_path: Path) -> None:
+    packet_path = _write_packet(tmp_path)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    research_events = tmp_path / "research_events.csv"
+    runtime_events = tmp_path / "runtime_events.csv"
+    _write_events(research_events)
+    _write_events(runtime_events)
+
+    report_path = write_playbook_parity_report(
+        packet_path=packet_path,
+        run_dir=run_dir,
+        out_root=tmp_path / "parity",
+        research_events_path=research_events,
+        runtime_events_path=runtime_events,
+    )
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "passed"
+
+
 def _write_packet(tmp_path: Path) -> Path:
     packet = PlaybookPacket(
         packet_id="playbook.mean_reversion_at_extremes.iwm_qqq",

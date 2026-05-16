@@ -15,6 +15,9 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Added a Bhiksha runtime-event export tool for mean-reversion parity CSVs; focused export test passes.
 - 2026-05-16: Added Bhiksha's shared-kernel capability manifest generation; reversion remains explicitly blocked with `signal_parity_not_passed`.
 - 2026-05-16: Re-verified after the adapter lift: kernel `3 passed`, Mala `336 passed`, and Bhiksha `260 passed`.
+- 2026-05-16: Added comparable Mala and Bhiksha signal-event exporters with config-specific parity keys; focused exporter tests pass.
+- 2026-05-16: Ran full IWM/QQQ reversion signal parity: `21,127` Mala events vs `21,127` Bhiksha events, `0` missing, `0` extra; entry shadow capability is now supported.
+- 2026-05-16: Created and pushed the private `skishore1676/mala-bhiksha-kernel` repository for the shared kernel.
 
 ## Purpose
 
