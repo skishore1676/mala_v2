@@ -54,6 +54,8 @@ def test_playbook_parity_passes_when_runtime_events_match(tmp_path: Path) -> Non
     assert report["status"] == "passed"
     assert report["missing_count"] == 0
     assert report["extra_count"] == 0
+    with Path(report["artifacts"]["signal_diff"]).open(newline="", encoding="utf-8") as handle:
+        assert list(csv.DictReader(handle)) == []
 
 
 def test_playbook_parity_accepts_explicit_research_events(tmp_path: Path) -> None:
@@ -75,6 +77,28 @@ def test_playbook_parity_accepts_explicit_research_events(tmp_path: Path) -> Non
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "passed"
+
+
+def test_playbook_parity_rejects_naive_timestamps(tmp_path: Path) -> None:
+    packet_path = _write_packet(tmp_path)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "sample_events.csv").write_text(
+        "symbol,direction,event_timestamp,exit_family\n"
+        "IWM,short,2026-05-15T15:01:00,fixed_1_5r\n",
+        encoding="utf-8",
+    )
+
+    try:
+        write_playbook_parity_report(
+            packet_path=packet_path,
+            run_dir=run_dir,
+            out_root=tmp_path / "parity",
+        )
+    except ValueError as exc:
+        assert "timestamp must include timezone" in str(exc)
+    else:
+        raise AssertionError("expected naive timestamp to be rejected")
 
 
 def _write_packet(tmp_path: Path) -> Path:

@@ -63,13 +63,13 @@ def write_playbook_parity_report(
         diff = compare_signal_events(
             research_events,
             runtime_events,
-            drift_category="strategy_semantic_drift",
+            drift_category="unknown",
         )
         report = ParityReport.from_signal_diff(
             report_id=f"parity.{packet.packet_id}.{generated_at}",
             packet_ref=packet.ref,
             diff=diff,
-            drift_categories=[] if diff.passed else ["strategy_semantic_drift"],
+            drift_categories=[] if diff.passed else ["unknown"],
         )
 
     diff_path = report_dir / "signal_diff.csv"
@@ -102,7 +102,7 @@ def _load_signal_events(path: Path | None) -> list[SignalEvent]:
             continue
         events.append(
             SignalEvent(
-                ts=datetime.fromisoformat(timestamp).astimezone(UTC),
+                ts=_parse_timestamp(timestamp),
                 symbol=str(row.get("symbol", "")).strip().upper(),
                 direction=_direction(str(row.get("direction", ""))),
                 event_type=str(row.get("event_type") or "entry"),
@@ -130,6 +130,13 @@ def _direction(value: str) -> str:
     return normalized
 
 
+def _parse_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        raise ValueError(f"Signal event timestamp must include timezone: {value!r}")
+    return parsed.astimezone(UTC)
+
+
 def _write_signal_diff(path: Path, diff: SignalDiff) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
@@ -137,6 +144,8 @@ def _write_signal_diff(path: Path, diff: SignalDiff) -> None:
             fieldnames=["side", "symbol", "direction", "ts", "event_type", "policy_id"],
         )
         writer.writeheader()
+        if diff.passed:
+            return
         for side, events in (
             ("matched", diff.matched),
             ("missing_in_runtime", diff.missing_in_runtime),

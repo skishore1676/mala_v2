@@ -52,10 +52,13 @@ mean-reversion playbook.
   named reasons.
 - **First playbook parity passed.** Mala and Bhiksha produced matching
   IWM/QQQ mean-reversion signal events: `21,127` vs `21,127`, with `0`
-  missing and `0` extra.
+  missing and `0` extra. Bhiksha now verifies the referenced parity report is
+  present and `passed` at packet compile time, but parity is not yet a CI gate.
 - **Old Bhiksha runtime wires are retired from reachability.** The diagnostic
   retirement gate is clear; old promoted strategies are no longer silently
-  available as runtime authorization paths.
+  available as runtime authorization paths. This is disabled-and-detectable,
+  not deletion; the old strategy modules still need physical removal or a
+  revised retirement doctrine.
 - **Reversion execution packet v1 is approved for shadow.** It is compileable
   by Bhiksha, but runtime controls forbid live automation.
 - **Reversion execution packet v2 is approved for live approval-gated pilot.**
@@ -93,7 +96,11 @@ mean-reversion playbook.
   can use without scripts.
 - **Feedback-to-Mala loop.** Bhiksha writes consultation, intent, preview,
   shadow/live-lane, and lifecycle artifacts, but Mala does not yet consume
-  those feedback artifacts as a first-class review/research input.
+  those feedback artifacts as a first-class review/research input. This is the
+  binding constraint on closing the research -> runtime -> feedback loop.
+- **Consultation product proof.** The consultation lane is available, but it is
+  not validated as a durable product habit yet; that requires real operator use
+  across a declared sample.
 - **Management-policy execution depth.** Bhiksha now consumes packet-declared
   management specs through option preview, lifecycle submission, and live
   underlying-anchor monitoring. The next depth layer is broker/position
@@ -121,10 +128,13 @@ mean-reversion playbook.
 
 - No operator-facing Trader Desk yet.
 - No automated Mala feedback ingestion yet.
+- No CI parity rerun gate yet; today's passed report is evidence plus compile
+  validation, not drift-proofing.
 - No current packet is allowed to place live orders without an explicit live
   ticket and operator-run submit command.
-- Legacy strategy families remain retired; reactivation requires fresh
-  evidence, parity, and approval.
+- Legacy strategy families remain disabled from runtime reachability, not
+  deleted. Reactivation requires fresh evidence, parity, and approval, but the
+  code/YAML deletion promise is not yet complete.
 
 ## Purpose
 
@@ -191,7 +201,10 @@ four hold:
    or live without one.
 2. **No silent feature drift.** A feature lives in one place, or in two places
    with an explicit adapter+tolerance test that fails the build when the gap
-   widens. No third copy is allowed.
+   widens. No third copy is allowed. Current state: the reversion playbook has
+   a passed parity report and compile-time parity-report validation, but there
+   is not yet a CI rerun gate and the feature library has not moved into the
+   kernel.
 3. **No untraceable execution.** No trade fires without an approved packet id
    and version on record. The audit chain runs from operator decision to fill
    to feedback without gaps.
@@ -830,9 +843,11 @@ implementation, no `# old path` comment, and no disabled-but-present
 legacy strategy code.
 
 **Current note.** Old runtime wires are no longer reachable, which satisfies
-the operator-safety side of this phase. We have not yet extracted every shared
-feature into the kernel; feature extraction remains evidence-driven and should
-happen only where parity or maintenance pressure justifies it.
+the operator-safety side of this phase. This phase is not done: legacy strategy
+modules and YAMLs are still present, so the implementation is currently
+disabled-and-detectable rather than deleted. We have not yet extracted every
+shared feature into the kernel; feature extraction remains evidence-driven and
+should happen only where parity or maintenance pressure justifies it.
 
 ### Phase 5: Minimal Trader Desk
 
@@ -888,6 +903,8 @@ defined-risk live pilot opened, and only for this packet.
 The reversion packet now has v1 shadow and v2 `live_approval_gated` forms.
 Bhiksha compiles both; v2 can submit only from an approved live ticket and can
 monitor the underlying stop anchor/hard-flat rule after lifecycle start.
+Feedback artifacts still do not flow back into Mala automatically, so this
+phase remains open until the review artifact is consumed by research truth.
 
 ### Phase 7: Agent Read-Only Assist (Earned)
 
