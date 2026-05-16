@@ -121,6 +121,10 @@ red/green decision and selected management policy as a shadow execution intent.
 That intent is still `order_submission_allowed=false`; it is the handoff into
 future option preview and live approval, not an order ticket.
 
+For a `shadow_intent_ready` row, Bhiksha can also build an option preview using
+its existing chain, quote, and risk checks. The preview still requires live
+approval and keeps `order_submission_allowed=false`.
+
 That next bridge is:
 
 ```text
@@ -128,7 +132,8 @@ closed consultation batch
   -> operator review
   -> execution packet review/approval
   -> Bhiksha operator decision and shadow intent
-  -> Bhiksha shadow option-selection and management adapter
+  -> Bhiksha option preview and risk check
+  -> Bhiksha live approval and management adapter
   -> feedback artifact back to Mala
 ```
 
