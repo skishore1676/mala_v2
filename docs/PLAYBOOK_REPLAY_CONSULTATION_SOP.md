@@ -201,6 +201,17 @@ python -m src.research.playbook_consultation_log list \
 The replay batch is complete when there are no open rows for the timestamps you
 intended to review.
 
+Check batch progress:
+
+```bash
+python -m src.research.playbook_consultation_log status \
+  --run-dir "$RUN_DIR"
+```
+
+The `NEXT_ACTION` field is the consultation lane's current handoff: start a
+chart-first query, close open rows, add more rows, or review the closed batch
+before any promotion.
+
 ## What To Write In Operator Notes
 
 Keep notes short and judgment-focused:

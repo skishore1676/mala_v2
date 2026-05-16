@@ -24,8 +24,10 @@ Read only what the task needs:
 
 1. `agent.md`
 2. `docs/PLAYBOOK_REPLAY_CONSULTATION_SOP.md`
-3. the current run's `RECEIPT.md` if the run directory is unclear
-4. generated `QUERY_REVIEW.md`, `POLICY_CARD.md`, and `consultation_log.csv`
+3. `docs/PLAYBOOK_CONSULTATION_LAYER.md` when the user asks how the lane
+   should be used operationally
+4. the current run's `RECEIPT.md` if the run directory is unclear
+5. generated `QUERY_REVIEW.md`, `POLICY_CARD.md`, and `consultation_log.csv`
    for the specific replay timestamp
 
 Default current run:
@@ -181,6 +183,13 @@ Use:
 ./.venv/bin/python -m src.research.playbook_consultation_log list \
   --run-dir "$RUN_DIR" \
   --open-only
+```
+
+For a batch-level status and next action:
+
+```bash
+./.venv/bin/python -m src.research.playbook_consultation_log status \
+  --run-dir "$RUN_DIR"
 ```
 
 The batch is complete when intended review rows are closed.

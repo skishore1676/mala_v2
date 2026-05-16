@@ -18,6 +18,8 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Added comparable Mala and Bhiksha signal-event exporters with config-specific parity keys; focused exporter tests pass.
 - 2026-05-16: Ran full IWM/QQQ reversion signal parity: `21,127` Mala events vs `21,127` Bhiksha events, `0` missing, `0` extra; entry shadow capability is now supported.
 - 2026-05-16: Created and pushed the private `skishore1676/mala-bhiksha-kernel` repository for the shared kernel.
+- 2026-05-16: Added the playbook consultation layer guide and a consultation-log `status` command so replay batches have an explicit next action before promotion.
+- 2026-05-16: Added Bhiksha's diagnostic legacy-retirement gate; current old-lane scan blocks on `8` active legacy wires pending retirement or fresh re-promotion.
 
 ## Purpose
 

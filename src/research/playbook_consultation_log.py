@@ -58,6 +58,19 @@ class ReplayCloseResult:
     actual_exit_ts_et: str
 
 
+@dataclass(frozen=True, slots=True)
+class ConsultationLogSummary:
+    log_path: Path
+    total_rows: int
+    open_rows: int
+    closed_rows: int
+    takes: int
+    passes: int
+    taken_pnl_r_count: int
+    average_taken_pnl_r: float | None
+    next_action: str
+
+
 def append_consultation_query(
     run_dir: Path,
     payload: dict[str, Any],
@@ -252,6 +265,75 @@ def open_consultation_rows(run_dir: Path) -> list[dict[str, str]]:
         and not row.get("actual_exit_reason")
         and not row.get("actual_pnl_r")
     ]
+
+
+def summarize_consultation_log(run_dir: Path, *, target_closed_rows: int = 8) -> ConsultationLogSummary:
+    """Summarize operator replay progress and return the next useful action."""
+    log_path = run_dir / CONSULTATION_LOG_NAME
+    rows = _read_and_migrate(log_path)
+    open_rows = [
+        row
+        for row in rows
+        if not row.get("taken")
+        and not row.get("actual_exit_reason")
+        and not row.get("actual_pnl_r")
+    ]
+    closed_rows = [row for row in rows if row not in open_rows]
+    takes = [row for row in closed_rows if _row_taken(row) == "Y"]
+    passes = [row for row in closed_rows if _row_taken(row) == "N"]
+    pnl_values = [
+        float(row["actual_pnl_r"])
+        for row in takes
+        if _is_float_text(row.get("actual_pnl_r", ""))
+    ]
+    average_taken_pnl = sum(pnl_values) / len(pnl_values) if pnl_values else None
+    return ConsultationLogSummary(
+        log_path=log_path,
+        total_rows=len(rows),
+        open_rows=len(open_rows),
+        closed_rows=len(closed_rows),
+        takes=len(takes),
+        passes=len(passes),
+        taken_pnl_r_count=len(pnl_values),
+        average_taken_pnl_r=average_taken_pnl,
+        next_action=_consultation_next_action(
+            total_rows=len(rows),
+            open_rows=len(open_rows),
+            closed_rows=len(closed_rows),
+            target_closed_rows=target_closed_rows,
+        ),
+    )
+
+
+def _row_taken(row: dict[str, str]) -> str:
+    try:
+        return _normalize_taken(row.get("taken", ""))
+    except ValueError:
+        return ""
+
+
+def _is_float_text(value: str) -> bool:
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _consultation_next_action(
+    *,
+    total_rows: int,
+    open_rows: int,
+    closed_rows: int,
+    target_closed_rows: int,
+) -> str:
+    if total_rows == 0:
+        return "start_chart_first_query"
+    if open_rows:
+        return "close_open_consultation_rows"
+    if closed_rows < target_closed_rows:
+        return "add_more_chart_first_rows"
+    return "review_closed_batch_before_promotion"
 
 
 def _latest_row_for_query(run_dir: Path, query_id: str) -> dict[str, str]:
@@ -459,6 +541,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     list_parser.add_argument("--run-dir", required=True, type=Path)
     list_parser.add_argument("--open-only", action="store_true")
 
+    status_parser = subparsers.add_parser("status", help="Summarize consultation progress")
+    status_parser.add_argument("--run-dir", required=True, type=Path)
+    status_parser.add_argument("--target-closed-rows", type=int, default=8)
+
     close_parser = subparsers.add_parser("close", help="Update a consultation row")
     close_parser.add_argument("--run-dir", required=True, type=Path)
     close_parser.add_argument("--query-id", required=True)
@@ -500,19 +586,32 @@ def main(argv: list[str] | None = None) -> int:
             args.run_dir / CONSULTATION_LOG_NAME
         )
         for row in rows:
-            print(
-                "\t".join(
-                    [
-                        row.get("query_id", ""),
-                        row.get("query_ts_et", ""),
-                        row.get("symbol", ""),
-                        row.get("direction", ""),
-                        row.get("desk_read", ""),
-                        row.get("taken", ""),
-                        row.get("actual_pnl_r", ""),
-                    ]
-                )
-            )
+            fields = [
+                row.get("query_id", ""),
+                row.get("query_ts_et", ""),
+                row.get("symbol", ""),
+                row.get("direction", ""),
+                row.get("desk_read", ""),
+                row.get("taken", ""),
+                row.get("actual_pnl_r", ""),
+            ]
+            print("\t".join(fields))
+        return 0
+    if args.command == "status":
+        summary = summarize_consultation_log(
+            args.run_dir,
+            target_closed_rows=args.target_closed_rows,
+        )
+        print(f"LOG={summary.log_path}")
+        print(f"TOTAL_ROWS={summary.total_rows}")
+        print(f"OPEN_ROWS={summary.open_rows}")
+        print(f"CLOSED_ROWS={summary.closed_rows}")
+        print(f"TAKES={summary.takes}")
+        print(f"PASSES={summary.passes}")
+        print(f"TAKEN_PNL_R_COUNT={summary.taken_pnl_r_count}")
+        if summary.average_taken_pnl_r is not None:
+            print(f"AVERAGE_TAKEN_PNL_R={_format_replay_float(summary.average_taken_pnl_r)}")
+        print(f"NEXT_ACTION={summary.next_action}")
         return 0
     if args.command == "close":
         path = update_consultation_row(

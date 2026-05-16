@@ -15,6 +15,7 @@ from src.research.playbook_consultation_log import (
     dedupe_consultation_rows,
     open_consultation_rows,
     replay_close_consultation_row,
+    summarize_consultation_log,
     update_consultation_row,
 )
 from src.research.playbook_policy_card import build_policy_card
@@ -1043,6 +1044,13 @@ def test_playbook_surface_state_management_returns_cohort(tmp_path: Path) -> Non
     assert closed_rows[0]["actual_pnl_r"] == "0.5"
     assert closed_rows[0]["updated_at_utc"]
     assert open_consultation_rows(run_dir) == []
+    summary = summarize_consultation_log(run_dir)
+    assert summary.total_rows == 1
+    assert summary.open_rows == 0
+    assert summary.closed_rows == 1
+    assert summary.takes == 1
+    assert summary.average_taken_pnl_r == 0.5
+    assert summary.next_action == "add_more_chart_first_rows"
 
     append_consultation_query(
         run_dir,
