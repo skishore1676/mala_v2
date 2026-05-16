@@ -21,6 +21,7 @@ from src.research.playbook_consultation_log import (
 from src.research.playbook_policy_card import build_policy_card
 from src.research.playbook_operator_policy import load_operator_policy
 from src.research.playbook_packet_registry import write_mean_reversion_playbook_packet
+from src.research.playbook_packet_registry import write_mean_reversion_shadow_execution_packet
 from src.research.playbook_surface import (
     _entry_signal_cache_key,
     _evaluate_one_event,
@@ -45,7 +46,7 @@ from src.research.shared_kernel import ensure_kernel_on_path
 from src.strategy.intraday_mean_reversion import PLAYBOOK_ID
 
 ensure_kernel_on_path()
-from mala_bhiksha_kernel import PacketKind, read_packet  # noqa: E402
+from mala_bhiksha_kernel import PacketKind, PacketStatus, read_packet  # noqa: E402
 
 
 def test_playbook_surface_writes_contract_artifacts(tmp_path: Path) -> None:
@@ -184,6 +185,123 @@ def test_playbook_packet_registry_writes_shared_kernel_packet(tmp_path: Path) ->
     assert loaded.symbol_scope == ["IWM", "QQQ"]
     assert loaded.management_policies[0].policy_id == "reversal_extreme__fixed_1_5r"
     assert loaded.management_policies[1].rank == 2
+
+
+def test_playbook_packet_registry_writes_shadow_execution_packet(tmp_path: Path) -> None:
+    run_dir = _write_packet_registry_run(tmp_path)
+    packet_root = tmp_path / "registry"
+    playbook_packet_path = write_mean_reversion_playbook_packet(
+        run_dir,
+        packet_root=packet_root,
+    )
+    parity_report_path = tmp_path / "PARITY_REPORT.json"
+    parity_report_path.write_text(
+        json.dumps(
+            {
+                "report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.test",
+                "packet_ref": {
+                    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+                    "version": 1,
+                    "kind": "playbook",
+                },
+                "status": "passed",
+                "compared_event_count": 21127,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    execution_packet_path = write_mean_reversion_shadow_execution_packet(
+        playbook_packet_path=playbook_packet_path,
+        parity_report_path=parity_report_path,
+        packet_root=packet_root,
+    )
+    loaded = read_packet(
+        packet_root,
+        packet_id="execution.mean_reversion_at_extremes.iwm_qqq",
+        version=1,
+        kind=PacketKind.EXECUTION,
+    )
+
+    assert execution_packet_path.exists()
+    assert loaded.status == PacketStatus.REVIEW
+    assert loaded.operator_approval.status == "pending"
+    assert loaded.source_packet.packet_id == "playbook.mean_reversion_at_extremes.iwm_qqq"
+    assert loaded.runtime_mode.value == "shadow"
+    assert loaded.parity_report_id == "parity.playbook.mean_reversion_at_extremes.iwm_qqq.test"
+    assert loaded.runtime_controls["allowed_management_policy_ids"] == [
+        "reversal_extreme__fixed_1_5r",
+        "reversal_midpoint__fixed_1r",
+    ]
+    assert loaded.runtime_controls["live_automated_allowed"] is False
+
+
+def _write_packet_registry_run(tmp_path: Path) -> Path:
+    run_dir = tmp_path / "surface_run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "playbook_id": PLAYBOOK_ID,
+                "strategy": "Intraday Mean Reversion at Extremes",
+                "symbols": ["IWM", "QQQ"],
+                "start": "2024-01-01",
+                "end": "2026-05-15",
+                "config_count": 2,
+                "config_generation": "test",
+                "calibration_holdout_split": "test split",
+                "feature_families_tested": {"stretch": ["opening_vwap_rth"]},
+                "match_grade_thresholds": {"minimum_sample_count": 50},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with (run_dir / "conditional_surface_by_symbol.csv").open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "config_id",
+                "stop_family",
+                "exit_family",
+                "match_grade",
+                "sample_count",
+                "calibration_expectancy_r",
+                "holdout_expectancy_r",
+                "holdout_win_rate",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "config_id": "cfg_best",
+                "stop_family": "reversal_extreme",
+                "exit_family": "fixed_1_5r",
+                "match_grade": "favorable",
+                "sample_count": "80",
+                "calibration_expectancy_r": "0.18",
+                "holdout_expectancy_r": "0.22",
+                "holdout_win_rate": "0.62",
+            }
+        )
+        writer.writerow(
+            {
+                "config_id": "cfg_second",
+                "stop_family": "reversal_midpoint",
+                "exit_family": "fixed_1r",
+                "match_grade": "near_favorable",
+                "sample_count": "70",
+                "calibration_expectancy_r": "0.12",
+                "holdout_expectancy_r": "0.14",
+                "holdout_win_rate": "0.58",
+            }
+        )
+    return run_dir
 
 
 def test_match_grade_requires_calibration_and_holdout_confirmation() -> None:

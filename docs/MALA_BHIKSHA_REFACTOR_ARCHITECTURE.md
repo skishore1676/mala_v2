@@ -20,6 +20,7 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Created and pushed the private `skishore1676/mala-bhiksha-kernel` repository for the shared kernel.
 - 2026-05-16: Added the playbook consultation layer guide and a consultation-log `status` command so replay batches have an explicit next action before promotion.
 - 2026-05-16: Added Bhiksha's diagnostic legacy-retirement gate; current old-lane scan blocks on `8` active legacy wires pending retirement or fresh re-promotion.
+- 2026-05-16: Drafted the first shadow execution packet for the reversion playbook from the passed parity report; Bhiksha compile correctly blocks it pending operator approval and legacy retirement.
 
 ## Purpose
 

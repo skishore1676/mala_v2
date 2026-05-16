@@ -116,10 +116,20 @@ That next bridge is:
 ```text
 closed consultation batch
   -> operator review
-  -> execution packet draft
+  -> execution packet review/approval
   -> Bhiksha shadow option-selection and management adapter
   -> feedback artifact back to Mala
 ```
+
+The current execution-packet draft is:
+
+```text
+packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v1.json
+```
+
+It is intentionally `status=review` with pending operator approval. Bhiksha
+should compile it as blocked until the operator approves the packet and the
+legacy-retirement gate is clear.
 
 ## Promotion Rule
 
