@@ -19,6 +19,20 @@ The core refactor is to introduce a small shared contract kernel, make packet
 authorization explicit, and make signal-level parity a first-class gate. Feature
 extraction should come after parity evidence, not before it.
 
+The refactor is also a clean transition, not a careful preservation. The
+M1-M5-promoted strategies currently in shadow have run roughly 30% win rate
+with negative expectancy over the last month. There is no runtime behavior to
+preserve by default. Re-evaluating those hypotheses against the new contracts
+is an unavoidable cost and is treated here as a feature, not a regression. The
+only thing that carries over as the first forward target is the IWM/QQQ
+mean-reversion playbook, because it is the only piece with clean evidence and
+bounded scope today.
+
+Legacy code paths are deleted as families migrate. Dead strategies are retired
+loudly, not parked. Human review of a system half-converted is harder and
+more dangerous than human review of a clean cutover, so dual-wire periods are
+treated as short transition states, not steady-state architecture.
+
 ## North Star
 
 ```text
@@ -42,6 +56,51 @@ Feedback truth
 Mala and Bhiksha should become applications on top of shared contracts rather
 than two systems each carrying their own version of Newton, session semantics,
 and strategy interpretation.
+
+## Success Criteria
+
+The phases are servants of these invariants. The refactor is done when all
+four hold:
+
+1. **No unmeasured handoff.** Every Mala -> Bhiksha promotion has a signal
+   parity report attached as evidence. No strategy or playbook enters shadow
+   or live without one.
+2. **No silent feature drift.** A feature lives in one place, or in two places
+   with an explicit adapter+tolerance test that fails the build when the gap
+   widens. No third copy is allowed.
+3. **No untraceable execution.** No trade fires without an approved packet id
+   and version on record. The audit chain runs from operator decision to fill
+   to feedback without gaps.
+4. **No silent strategy decay.** Negative-expectancy strategies trip an
+   explicit sunset rule. They do not keep running quietly while attention is
+   elsewhere.
+
+If those four hold, the refactor is done. If they do not, more phases. They
+are also the criteria that decide whether agents can take more of the
+operator loop over time.
+
+## Strategies Carrying Over
+
+The refactor assumes a clean baseline, not a careful preservation:
+
+- **Carrying over:** the IWM/QQQ mean-reversion playbook. It is the only
+  surface with clean evidence and bounded scope, and it is the first parity
+  target.
+- **Not carrying over:** Market Impulse, Opening Drive, Jerk Pivot, Elastic
+  Band, and any other M1-M5-promoted strategy that has not yet re-earned
+  promotion against the new kernel.
+
+Every retired strategy that wants to come back must re-run its evidence,
+parity, and operator approval against the new contracts. No grandfathering.
+Old M1-M5 runs become research leads, not runtime assets.
+The shadow campaign for the old strategies is wound down before the refactor
+opens, not kept running in parallel.
+
+This is treated as a cost, not a loss. A month of negative-expectancy shadow
+is enough signal that the old configurations are not worth carrying. The
+research effort to re-run hypotheses is a known, bounded cost. The cost of
+carrying ambiguous legacy through a refactor is unbounded and corrodes human
+review.
 
 ## Five Contracts, Four Promotion Gates
 
@@ -385,6 +444,69 @@ Bhiksha: "Execute, manage, reconcile, record."
 Mala: "Consume the feedback later."
 ```
 
+## Agents And The Operator Loop
+
+The long-term goal is that operator involvement reduces over time. Agents
+absorb the routine steps once the contracts, parity, and feedback loops are
+strong enough to make their work auditable.
+
+The agent surface already sketched in `openclaw-core/workspace/agents/`
+maps onto this architecture:
+
+```text
+research_lab    -> research truth      (hypothesis intake, evidence orchestration, journal continuity)
+or_research     -> research truth      (external scouting, source vetting, weekly digest)
+kamandal_ops    -> runtime + execution (current shadow/audit ops precedent)
+trade_lab       -> operator/runtime    (paused reference surface, possible future desk lane)
+bhiksha_ops     -> runtime + execution (future worker if Trader Desk becomes Bhiksha-native)
+```
+
+Do not reuse `radhe_ops` for trading. It is Radhe-specific. If Trader Desk
+becomes its own agent surface, it should be revived through `trade_lab` or a
+new `bhiksha_ops` worker with explicit source boundaries.
+
+What is true today:
+
+- agents do not autonomously promote
+- agents do not autonomously trade
+- agents work behind human approval gates
+- agents read and write artifacts the operator can review
+
+What the refactor unlocks for them:
+
+- **Packet ids and versions** give agents a stable thing to reason about.
+  Without them, agents either summarize sheets they cannot trust or
+  hand-build context from scratch every time.
+- **Parity reports** give agents a structured artifact to consume. Approval
+  recommendations can be grounded in named drift categories instead of vibes.
+- **Feedback artifacts** close the loop so an agent reviewing tomorrow can
+  see what happened to a packet today.
+- **Capability manifests** let an agent answer "is this executable yet" with
+  the same fail-closed rule the runtime uses, rather than guessing.
+
+Agent involvement should expand only when each success-criterion invariant
+strengthens. A rough order:
+
+1. **Read-only assist.** Agents summarize packets, parity, and feedback for
+   the operator. No state changes. Available the moment Phase 2 lands.
+2. **Drafting role.** Agents draft evidence packets, parity-report
+   commentary, and post-trade reviews for operator approval. Available once
+   feedback artifacts are reliably structured (after Phase 5).
+3. **Gated promotion role.** Agents propose promotions from evidence to
+   playbook packet or playbook to execution packet, with a mandatory human
+   approval step that is itself versioned and auditable. Available only
+   after the four success-criterion invariants have held over a meaningful
+   window.
+4. **Autonomous within bounded scope.** Agents act without per-event human
+   approval inside narrow, explicitly-bounded loops (e.g. retuning a single
+   parameter within an authorized region, with a kill switch). Earned, not
+   assumed.
+
+The north star is that the trader becomes the approver and final reviewer,
+not the daily operator. The refactor's contracts, parity, and feedback
+artifacts are the substrate that makes that trust possible. Until those
+hold, agent autonomy stays narrow.
+
 ## Feedback Loop
 
 Bhiksha should write structured feedback for both lanes:
@@ -407,9 +529,15 @@ playbook refinement, and packet revisions.
 
 ## Migration Plan
 
+Each phase has a goal, a deliverable, and a stop condition. A phase is not
+done because the deliverable exists; it is done when the stop condition
+holds.
+
 ### Phase 0: Freeze Vocabulary And Authorization
 
-Decide and document:
+**Goal.** Make the language unambiguous so later phases do not relitigate it.
+
+**Decide and document:**
 
 - evidence packet
 - playbook packet
@@ -422,23 +550,66 @@ Decide and document:
 - packet id + version as the preferred authorization unit
 - canonical packet body vs generated operator index
 
-Deliverable: docs only.
+**Deliverable.** Updated docs only.
 
-### Phase 1: Parity Harness Before Extraction
+**Stop condition.** Operator, research, and ops surfaces all reference the
+same vocabulary in their working docs. No competing terms remain in active
+use.
 
-Before moving files around, build the comparison tool against the current repos.
+### Phase 1: Shadow Wind-Down And Forensic Parity
 
-Start with the active older strategies:
+**Goal.** Stop the bleeding and learn from it before opening the refactor.
 
-- Market Impulse
-- Opening Drive
-- Jerk Pivot
-- Elastic Band
+The current M1-M5 shadow campaign is wound down. A one-shot forensic parity
+run is done against the existing strategies (Market Impulse, Opening Drive,
+Jerk Pivot, Elastic Band) to classify last month's wrong fires as feature
+drift, provider drift, session drift, strategy drift, or execution drift.
+This run is **post-mortem evidence, not migration scaffolding**. Its job is
+to inform what changes in the new kernel, not to preserve the old strategies.
 
-Deliverable: a parity report that can say whether old wrong fires were likely
-feature drift, provider drift, session drift, strategy drift, or execution drift.
+**Deliverable.**
+
+- shadow stopped, with state archived
+- forensic parity report written and circulated
+- explicit list of which drift categories were dominant
+- explicit list of what the M-gates should change to not promote those
+  edges again
+
+**Stop condition.** Forensic report is written, M-gate calibration changes
+are agreed, and there is no live or shadow execution running until the new
+authorization path opens.
+
+### Phase 1.5: Legacy Retirement, No Grandfathering
+
+**Goal.** Make it impossible to silently carry an old strategy forward.
+
+Every currently promoted M1-M5 strategy is retired explicitly. None is
+grandfathered into the new architecture. Any of them that wants to come back
+must:
+
+- be re-hypothesized against the new contracts
+- pass M-gates as recalibrated in Phase 1
+- have a kernel-importable implementation
+- pass signal parity in the new harness
+- earn operator approval as a fresh packet id
+
+**Deliverable.**
+
+- written retirement statement per strategy
+- archived research artifacts and tunings, marked non-live
+- legacy execution code paths removed from Bhiksha as their migration
+  candidates open in Phase 4 (not kept indefinitely)
+
+**Stop condition.** The only thing the new-path runtime can compile and
+execute is the IWM/QQQ mean-reversion playbook. Everything else is either
+retired or re-promoted through the new path. Old code may exist only as
+archived source or under active removal; it must not be reachable by operator
+authorization.
 
 ### Phase 2: Minimal Kernel And Registry
+
+**Goal.** Make packet id + version the unit of authorization, not a sheet
+row.
 
 Create the small shared contract kernel:
 
@@ -450,60 +621,120 @@ Create the small shared contract kernel:
 
 Create the first packet registry path:
 
-- immutable JSON packet body
+- immutable JSON packet body (git-tracked)
 - generated sheet/index row
 - Bhiksha reads approved packet id and version
 
-Deliverable: one packet can be written, indexed, approved, and compiled without
-changing live execution behavior.
+**Deliverable.** One packet (the reversion playbook) can be written,
+indexed, approved, and compiled without changing live execution behavior.
 
-### Phase 3: Evidence-Based Feature Extraction
+**Stop condition.** Bhiksha refuses to compile any packet that is not in
+the registry with an approved id and version. The refusal is loud and
+named (`packet_not_in_registry`, `packet_not_approved`,
+`packet_version_mismatch`).
 
-Extract only the features parity proves are risky.
+### Phase 3: First Forward Parity Target
 
-Likely first families:
+**Goal.** Prove signal parity on the one strategy that matters now.
 
-- Market Impulse VMA/VWMA/stage semantics
-- session and warmup helpers
-- VPOC and directional mass if they explain mismatches
+Build the signal parity harness against the reversion playbook on the
+shared kernel. Feature diffs are diagnostics, not the primary criterion.
 
-Deliverable: Mala and Bhiksha both import the same implementation for one
-drift-proven feature family.
+**Deliverable.** Parity report for the reversion playbook showing zero
+unexplained signal disagreements over the test window.
+
+**Stop condition.** The playbook can produce an execution packet (Phase 6
+will arm it). All disagreements are either resolved or explicitly
+categorized and accepted as adapter tolerance.
 
 ### Phase 4: Hard Cutover Per Family
 
-For each migrated family:
+**Goal.** No permanent dual-wire confusion.
+
+For each feature family migrated into the kernel:
 
 ```text
 old path remains only until replacement passes
 new path becomes default
-old duplicated wire is deleted
+old duplicated wire is deleted from both repos
 failures become loud in test and fail-closed in runtime
 ```
 
-Deliverable: no permanent dual-path confusion.
+Legacy strategies that have not earned re-promotion do not get a migrated
+path; their code is removed when the family they relied on migrates.
+
+**Deliverable.** Each migrated family has exactly one implementation,
+imported by both Mala and Bhiksha. Removed strategies are removed, not
+gated off.
+
+**Stop condition.** A grep across both repos finds no duplicated feature
+implementation, no `# old path` comment, and no disabled-but-present
+legacy strategy code.
 
 ### Phase 5: Minimal Trader Desk
 
-Build the operator cockpit on top of Bhiksha.
+**Goal.** Operator can authorize, monitor, and intervene without a
+terminal.
 
 Critical path only:
 
 - arm/disarm
-- packet status
+- packet status (id, version, parity state)
 - position-state dump
-- emergency controls
+- emergency square-off
 - runtime block reason
 
-Deliverable: supervised shadow desk before live automation.
+**Deliverable.** A working desk over Bhiksha APIs with those controls and
+nothing else.
 
-### Phase 6: Product Trader Desk And Playbook Automation
+**Stop condition.** Operator completes a full arm -> execute -> square-off
+cycle from the desk for the reversion playbook in shadow, and unauthorized
+execution attempts are blocked with a named reason. Operator uses the desk
+for a continuous shadow window without falling back to manual scripts.
 
-Only after the first playbook adapter passes parity, allow the consultant lane
-to produce execution packets.
+### Phase 6: First Live Playbook And Feedback Loop
 
-Deliverable: one playbook, one symbol basket, one option policy, one management
-menu, shadow first.
+**Goal.** One playbook, end to end, with execution earned not assumed.
+
+The reversion playbook becomes the first packet to cross from
+research-truth all the way through to feedback-truth on the new
+architecture.
+
+**Deliverable.**
+
+- approved execution packet for the reversion playbook
+- shadow run on the new path
+- feedback artifacts written back to Mala
+- post-trade review tied to packet id and version
+
+**Stop condition.** Shadow expectancy is non-negative over a declared
+trade-count window, feedback artifacts are flowing without manual fixup,
+and the operator signs off that the loop is real. Only then is a supervised,
+defined-risk live pilot opened, and only for this packet.
+
+### Phase 7: Agent Read-Only Assist (Earned)
+
+**Goal.** Begin reducing operator load without giving up control.
+
+Once Phases 2 through 6 have produced reliable packets, parity reports,
+and feedback artifacts, agents enter the loop in a strictly read-only
+role: they summarize, surface anomalies, draft commentary. They do not
+change state.
+
+**Deliverable.** `research_lab` and `kamandal_ops` are wired into the new
+artifacts and produce one daily and one weekly digest the operator
+actually uses.
+
+**Stop condition.** Operator confirms the digests reduce review time
+without hiding anomalies. Agents have not silently promoted, retuned, or
+authorized anything.
+
+### Phase 8 And Beyond: Earned Agent Autonomy
+
+Agent role expansion (drafting, then gated promotion, then bounded
+autonomy) is not committed to in this plan. It is gated on the four
+success-criterion invariants holding over a meaningful window of live
+operation. Each step earns the next one. Nothing here promises a calendar.
 
 ## What This Refactor Avoids
 
@@ -513,6 +744,10 @@ menu, shadow first.
 - duplicated Newton transforms drifting silently.
 - playbook consultation being confused with live authorization.
 - M1-M5 evidence being confused with runtime parity.
+- legacy strategies parked in disabled-but-present state, making human
+  review of the system harder than it needs to be.
+- agent involvement that runs ahead of the contracts, parity, and feedback
+  artifacts that make agent work auditable.
 
 ## Open Questions
 
@@ -529,11 +764,13 @@ menu, shadow first.
 
 ## Recommendation
 
-Do not start by extracting Newton.
+Do not start by extracting Newton. Do not start by preserving the current
+shadow.
 
-Start by building contracts, packet registry, and signal-level parity against
-the current repos. That will tell us which duplicated features are actually
-dangerous, which wrong fires were caused by provider/session drift, and which
-pieces deserve extraction first.
+Start by stopping the shadow, writing the forensic parity report on the
+strategies that have been losing, and retiring them explicitly. Then build
+the contracts, the registry, and signal-level parity against the one
+playbook worth carrying forward.
 
-Then extract shared features with evidence, not assumptions.
+Extract shared features with evidence, not assumptions. Let agent autonomy
+expand only as the four success-criterion invariants earn the next step.
