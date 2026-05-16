@@ -412,6 +412,42 @@ Build execution infrastructure (bhiksha / kamandal) to:
 - Fire exit per rules
 - Report to trader on entry and exit only
 
+### Phase 4A: Bhiksha operationalization boundary
+
+The current operating assumption is:
+
+```text
+Mala = analyst and evidence compiler
+Bhiksha = live feature transformer, option selector, execution manager, and audit logger
+Public.com / Public API = broker and order-routing substrate
+Trader Desk = operator cockpit over the Mala/Bhiksha contract
+```
+
+This means Mala should not call Public directly and should not become a broker
+runtime. Mala writes a reviewable playbook packet: playbook id, symbol,
+direction, state snapshot, required live features, acceptable policy choices,
+invalidation logic, management menu, provider-parity status, and vehicle
+constraints. Bhiksha consumes that packet only after the trader arms it, then
+recomputes the required features from live data, selects the option contract by
+the approved vehicle policy, manages exits, and records both machine feedback
+and trader/analyst feedback.
+
+Bhiksha is the right first execution surface because it already owns the active
+plan, strategy registry, live bar polling, option selection/preflight,
+position monitoring, Public broker adapter, reconciliation, and post-close
+feedback loop. The work needed for Mala 2.2 is therefore to make Bhiksha
+feature-parity capable for the locked playbook packet, not to create a second
+runtime inside Mala.
+
+`public_api_trading_v3` remains valuable, but as execution infrastructure and
+prior art, not as the playbook authority. It has useful Public.com lifecycle,
+GDS, reconciliation, and UI lessons. Those ideas can be ported into Bhiksha or
+wrapped behind Bhiksha's broker/execution boundary. It should become the lead
+runtime only if it can demonstrably own the active-plan contract, live
+Mala-like feature transforms, thesis-state exits, audit feedback, and sheet or
+desk control plane more cleanly than Bhiksha. Until that is proven, routing
+Mala straight to Public would blur analyst, operator, and execution roles.
+
 ### Phase 5: Live evaluation (small shadow and then real-money trades)
 
 Run a small number of real trades through the playbook. Evaluate:
