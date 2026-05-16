@@ -184,6 +184,8 @@ def test_playbook_packet_registry_writes_shared_kernel_packet(tmp_path: Path) ->
     assert loaded.playbook_id == PLAYBOOK_ID
     assert loaded.symbol_scope == ["IWM", "QQQ"]
     assert loaded.management_policies[0].policy_id == "reversal_extreme__fixed_1_5r"
+    assert loaded.management_policies[0].parameters["stop_anchor"] == "underlying_reversal_extreme"
+    assert loaded.management_policies[0].parameters["target_r"] == 1.5
     assert loaded.management_policies[1].rank == 2
 
 
@@ -234,6 +236,12 @@ def test_playbook_packet_registry_writes_shadow_execution_packet(tmp_path: Path)
         "reversal_extreme__fixed_1_5r",
         "reversal_midpoint__fixed_1r",
     ]
+    assert loaded.runtime_controls["management_policy_specs_required"] is True
+    assert (
+        loaded.runtime_controls["management_policy_specs"]["reversal_extreme__fixed_1_5r"]["stop_anchor"]
+        == "underlying_reversal_extreme"
+    )
+    assert loaded.runtime_controls["management_policy_specs"]["reversal_midpoint__fixed_1r"]["target_r"] == 1.0
     assert loaded.runtime_controls["live_automated_allowed"] is False
 
 

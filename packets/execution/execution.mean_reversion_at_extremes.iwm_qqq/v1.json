@@ -1,6 +1,6 @@
 {
   "capability_manifest_id": "bhiksha.packet_capabilities.v1",
-  "created_at": "2026-05-16T21:31:24.810330Z",
+  "created_at": "2026-05-16T22:39:26.752487Z",
   "feature_contract": {
     "bar_interval": "1m",
     "contract_id": "mean_reversion_at_extremes_intraday_v1",
@@ -123,7 +123,7 @@
   },
   "operator_approval": {
     "actor": "Suman",
-    "approved_at": "2026-05-16T21:31:24.810160Z",
+    "approved_at": "2026-05-16T22:39:26.752365Z",
     "notes": "Approved for Bhiksha shadow-only activation; not approved for live automated execution.",
     "status": "approved"
   },
@@ -136,6 +136,63 @@
     ],
     "consultation_batch_gate": "review_closed_batch_before_live",
     "live_automated_allowed": false,
+    "management_policy_specs": {
+      "immediate_entry_bar_failure__fixed_2r": {
+        "exit_family": "fixed_2r",
+        "hard_flat_time_et": "15:55",
+        "option_stop_fallback_pct": 0.45,
+        "parameters": {
+          "exit_family": "fixed_2r",
+          "hard_flat_time_et": "15:55",
+          "holdout_expectancy_r": 0.625,
+          "holdout_win_rate": 0.5417,
+          "match_grade": "partial",
+          "option_stop_fallback_pct": 0.45,
+          "sample_count": 115,
+          "source_config_id": "de1576e59d",
+          "stop_anchor": "underlying_entry_bar_failure",
+          "stop_family": "immediate_entry_bar_failure",
+          "target_model": "fixed_r",
+          "target_order_mode": "virtual_or_broker",
+          "target_r": 2.0
+        },
+        "policy_id": "immediate_entry_bar_failure__fixed_2r",
+        "source_config_id": "de1576e59d",
+        "stop_anchor": "underlying_entry_bar_failure",
+        "stop_family": "immediate_entry_bar_failure",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 2.0
+      },
+      "reversal_extreme__fixed_1r": {
+        "exit_family": "fixed_1r",
+        "hard_flat_time_et": "15:55",
+        "option_stop_fallback_pct": 0.45,
+        "parameters": {
+          "exit_family": "fixed_1r",
+          "hard_flat_time_et": "15:55",
+          "holdout_expectancy_r": 0.1818,
+          "holdout_win_rate": 0.5909,
+          "match_grade": "favorable",
+          "option_stop_fallback_pct": 0.45,
+          "sample_count": 114,
+          "source_config_id": "f09fcdd6b5",
+          "stop_anchor": "underlying_reversal_extreme",
+          "stop_family": "reversal_extreme",
+          "target_model": "fixed_r",
+          "target_order_mode": "virtual_or_broker",
+          "target_r": 1.0
+        },
+        "policy_id": "reversal_extreme__fixed_1r",
+        "source_config_id": "f09fcdd6b5",
+        "stop_anchor": "underlying_reversal_extreme",
+        "stop_family": "reversal_extreme",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 1.0
+      }
+    },
+    "management_policy_specs_required": true,
     "operator_must_select_management_policy": true,
     "option_selection_preview_only": true,
     "shadow_only": true

@@ -29,6 +29,7 @@ the first working cutover path for the IWM/QQQ mean-reversion playbook.
 - 2026-05-16: Added the Bhiksha option-preview layer; `shadow_intent_ready` artifacts can now resolve an option candidate and run chain/quote/risk checks while still requiring live approval.
 - 2026-05-16: Split the post-preview path into parallel shadow and live lanes: shadow records executable option PnL, while live creates an explicit approval ticket that is not yet a broker submission.
 - 2026-05-16: Added the Bhiksha packet-native lifecycle submitter; future `live_approval_gated` packets can turn approved live tickets into managed entries with stop/target rules, while the current shadow-only packet is refused.
+- 2026-05-16: Added packet-declared management-policy specs; Mala now writes stop/target/hard-flat management contracts and Bhiksha option preview/live lifecycle consume those specs instead of relying on hidden defaults.
 
 ## Current Stock Check
 
@@ -67,6 +68,10 @@ mean-reversion playbook.
 - **Lifecycle submitter exists.** A future `live_approval_gated` packet plus
   approved live ticket can drive entry submission, fill/reconcile handling,
   stop/target arming, trade-state persistence, and lifecycle artifacts.
+- **Management policies are packet-declared.** The reversion execution packet
+  now carries `runtime_controls.management_policy_specs` with stop family,
+  stop anchor, exit family, target model, target R, hard-flat time, and option
+  stop fallback.
 - **Current live safety holds.** The actual reversion packet remains
   shadow-only, so the lifecycle submitter refuses it for live submission.
 
@@ -78,9 +83,10 @@ mean-reversion playbook.
 - **Feedback-to-Mala loop.** Bhiksha writes consultation, intent, preview,
   shadow/live-lane, and lifecycle artifacts, but Mala does not yet consume
   those feedback artifacts as a first-class review/research input.
-- **Management-policy depth.** Bhiksha can resolve and apply management-policy
-  specs, with safe defaults for the first playbook, but the playbook should
-  graduate toward richer packet-declared policy specs before live use.
+- **Management-policy execution depth.** Bhiksha consumes packet-declared
+  management specs through option preview and lifecycle submission. The next
+  depth layer is live monitoring of underlying stop anchors, not just placing
+  the option-premium protective stop and target plan.
 - **Live approval promotion.** The submitter supports `live_approval_gated`
   packets, but no current packet is promoted to that mode.
 
@@ -91,8 +97,8 @@ mean-reversion playbook.
    preview, start shadow, view position state, and show live block reasons.
 2. Add the feedback ingestion bridge back into Mala so shadow outcomes and
    operator/analyst notes become packet-versioned review artifacts.
-3. Expand management policies from safe defaults into explicit packet
-   declarations for entry, invalidation, stop, target, time stop, reconcile,
+3. Expand the management interpreter from packet-declared stop/target specs
+   into live underlying-anchor monitoring, time-stop enforcement, reconcile,
    and emergency square-off behavior.
 4. Define the promotion bar from `shadow` to `live_approval_gated`: minimum
    trade count, non-negative executable expectancy, no manual artifact fixups,

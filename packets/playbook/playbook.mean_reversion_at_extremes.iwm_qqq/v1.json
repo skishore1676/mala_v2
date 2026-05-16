@@ -1,6 +1,6 @@
 {
   "consultation_state": "ready_for_parity",
-  "created_at": "2026-05-16T20:30:57.924984Z",
+  "created_at": "2026-05-16T22:39:11.474060Z",
   "entry_model": {
     "calibration_holdout_split": "per symbol/config/direction by first 80% of event dates",
     "config_generation": "balanced_axis_sweep_v1: includes the prior config, one-axis feature coverage, stretch-threshold families by stretch source, and stop/exit coverage before any historical result ranking",
@@ -117,11 +117,19 @@
     {
       "name": "reversal_extreme / fixed_1r",
       "parameters": {
+        "exit_family": "fixed_1r",
+        "hard_flat_time_et": "15:55",
         "holdout_expectancy_r": 0.1818,
         "holdout_win_rate": 0.5909,
         "match_grade": "favorable",
+        "option_stop_fallback_pct": 0.45,
         "sample_count": 114,
-        "source_config_id": "f09fcdd6b5"
+        "source_config_id": "f09fcdd6b5",
+        "stop_anchor": "underlying_reversal_extreme",
+        "stop_family": "reversal_extreme",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 1.0
       },
       "policy_id": "reversal_extreme__fixed_1r",
       "rank": 1
@@ -129,11 +137,19 @@
     {
       "name": "immediate_entry_bar_failure / fixed_2r",
       "parameters": {
+        "exit_family": "fixed_2r",
+        "hard_flat_time_et": "15:55",
         "holdout_expectancy_r": 0.625,
         "holdout_win_rate": 0.5417,
         "match_grade": "partial",
+        "option_stop_fallback_pct": 0.45,
         "sample_count": 115,
-        "source_config_id": "de1576e59d"
+        "source_config_id": "de1576e59d",
+        "stop_anchor": "underlying_entry_bar_failure",
+        "stop_family": "immediate_entry_bar_failure",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 2.0
       },
       "policy_id": "immediate_entry_bar_failure__fixed_2r",
       "rank": 2

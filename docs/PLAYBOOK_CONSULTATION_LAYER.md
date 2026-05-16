@@ -139,6 +139,17 @@ protective stop, target or virtual target, trade-state persistence, and later
 position management. The current reversion packet remains shadow-only and is
 blocked from that submitter.
 
+Management is now packet-declared. The execution packet carries:
+
+```text
+runtime_controls.management_policy_specs
+```
+
+Each selected policy includes stop family, stop anchor, exit family, target
+model, target R, hard-flat time, option stop fallback, and source config id.
+Bhiksha option preview and lifecycle submission read that spec instead of
+silently mapping policy IDs to local defaults.
+
 That next bridge is:
 
 ```text

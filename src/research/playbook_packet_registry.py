@@ -20,6 +20,7 @@ from mala_bhiksha_kernel import (  # noqa: E402
     FeatureContract,
     FeatureSpec,
     ManagementPolicy,
+    ManagementPolicySpec,
     OperatorApproval,
     PacketLineage,
     PacketRef,
@@ -126,6 +127,10 @@ def write_mean_reversion_shadow_execution_packet(
         raise ValueError("--operator is required when writing an approved execution packet")
 
     management_policy_ids = [policy.policy_id for policy in playbook_packet.management_policies]
+    management_policy_specs = {
+        policy.policy_id: _management_policy_spec_from_policy(policy).model_dump(mode="json")
+        for policy in playbook_packet.management_policies
+    }
     packet = ExecutionPacket(
         packet_id=packet_id,
         version=version,
@@ -169,6 +174,8 @@ def write_mean_reversion_shadow_execution_packet(
         parity_report_id=str(parity_report["report_id"]),
         runtime_controls={
             "allowed_management_policy_ids": management_policy_ids,
+            "management_policy_specs": management_policy_specs,
+            "management_policy_specs_required": True,
             "operator_must_select_management_policy": True,
             "shadow_only": True,
             "live_automated_allowed": False,
@@ -261,22 +268,126 @@ def _management_policies(surface_path: Path) -> list[ManagementPolicy]:
             continue
         seen.add(key)
         policies.append(
-            ManagementPolicy(
-                policy_id=f"{key[0]}__{key[1]}",
-                name=f"{key[0]} / {key[1]}",
-                rank=len(policies) + 1,
-                parameters={
-                    "source_config_id": row.get("config_id"),
-                    "match_grade": row.get("match_grade"),
-                    "sample_count": _safe_int(row.get("sample_count")),
-                    "holdout_expectancy_r": _optional_float(row.get("holdout_expectancy_r")),
-                    "holdout_win_rate": _optional_float(row.get("holdout_win_rate")),
-                },
-            )
+            _management_policy_from_surface_row(row, rank=len(policies) + 1)
         )
         if len(policies) == 2:
             break
     return policies
+
+
+def _management_policy_from_surface_row(row: dict[str, str], *, rank: int) -> ManagementPolicy:
+    stop_family = str(row.get("stop_family", ""))
+    exit_family = str(row.get("exit_family", ""))
+    spec = _management_policy_spec(
+        policy_id=f"{stop_family}__{exit_family}",
+        stop_family=stop_family,
+        exit_family=exit_family,
+        source_config_id=row.get("config_id"),
+        parameters={
+            "match_grade": row.get("match_grade"),
+            "sample_count": _safe_int(row.get("sample_count")),
+            "calibration_expectancy_r": _optional_float(row.get("calibration_expectancy_r")),
+            "holdout_expectancy_r": _optional_float(row.get("holdout_expectancy_r")),
+            "holdout_win_rate": _optional_float(row.get("holdout_win_rate")),
+        },
+    )
+    return ManagementPolicy(
+        policy_id=spec.policy_id,
+        name=f"{stop_family} / {exit_family}",
+        rank=rank,
+        parameters={
+            "source_config_id": row.get("config_id"),
+            "stop_family": stop_family,
+            "stop_anchor": spec.stop_anchor,
+            "exit_family": exit_family,
+            "target_model": spec.target_model,
+            "target_r": spec.target_r,
+            "option_stop_fallback_pct": spec.option_stop_fallback_pct,
+            "hard_flat_time_et": spec.hard_flat_time_et,
+            "target_order_mode": spec.target_order_mode,
+            "match_grade": row.get("match_grade"),
+            "sample_count": _safe_int(row.get("sample_count")),
+            "holdout_expectancy_r": _optional_float(row.get("holdout_expectancy_r")),
+            "holdout_win_rate": _optional_float(row.get("holdout_win_rate")),
+        },
+    )
+
+
+def _management_policy_spec_from_policy(policy: ManagementPolicy) -> ManagementPolicySpec:
+    stop_family, exit_family = _policy_families(policy)
+    parameters = dict(policy.parameters)
+    return _management_policy_spec(
+        policy_id=policy.policy_id,
+        stop_family=stop_family,
+        exit_family=exit_family,
+        source_config_id=_optional_str(parameters.get("source_config_id")),
+        parameters=parameters,
+    )
+
+
+def _management_policy_spec(
+    *,
+    policy_id: str,
+    stop_family: str,
+    exit_family: str,
+    source_config_id: str | None,
+    parameters: dict[str, Any],
+) -> ManagementPolicySpec:
+    return ManagementPolicySpec(
+        policy_id=policy_id,
+        stop_family=stop_family,
+        stop_anchor=_stop_anchor(stop_family),
+        exit_family=exit_family,
+        target_model=_target_model(exit_family),
+        target_r=_target_r(exit_family),
+        hard_flat_time_et="15:55",
+        option_stop_fallback_pct=0.45,
+        target_order_mode="virtual_or_broker",
+        source_config_id=source_config_id,
+        parameters=parameters,
+    )
+
+
+def _policy_families(policy: ManagementPolicy) -> tuple[str, str]:
+    raw_stop = policy.parameters.get("stop_family")
+    raw_exit = policy.parameters.get("exit_family")
+    if raw_stop and raw_exit:
+        return str(raw_stop), str(raw_exit)
+    if "__" in policy.policy_id:
+        stop_family, exit_family = policy.policy_id.split("__", 1)
+        return stop_family, exit_family
+    return policy.policy_id, "unknown"
+
+
+def _stop_anchor(stop_family: str) -> str:
+    anchors = {
+        "reversal_extreme": "underlying_reversal_extreme",
+        "reversal_midpoint": "underlying_reversal_midpoint",
+        "immediate_entry_bar_failure": "underlying_entry_bar_failure",
+    }
+    return anchors.get(stop_family, f"underlying_{stop_family}")
+
+
+def _target_model(exit_family: str) -> str:
+    if exit_family.startswith("fixed_"):
+        return "fixed_r"
+    return exit_family
+
+
+def _target_r(exit_family: str) -> float:
+    fixed_r = {
+        "fixed_1r": 1.0,
+        "fixed_1_5r": 1.5,
+        "fixed_2r": 2.0,
+    }
+    return fixed_r.get(exit_family, 0.0)
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text or None
 
 
 def _surface_rows(surface_path: Path) -> list[dict[str, str]]:
