@@ -116,12 +116,18 @@ and Bhiksha records the bridge artifact.
 Bhiksha does not yet select an option, place an order, manage exits, or write
 the full live feedback loop for this playbook.
 
+After a consultation is produced, Bhiksha can now also record the operator's
+red/green decision and selected management policy as a shadow execution intent.
+That intent is still `order_submission_allowed=false`; it is the handoff into
+future option preview and live approval, not an order ticket.
+
 That next bridge is:
 
 ```text
 closed consultation batch
   -> operator review
   -> execution packet review/approval
+  -> Bhiksha operator decision and shadow intent
   -> Bhiksha shadow option-selection and management adapter
   -> feedback artifact back to Mala
 ```

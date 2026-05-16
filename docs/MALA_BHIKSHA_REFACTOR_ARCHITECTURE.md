@@ -24,6 +24,7 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Retired the old Bhiksha strategy/deployment wires from runtime reachability; the legacy-retirement report is now clear and the reversion execution packet blocks only on review status and operator approval.
 - 2026-05-16: Approved the reversion execution packet for Bhiksha shadow-only activation; compile now passes with runtime controls forbidding live automation.
 - 2026-05-16: Added the Bhiksha-native playbook consultation bridge; Bhiksha can now verify the shadow packet, call Mala's query/policy card, and record the consultation artifact without placing orders.
+- 2026-05-16: Added the Bhiksha operator decision layer; consultation artifacts can now become red/green shadow intents with a required allowed management policy and `order_submission_allowed=false`.
 
 ## Purpose
 
