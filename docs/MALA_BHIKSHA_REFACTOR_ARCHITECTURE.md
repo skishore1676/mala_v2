@@ -1,6 +1,7 @@
 # Mala / Bhiksha Refactor Architecture
 
-Status: proposal draft for review, not an implementation commitment.
+Status: active refactor implementation. The original proposal has crossed into
+the first working cutover path for the IWM/QQQ mean-reversion playbook.
 
 ## Milestone Log
 
@@ -28,6 +29,84 @@ Status: proposal draft for review, not an implementation commitment.
 - 2026-05-16: Added the Bhiksha option-preview layer; `shadow_intent_ready` artifacts can now resolve an option candidate and run chain/quote/risk checks while still requiring live approval.
 - 2026-05-16: Split the post-preview path into parallel shadow and live lanes: shadow records executable option PnL, while live creates an explicit approval ticket that is not yet a broker submission.
 - 2026-05-16: Added the Bhiksha packet-native lifecycle submitter; future `live_approval_gated` packets can turn approved live tickets into managed entries with stop/target rules, while the current shadow-only packet is refused.
+
+## Current Stock Check
+
+As of 2026-05-16, the refactor is no longer only an architecture proposal. The
+first end-to-end path exists for one clean forward target: the IWM/QQQ
+mean-reversion playbook.
+
+### Done
+
+- **Shared kernel exists.** `mala-bhiksha-kernel` is a private repo with shared
+  packet schemas, capability manifests, parity primitives, registry helpers,
+  and tests.
+- **Packet registry path exists.** Mala writes canonical playbook/execution
+  packet JSON and a registry index. Bhiksha compiles against packet id +
+  version rather than a loose strategy name.
+- **Bhiksha fail-closed compile exists.** Unsupported, unapproved,
+  version-mismatched, shadow-only, or legacy-blocked packets are refused with
+  named reasons.
+- **First playbook parity passed.** Mala and Bhiksha produced matching
+  IWM/QQQ mean-reversion signal events: `21,127` vs `21,127`, with `0`
+  missing and `0` extra.
+- **Old Bhiksha runtime wires are retired from reachability.** The diagnostic
+  retirement gate is clear; old promoted strategies are no longer silently
+  available as runtime authorization paths.
+- **Reversion execution packet is approved for shadow only.** It is compileable
+  by Bhiksha, but runtime controls forbid live automation.
+- **Consultation lane exists.** Bhiksha can verify the packet, call Mala's
+  query/policy card, and record a consultation artifact without placing orders.
+- **Operator decision lane exists.** A consultation can become a red/green
+  shadow intent with required management-policy selection and
+  `order_submission_allowed=false`.
+- **Option preview exists.** A ready shadow intent can resolve an option
+  candidate and run quote/chain/risk checks before any live authorization.
+- **Parallel shadow/live lanes exist.** Shadow can record executable option
+  PnL; live can create an explicit approval ticket but not submit it directly.
+- **Lifecycle submitter exists.** A future `live_approval_gated` packet plus
+  approved live ticket can drive entry submission, fill/reconcile handling,
+  stop/target arming, trade-state persistence, and lifecycle artifacts.
+- **Current live safety holds.** The actual reversion packet remains
+  shadow-only, so the lifecycle submitter refuses it for live submission.
+
+### In Progress
+
+- **Phase 5/6 bridge.** We now have most of the backend substrate for the
+  operator flow, but not yet a minimal Trader Desk surface that the operator
+  can use without scripts.
+- **Feedback-to-Mala loop.** Bhiksha writes consultation, intent, preview,
+  shadow/live-lane, and lifecycle artifacts, but Mala does not yet consume
+  those feedback artifacts as a first-class review/research input.
+- **Management-policy depth.** Bhiksha can resolve and apply management-policy
+  specs, with safe defaults for the first playbook, but the playbook should
+  graduate toward richer packet-declared policy specs before live use.
+- **Live approval promotion.** The submitter supports `live_approval_gated`
+  packets, but no current packet is promoted to that mode.
+
+### Next Pickup
+
+1. Build the minimal Bhiksha-native Trader Desk/API surface for the existing
+   lane: load packet, consult, take/pass, choose management policy, run option
+   preview, start shadow, view position state, and show live block reasons.
+2. Add the feedback ingestion bridge back into Mala so shadow outcomes and
+   operator/analyst notes become packet-versioned review artifacts.
+3. Expand management policies from safe defaults into explicit packet
+   declarations for entry, invalidation, stop, target, time stop, reconcile,
+   and emergency square-off behavior.
+4. Define the promotion bar from `shadow` to `live_approval_gated`: minimum
+   trade count, non-negative executable expectancy, no manual artifact fixups,
+   and operator sign-off.
+5. Only after that, decide whether any old M1-M5 family deserves a fresh
+   hypothesis rerun under the new packet/parity path.
+
+### Current Blockers
+
+- No operator-facing Trader Desk yet.
+- No automated Mala feedback ingestion yet.
+- No current packet is allowed to place live orders.
+- Legacy strategy families remain retired; reactivation requires fresh
+  evidence, parity, and approval.
 
 ## Purpose
 
@@ -562,6 +641,8 @@ holds.
 
 ### Phase 0: Freeze Vocabulary And Authorization
 
+**Progress: complete for the first refactor slice.**
+
 **Goal.** Make the language unambiguous so later phases do not relitigate it.
 
 **Decide and document:**
@@ -583,7 +664,13 @@ holds.
 same vocabulary in their working docs. No competing terms remain in active
 use.
 
+**Current note.** The active docs now distinguish evidence packets, playbook
+packets, execution packets, shadow intents, live approval tickets, and
+lifecycle submissions.
+
 ### Phase 1: Shadow Wind-Down And Forensic Parity
+
+**Progress: partly complete, deliberately narrowed.**
 
 **Goal.** Stop the bleeding and learn from it before opening the refactor.
 
@@ -606,7 +693,14 @@ to inform what changes in the new kernel, not to preserve the old strategies.
 are agreed, and there is no live or shadow execution running until the new
 authorization path opens.
 
+**Current note.** The old runtime wires have been retired from Bhiksha
+reachability, so the bleeding is stopped. A full forensic report on every old
+M1-M5 strategy has not been completed; that work is now intentionally deferred
+until a retired family is worth re-hypothesizing.
+
 ### Phase 1.5: Legacy Retirement, No Grandfathering
+
+**Progress: complete for runtime reachability.**
 
 **Goal.** Make it impossible to silently carry an old strategy forward.
 
@@ -633,7 +727,12 @@ retired or re-promoted through the new path. Old code may exist only as
 archived source or under active removal; it must not be reachable by operator
 authorization.
 
+**Current note.** Bhiksha's legacy-retirement gate is clear, and the new-path
+compile surface no longer authorizes the old promoted strategy wires.
+
 ### Phase 2: Minimal Kernel And Registry
+
+**Progress: complete for the first packet family.**
 
 **Goal.** Make packet id + version the unit of authorization, not a sheet
 row.
@@ -660,7 +759,14 @@ the registry with an approved id and version. The refusal is loud and
 named (`packet_not_in_registry`, `packet_not_approved`,
 `packet_version_mismatch`).
 
+**Current note.** The private `mala-bhiksha-kernel` repo exists, the first
+registry path exists, and Bhiksha compiles/refuses packets by packet id,
+version, approval state, runtime mode, capability, and legacy-retirement
+state.
+
 ### Phase 3: First Forward Parity Target
+
+**Progress: complete for IWM/QQQ mean reversion.**
 
 **Goal.** Prove signal parity on the one strategy that matters now.
 
@@ -674,7 +780,14 @@ unexplained signal disagreements over the test window.
 will arm it). All disagreements are either resolved or explicitly
 categorized and accepted as adapter tolerance.
 
+**Current note.** The reversion parity report passed with `21,127` Mala events
+and `21,127` Bhiksha events, with `0` missing and `0` extra. The packet can
+compile for shadow-only execution.
+
 ### Phase 4: Hard Cutover Per Family
+
+**Progress: complete for legacy reachability; incomplete for shared feature
+extraction.**
 
 **Goal.** No permanent dual-wire confusion.
 
@@ -698,7 +811,14 @@ gated off.
 implementation, no `# old path` comment, and no disabled-but-present
 legacy strategy code.
 
+**Current note.** Old runtime wires are no longer reachable, which satisfies
+the operator-safety side of this phase. We have not yet extracted every shared
+feature into the kernel; feature extraction remains evidence-driven and should
+happen only where parity or maintenance pressure justifies it.
+
 ### Phase 5: Minimal Trader Desk
+
+**Progress: backend lane exists; operator surface not built.**
 
 **Goal.** Operator can authorize, monitor, and intervene without a
 terminal.
@@ -719,7 +839,14 @@ cycle from the desk for the reversion playbook in shadow, and unauthorized
 execution attempts are blocked with a named reason. Operator uses the desk
 for a continuous shadow window without falling back to manual scripts.
 
+**Current note.** Bhiksha has the consultation, operator-decision,
+option-preview, shadow/live-lane, and lifecycle-submit backend pieces. The
+missing piece is the minimal operator surface/API that lets the trader run
+that flow without CLI glue.
+
 ### Phase 6: First Live Playbook And Feedback Loop
+
+**Progress: shadow/lifecycle substrate exists; live promotion not opened.**
 
 **Goal.** One playbook, end to end, with execution earned not assumed.
 
@@ -739,7 +866,14 @@ trade-count window, feedback artifacts are flowing without manual fixup,
 and the operator signs off that the loop is real. Only then is a supervised,
 defined-risk live pilot opened, and only for this packet.
 
+**Current note.** Shadow option PnL and live approval ticket artifacts exist.
+The lifecycle submitter is ready for a future `live_approval_gated` packet,
+but the current reversion packet remains shadow-only and is correctly refused
+for live submission.
+
 ### Phase 7: Agent Read-Only Assist (Earned)
+
+**Progress: future.**
 
 **Goal.** Begin reducing operator load without giving up control.
 
@@ -756,7 +890,12 @@ actually uses.
 without hiding anomalies. Agents have not silently promoted, retuned, or
 authorized anything.
 
+**Current note.** Agent involvement should wait until the Trader Desk and
+feedback loop produce stable artifacts worth summarizing.
+
 ### Phase 8 And Beyond: Earned Agent Autonomy
+
+**Progress: future.**
 
 Agent role expansion (drafting, then gated promotion, then bounded
 autonomy) is not committed to in this plan. It is gated on the four
@@ -776,28 +915,60 @@ operation. Each step earns the next one. Nothing here promises a calendar.
 - agent involvement that runs ahead of the contracts, parity, and feedback
   artifacts that make agent work auditable.
 
-## Open Questions
+## Decision Ledger
 
-1. Should the shared kernel live as its own repo, a package inside `mala_v2`, or
-   a package inside `openclaw-core`?
-2. Should we commit to git-tracked JSON as canonical packet body and Sheets as
-   generated operator index?
-3. Is Trader Desk architecture-critical or product-after-parity?
-4. Should Trader Desk be a Bhiksha-native UI or a separate surface above
-   Bhiksha APIs?
-5. Which strategy family should be the first parity harness target:
-   Market Impulse, Opening Drive, or the new IWM/QQQ mean-reversion playbook?
-6. How should streaming-vs-batch mismatch be represented in parity reports?
+1. **Kernel location: decided.** The shared kernel lives in the private
+   `mala-bhiksha-kernel` repo.
+2. **Packet authority: decided for first slice.** Git-tracked JSON is the
+   canonical packet body. Generated indexes and future Sheets views are
+   operator surfaces, not editable packet truth.
+3. **Trader Desk criticality: decided.** Trader Desk is architecture-critical
+   for real operation because it is the operator approval, intervention, and
+   visibility surface.
+4. **Trader Desk location: decided for next slice.** Build it Bhiksha-native
+   or immediately above Bhiksha APIs. Do not make `public_api_trading_v3` a
+   second execution brain.
+5. **First parity target: decided.** IWM/QQQ mean reversion was the first
+   target and passed signal parity.
+6. **Streaming-vs-batch mismatch: partly decided.** Represent it as parity
+   classification and runtime fail-closed reasons. More detail is needed once
+   live streaming data is exercised through the Trader Desk lane.
+
+## Remaining Architecture Questions
+
+1. What is the exact minimal Trader Desk shape: CLI-backed API first, local
+   web UI first, or both in a thin vertical slice?
+2. What is the declared shadow promotion window for the reversion playbook:
+   number of trades, acceptable drawdown, minimum expectancy, and manual
+   review requirements?
+3. Which feedback artifacts should Mala ingest first: shadow PnL, operator
+   notes, lifecycle events, or full post-trade review bundles?
+4. When the first playbook is stable, do we re-run one retired M1-M5 family as
+   a calibration exercise, or keep all effort on playbook expansion?
 
 ## Recommendation
 
-Do not start by extracting Newton. Do not start by preserving the current
-shadow.
+Do not extract more Newton until a real parity or maintenance pressure forces
+it. Do not revive old M1-M5 runtime wires just because their research artifacts
+exist.
 
-Start by stopping the shadow, writing the forensic parity report on the
-strategies that have been losing, and retiring them explicitly. Then build
-the contracts, the registry, and signal-level parity against the one
-playbook worth carrying forward.
+The next implementation slice should be the minimal Bhiksha-native Trader Desk
+surface over the lane that now exists:
+
+```text
+load packet
+-> consult Mala
+-> take/pass
+-> choose management policy
+-> option preview
+-> start shadow
+-> show position/lifecycle state
+-> show live block reason
+```
+
+That slice makes the system usable without pretending it is live-ready. After
+the desk can run the shadow loop cleanly, build Mala feedback ingestion and
+then define the `shadow -> live_approval_gated` promotion bar.
 
 Extract shared features with evidence, not assumptions. Let agent autonomy
 expand only as the four success-criterion invariants earn the next step.
