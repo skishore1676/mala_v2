@@ -21,6 +21,7 @@ from src.research.playbook_consultation_log import (
 from src.research.playbook_policy_card import build_policy_card
 from src.research.playbook_operator_policy import load_operator_policy
 from src.research.playbook_packet_registry import write_mean_reversion_playbook_packet
+from src.research.playbook_packet_registry import write_mean_reversion_live_execution_packet
 from src.research.playbook_packet_registry import write_mean_reversion_shadow_execution_packet
 from src.research.playbook_surface import (
     _entry_signal_cache_key,
@@ -243,6 +244,60 @@ def test_playbook_packet_registry_writes_shadow_execution_packet(tmp_path: Path)
     )
     assert loaded.runtime_controls["management_policy_specs"]["reversal_midpoint__fixed_1r"]["target_r"] == 1.0
     assert loaded.runtime_controls["live_automated_allowed"] is False
+
+
+def test_playbook_packet_registry_writes_live_approval_gated_execution_packet(tmp_path: Path) -> None:
+    run_dir = _write_packet_registry_run(tmp_path)
+    packet_root = tmp_path / "registry"
+    playbook_packet_path = write_mean_reversion_playbook_packet(
+        run_dir,
+        packet_root=packet_root,
+    )
+    parity_report_path = tmp_path / "PARITY_REPORT.json"
+    parity_report_path.write_text(
+        json.dumps(
+            {
+                "report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.test",
+                "packet_ref": {
+                    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+                    "version": 1,
+                    "kind": "playbook",
+                },
+                "status": "passed",
+                "compared_event_count": 21127,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    execution_packet_path = write_mean_reversion_live_execution_packet(
+        playbook_packet_path=playbook_packet_path,
+        parity_report_path=parity_report_path,
+        packet_root=packet_root,
+        status=PacketStatus.APPROVED,
+        operator="Suman",
+        operator_notes="Monday small-account pilot.",
+    )
+    loaded = read_packet(
+        packet_root,
+        packet_id="execution.mean_reversion_at_extremes.iwm_qqq",
+        version=2,
+        kind=PacketKind.EXECUTION,
+    )
+
+    assert execution_packet_path.exists()
+    assert loaded.status == PacketStatus.APPROVED
+    assert loaded.operator_approval.status == "approved"
+    assert loaded.operator_approval.actor == "Suman"
+    assert loaded.runtime_mode.value == "live_approval_gated"
+    assert loaded.runtime_controls["shadow_only"] is False
+    assert loaded.runtime_controls["live_automated_allowed"] is False
+    assert loaded.runtime_controls["live_ticket_required"] is True
+    assert loaded.runtime_controls["requires_underlying_stop_price"] is True
+    assert loaded.runtime_controls["live_management_required"] is True
+    assert loaded.runtime_controls["max_live_quantity"] == 1
+    assert loaded.runtime_controls["max_trade_premium_usd"] == 300.0
 
 
 def _write_packet_registry_run(tmp_path: Path) -> Path:

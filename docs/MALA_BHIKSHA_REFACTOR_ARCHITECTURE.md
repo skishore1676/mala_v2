@@ -30,6 +30,8 @@ the first working cutover path for the IWM/QQQ mean-reversion playbook.
 - 2026-05-16: Split the post-preview path into parallel shadow and live lanes: shadow records executable option PnL, while live creates an explicit approval ticket that is not yet a broker submission.
 - 2026-05-16: Added the Bhiksha packet-native lifecycle submitter; future `live_approval_gated` packets can turn approved live tickets into managed entries with stop/target rules, while the current shadow-only packet is refused.
 - 2026-05-16: Added packet-declared management-policy specs; Mala now writes stop/target/hard-flat management contracts and Bhiksha option preview/live lifecycle consume those specs instead of relying on hidden defaults.
+- 2026-05-16: Generated approved reversion execution packet v2 as `live_approval_gated` for the Monday small-account pilot; live automation is still forbidden and every order requires an explicit live ticket.
+- 2026-05-16: Added Bhiksha live underlying-anchor management; an open playbook lifecycle can now monitor the packet-declared stop anchor and hard-flat time, then submit an emergency close only when run with `--execute`.
 
 ## Current Stock Check
 
@@ -54,8 +56,12 @@ mean-reversion playbook.
 - **Old Bhiksha runtime wires are retired from reachability.** The diagnostic
   retirement gate is clear; old promoted strategies are no longer silently
   available as runtime authorization paths.
-- **Reversion execution packet is approved for shadow only.** It is compileable
+- **Reversion execution packet v1 is approved for shadow.** It is compileable
   by Bhiksha, but runtime controls forbid live automation.
+- **Reversion execution packet v2 is approved for live approval-gated pilot.**
+  It is compileable by Bhiksha as `live_approval_gated`; runtime controls
+  still forbid automation, cap the first pilot to one contract / $300 premium,
+  require an explicit live ticket, and require an underlying stop price.
 - **Consultation lane exists.** Bhiksha can verify the packet, call Mala's
   query/policy card, and record a consultation artifact without placing orders.
 - **Operator decision lane exists.** A consultation can become a red/green
@@ -65,15 +71,20 @@ mean-reversion playbook.
   candidate and run quote/chain/risk checks before any live authorization.
 - **Parallel shadow/live lanes exist.** Shadow can record executable option
   PnL; live can create an explicit approval ticket but not submit it directly.
-- **Lifecycle submitter exists.** A future `live_approval_gated` packet plus
+- **Lifecycle submitter exists.** A `live_approval_gated` packet plus
   approved live ticket can drive entry submission, fill/reconcile handling,
   stop/target arming, trade-state persistence, and lifecycle artifacts.
 - **Management policies are packet-declared.** The reversion execution packet
   now carries `runtime_controls.management_policy_specs` with stop family,
   stop anchor, exit family, target model, target R, hard-flat time, and option
   stop fallback.
-- **Current live safety holds.** The actual reversion packet remains
-  shadow-only, so the lifecycle submitter refuses it for live submission.
+- **Underlying-anchor monitor exists.** Bhiksha can evaluate the open lifecycle
+  against the packet-declared underlying stop anchor and hard-flat time. It
+  writes management artifacts in dry-run mode and submits an emergency close
+  only when the operator runs the monitor with `--execute`.
+- **Current live safety holds.** v2 opens only the approval-gated pilot path:
+  no autonomous live entry, no live entry without a ticket, and no management
+  without an underlying stop price.
 
 ### In Progress
 
@@ -83,12 +94,13 @@ mean-reversion playbook.
 - **Feedback-to-Mala loop.** Bhiksha writes consultation, intent, preview,
   shadow/live-lane, and lifecycle artifacts, but Mala does not yet consume
   those feedback artifacts as a first-class review/research input.
-- **Management-policy execution depth.** Bhiksha consumes packet-declared
-  management specs through option preview and lifecycle submission. The next
-  depth layer is live monitoring of underlying stop anchors, not just placing
-  the option-premium protective stop and target plan.
-- **Live approval promotion.** The submitter supports `live_approval_gated`
-  packets, but no current packet is promoted to that mode.
+- **Management-policy execution depth.** Bhiksha now consumes packet-declared
+  management specs through option preview, lifecycle submission, and live
+  underlying-anchor monitoring. The next depth layer is broker/position
+  reconciliation over a continuous session, not just one command invocation.
+- **Live approval promotion.** The reversion packet has a v2
+  `live_approval_gated` version for a small-account pilot, but live automation
+  remains explicitly disallowed.
 
 ### Next Pickup
 
@@ -97,9 +109,8 @@ mean-reversion playbook.
    preview, start shadow, view position state, and show live block reasons.
 2. Add the feedback ingestion bridge back into Mala so shadow outcomes and
    operator/analyst notes become packet-versioned review artifacts.
-3. Expand the management interpreter from packet-declared stop/target specs
-   into live underlying-anchor monitoring, time-stop enforcement, reconcile,
-   and emergency square-off behavior.
+3. Expand the monitor into a first-class Bhiksha service/desk control with
+   broker/position reconciliation, visible health, and emergency square-off.
 4. Define the promotion bar from `shadow` to `live_approval_gated`: minimum
    trade count, non-negative executable expectancy, no manual artifact fixups,
    and operator sign-off.
@@ -110,7 +121,8 @@ mean-reversion playbook.
 
 - No operator-facing Trader Desk yet.
 - No automated Mala feedback ingestion yet.
-- No current packet is allowed to place live orders.
+- No current packet is allowed to place live orders without an explicit live
+  ticket and operator-run submit command.
 - Legacy strategy families remain retired; reactivation requires fresh
   evidence, parity, and approval.
 
@@ -852,7 +864,7 @@ that flow without CLI glue.
 
 ### Phase 6: First Live Playbook And Feedback Loop
 
-**Progress: shadow/lifecycle substrate exists; live promotion not opened.**
+**Progress: first live approval-gated pilot path exists; automation not opened.**
 
 **Goal.** One playbook, end to end, with execution earned not assumed.
 
@@ -873,9 +885,9 @@ and the operator signs off that the loop is real. Only then is a supervised,
 defined-risk live pilot opened, and only for this packet.
 
 **Current note.** Shadow option PnL and live approval ticket artifacts exist.
-The lifecycle submitter is ready for a future `live_approval_gated` packet,
-but the current reversion packet remains shadow-only and is correctly refused
-for live submission.
+The reversion packet now has v1 shadow and v2 `live_approval_gated` forms.
+Bhiksha compiles both; v2 can submit only from an approved live ticket and can
+monitor the underlying stop anchor/hard-flat rule after lifecycle start.
 
 ### Phase 7: Agent Read-Only Assist (Earned)
 

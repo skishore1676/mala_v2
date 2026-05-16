@@ -1,0 +1,219 @@
+{
+  "capability_manifest_id": "bhiksha.packet_capabilities.v1",
+  "created_at": "2026-05-16T22:55:23.822101Z",
+  "feature_contract": {
+    "bar_interval": "1m",
+    "contract_id": "mean_reversion_at_extremes_intraday_v1",
+    "features": [
+      {
+        "name": "opening_vwap_rth",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "prior_rth_close_atr",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "vpoc_4h",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "market_pulse_stage",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "gap_state_rth_open",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "velocity",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "jerk",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "relative_volume_rth",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      }
+    ],
+    "provider": "polygon",
+    "session": "rth",
+    "warmup_bars": 60
+  },
+  "intended_horizon": "intraday-short-horizon",
+  "kind": "execution",
+  "lineage": {
+    "parent_packet": {
+      "kind": "playbook",
+      "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+      "version": 1
+    },
+    "source_artifacts": [
+      {
+        "description": null,
+        "label": "source_playbook_packet",
+        "uri": "packets/playbook/playbook.mean_reversion_at_extremes.iwm_qqq/v1.json"
+      },
+      {
+        "description": null,
+        "label": "parity_report",
+        "uri": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json"
+      },
+      {
+        "description": null,
+        "label": "run_config",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
+      },
+      {
+        "description": null,
+        "label": "conditional_surface",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
+      },
+      {
+        "description": null,
+        "label": "sample_events",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
+      },
+      {
+        "description": null,
+        "label": "receipt",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
+      },
+      {
+        "description": null,
+        "label": "surface_review",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
+      }
+    ],
+    "source_system": "mala_v2"
+  },
+  "metadata": {
+    "generated_from": "src.research.playbook_packet_registry",
+    "live_pilot": true,
+    "live_pilot_boundary": "operator_approval_gated_small_account",
+    "live_pilot_date": "2026-05-18",
+    "parity_compared_event_count": 21127,
+    "parity_report_status": "passed",
+    "source_playbook_packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+    "source_playbook_packet_version": 1
+  },
+  "operator_approval": {
+    "actor": "Suman",
+    "approved_at": "2026-05-16T22:55:23.822003Z",
+    "notes": "Approved for Monday May 18, 2026 live approval-gated small-account pilot; every order still requires an approved live ticket.",
+    "status": "approved"
+  },
+  "packet_id": "execution.mean_reversion_at_extremes.iwm_qqq",
+  "parity_report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.20260516T205756Z",
+  "runtime_controls": {
+    "allowed_management_policy_ids": [
+      "reversal_extreme__fixed_1r",
+      "immediate_entry_bar_failure__fixed_2r"
+    ],
+    "live_automated_allowed": false,
+    "live_management_required": true,
+    "live_ticket_required": true,
+    "management_policy_specs": {
+      "immediate_entry_bar_failure__fixed_2r": {
+        "exit_family": "fixed_2r",
+        "hard_flat_time_et": "15:55",
+        "option_stop_fallback_pct": 0.45,
+        "parameters": {
+          "exit_family": "fixed_2r",
+          "hard_flat_time_et": "15:55",
+          "holdout_expectancy_r": 0.625,
+          "holdout_win_rate": 0.5417,
+          "match_grade": "partial",
+          "option_stop_fallback_pct": 0.45,
+          "sample_count": 115,
+          "source_config_id": "de1576e59d",
+          "stop_anchor": "underlying_entry_bar_failure",
+          "stop_family": "immediate_entry_bar_failure",
+          "target_model": "fixed_r",
+          "target_order_mode": "virtual_or_broker",
+          "target_r": 2.0
+        },
+        "policy_id": "immediate_entry_bar_failure__fixed_2r",
+        "source_config_id": "de1576e59d",
+        "stop_anchor": "underlying_entry_bar_failure",
+        "stop_family": "immediate_entry_bar_failure",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 2.0
+      },
+      "reversal_extreme__fixed_1r": {
+        "exit_family": "fixed_1r",
+        "hard_flat_time_et": "15:55",
+        "option_stop_fallback_pct": 0.45,
+        "parameters": {
+          "exit_family": "fixed_1r",
+          "hard_flat_time_et": "15:55",
+          "holdout_expectancy_r": 0.1818,
+          "holdout_win_rate": 0.5909,
+          "match_grade": "favorable",
+          "option_stop_fallback_pct": 0.45,
+          "sample_count": 114,
+          "source_config_id": "f09fcdd6b5",
+          "stop_anchor": "underlying_reversal_extreme",
+          "stop_family": "reversal_extreme",
+          "target_model": "fixed_r",
+          "target_order_mode": "virtual_or_broker",
+          "target_r": 1.0
+        },
+        "policy_id": "reversal_extreme__fixed_1r",
+        "source_config_id": "f09fcdd6b5",
+        "stop_anchor": "underlying_reversal_extreme",
+        "stop_family": "reversal_extreme",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 1.0
+      }
+    },
+    "management_policy_specs_required": true,
+    "max_live_quantity": 1,
+    "max_trade_premium_usd": 300.0,
+    "operator_must_select_management_policy": true,
+    "option_selection_preview_only": true,
+    "requires_underlying_stop_price": true,
+    "shadow_only": false
+  },
+  "runtime_mode": "live_approval_gated",
+  "source_packet": {
+    "kind": "playbook",
+    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+    "version": 1
+  },
+  "status": "approved",
+  "symbol_scope": [
+    "IWM",
+    "QQQ"
+  ],
+  "title": "IWM/QQQ Mean Reversion Live Approval-Gated Execution",
+  "version": 2
+}

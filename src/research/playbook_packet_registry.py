@@ -37,6 +37,7 @@ from mala_bhiksha_kernel import (  # noqa: E402
 DEFAULT_PACKET_ID = "playbook.mean_reversion_at_extremes.iwm_qqq"
 DEFAULT_PACKET_VERSION = 1
 DEFAULT_EXECUTION_PACKET_ID = "execution.mean_reversion_at_extremes.iwm_qqq"
+DEFAULT_LIVE_EXECUTION_PACKET_VERSION = 2
 DEFAULT_CAPABILITY_MANIFEST_ID = "bhiksha.packet_capabilities.v1"
 
 
@@ -181,6 +182,100 @@ def write_mean_reversion_shadow_execution_packet(
             "live_automated_allowed": False,
             "option_selection_preview_only": True,
             "consultation_batch_gate": "review_closed_batch_before_live",
+        },
+    )
+    packet_path = write_packet(packet_root, packet)
+    write_registry_index(packet_root)
+    return packet_path
+
+
+def write_mean_reversion_live_execution_packet(
+    *,
+    playbook_packet_path: Path,
+    parity_report_path: Path,
+    packet_root: Path,
+    packet_id: str = DEFAULT_EXECUTION_PACKET_ID,
+    version: int = DEFAULT_LIVE_EXECUTION_PACKET_VERSION,
+    status: PacketStatus = PacketStatus.REVIEW,
+    operator: str | None = None,
+    operator_notes: str | None = None,
+    capability_manifest_id: str = DEFAULT_CAPABILITY_MANIFEST_ID,
+    max_live_quantity: int = 1,
+    max_trade_premium_usd: float = 300.0,
+) -> Path:
+    """Draft or approve the live approval-gated execution packet for Monday pilot."""
+    playbook_packet = read_packet_file(playbook_packet_path)
+    if not isinstance(playbook_packet, PlaybookPacket):
+        raise ValueError(
+            f"expected a playbook packet at {playbook_packet_path}, "
+            f"found {playbook_packet.kind.value}"
+        )
+    if playbook_packet.playbook_id != PLAYBOOK_ID:
+        raise ValueError(
+            f"unsupported playbook {playbook_packet.playbook_id!r}; expected {PLAYBOOK_ID!r}"
+        )
+    parity_report = _load_passed_parity_report(
+        parity_report_path,
+        expected_packet_ref=playbook_packet.ref,
+    )
+    if status == PacketStatus.APPROVED and not operator:
+        raise ValueError("--operator is required when writing an approved execution packet")
+
+    management_policy_ids = [policy.policy_id for policy in playbook_packet.management_policies]
+    management_policy_specs = {
+        policy.policy_id: _management_policy_spec_from_policy(policy).model_dump(mode="json")
+        for policy in playbook_packet.management_policies
+    }
+    packet = ExecutionPacket(
+        packet_id=packet_id,
+        version=version,
+        status=status,
+        title="IWM/QQQ Mean Reversion Live Approval-Gated Execution",
+        symbol_scope=playbook_packet.symbol_scope,
+        intended_horizon=playbook_packet.intended_horizon,
+        feature_contract=playbook_packet.feature_contract,
+        lineage=PacketLineage(
+            source_system="mala_v2",
+            parent_packet=playbook_packet.ref,
+            source_artifacts=[
+                SourceArtifact(label="source_playbook_packet", uri=str(playbook_packet_path)),
+                SourceArtifact(label="parity_report", uri=str(parity_report_path)),
+                *playbook_packet.lineage.source_artifacts,
+            ],
+        ),
+        operator_approval=OperatorApproval(
+            status="approved" if status == PacketStatus.APPROVED else "pending",
+            actor=operator,
+            approved_at=datetime.now(UTC) if status == PacketStatus.APPROVED else None,
+            notes=operator_notes,
+        ),
+        metadata={
+            "generated_from": "src.research.playbook_packet_registry",
+            "source_playbook_packet_id": playbook_packet.packet_id,
+            "source_playbook_packet_version": playbook_packet.version,
+            "parity_report_status": parity_report["status"],
+            "parity_compared_event_count": parity_report.get("compared_event_count"),
+            "live_pilot": True,
+            "live_pilot_date": "2026-05-18",
+            "live_pilot_boundary": "operator_approval_gated_small_account",
+        },
+        source_packet=playbook_packet.ref,
+        runtime_mode=RuntimeMode.LIVE_APPROVAL_GATED,
+        capability_manifest_id=capability_manifest_id,
+        parity_report_id=str(parity_report["report_id"]),
+        runtime_controls={
+            "allowed_management_policy_ids": management_policy_ids,
+            "management_policy_specs": management_policy_specs,
+            "management_policy_specs_required": True,
+            "operator_must_select_management_policy": True,
+            "shadow_only": False,
+            "live_automated_allowed": False,
+            "live_ticket_required": True,
+            "option_selection_preview_only": True,
+            "max_live_quantity": int(max_live_quantity),
+            "max_trade_premium_usd": float(max_trade_premium_usd),
+            "requires_underlying_stop_price": True,
+            "live_management_required": True,
         },
     )
     packet_path = write_packet(packet_root, packet)
@@ -430,7 +525,7 @@ def _grade_rank(grade: str) -> int:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
-    if raw_argv and raw_argv[0] not in {"playbook", "shadow-execution", "-h", "--help"}:
+    if raw_argv and raw_argv[0] not in {"playbook", "shadow-execution", "live-execution", "-h", "--help"}:
         raw_argv.insert(0, "playbook")
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command")
@@ -463,6 +558,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     execution.add_argument("--operator", default="")
     execution.add_argument("--operator-notes", default="")
     execution.add_argument("--capability-manifest-id", default=DEFAULT_CAPABILITY_MANIFEST_ID)
+
+    live_execution = subparsers.add_parser(
+        "live-execution",
+        help="Write the live approval-gated execution packet from a passed playbook parity report",
+    )
+    live_execution.add_argument("--playbook-packet", type=Path, required=True)
+    live_execution.add_argument("--parity-report", type=Path, required=True)
+    live_execution.add_argument("--packet-root", type=Path, default=Path.cwd())
+    live_execution.add_argument("--packet-id", default=DEFAULT_EXECUTION_PACKET_ID)
+    live_execution.add_argument("--version", type=int, default=DEFAULT_LIVE_EXECUTION_PACKET_VERSION)
+    live_execution.add_argument(
+        "--status",
+        choices=[PacketStatus.REVIEW.value, PacketStatus.APPROVED.value],
+        default=PacketStatus.REVIEW.value,
+    )
+    live_execution.add_argument("--operator", default="")
+    live_execution.add_argument("--operator-notes", default="")
+    live_execution.add_argument("--capability-manifest-id", default=DEFAULT_CAPABILITY_MANIFEST_ID)
+    live_execution.add_argument("--max-live-quantity", type=int, default=1)
+    live_execution.add_argument("--max-trade-premium-usd", type=float, default=300.0)
     return parser.parse_args(raw_argv)
 
 
@@ -487,6 +602,20 @@ def main() -> None:
             operator=args.operator or None,
             operator_notes=args.operator_notes or None,
             capability_manifest_id=args.capability_manifest_id,
+        )
+    elif args.command == "live-execution":
+        packet_path = write_mean_reversion_live_execution_packet(
+            playbook_packet_path=args.playbook_packet,
+            parity_report_path=args.parity_report,
+            packet_root=args.packet_root,
+            packet_id=args.packet_id,
+            version=args.version,
+            status=PacketStatus(args.status),
+            operator=args.operator or None,
+            operator_notes=args.operator_notes or None,
+            capability_manifest_id=args.capability_manifest_id,
+            max_live_quantity=args.max_live_quantity,
+            max_trade_premium_usd=args.max_trade_premium_usd,
         )
     else:
         raise AssertionError(f"Unhandled command {args.command!r}")

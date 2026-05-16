@@ -113,31 +113,35 @@ That is the backend for a future Trader Desk button: the operator supplies the
 chart read, Bhiksha verifies the packet, Mala produces the query/policy card,
 and Bhiksha records the bridge artifact.
 
-Bhiksha does not yet select an option, place an order, manage exits, or write
-the full live feedback loop for this playbook.
+Bhiksha can now select an option preview, create an approval ticket, submit a
+packet-native lifecycle for a promoted packet, and monitor the underlying stop
+anchor after entry. The full feedback loop back into Mala is still the next
+research-review layer.
 
 After a consultation is produced, Bhiksha can now also record the operator's
 red/green decision and selected management policy as a shadow execution intent.
 That intent is still `order_submission_allowed=false`; it is the handoff into
 future option preview and live approval, not an order ticket.
 
-For a `shadow_intent_ready` row, Bhiksha can also build an option preview using
-its existing chain, quote, and risk checks. The preview still requires live
-approval and keeps `order_submission_allowed=false`.
+For a `shadow_intent_ready` or `live_intent_ready` row, Bhiksha can also build
+an option preview using its existing chain, quote, and risk checks. The preview
+still requires live approval and keeps `order_submission_allowed=false`. For
+the live-gated packet, the preview must include the underlying stop price that
+will be monitored after entry.
 
 Bhiksha now treats shadow and live as parallel lanes after option preview:
 
 - shadow lane records the option exit mark and PnL so the playbook can be
   judged by actual executable vehicle outcomes
-- live lane creates an explicit approval ticket, but the submitter and broker
-  reconciliation remain a separate layer until the packet is promoted to
-  `live_approval_gated`
+- live lane creates an explicit approval ticket, and the v2
+  `live_approval_gated` packet can turn that ticket into a managed lifecycle
+  only through the submitter command
 
-For a future `live_approval_gated` packet, Bhiksha can consume the approved live
+For the v2 `live_approval_gated` packet, Bhiksha can consume the approved live
 ticket and start the managed lifecycle: entry submission, fill/reconciliation,
 protective stop, target or virtual target, trade-state persistence, and later
-position management. The current reversion packet remains shadow-only and is
-blocked from that submitter.
+position management. The v1 reversion packet remains shadow-only and is blocked
+from that submitter.
 
 Management is now packet-declared. The execution packet carries:
 
@@ -160,6 +164,7 @@ closed consultation batch
   -> Bhiksha option preview and risk check
   -> Bhiksha shadow outcome PnL and/or live approval ticket
   -> Bhiksha packet-native submitter and lifecycle management
+  -> Bhiksha underlying-anchor monitor
   -> feedback artifact back to Mala
 ```
 
@@ -172,6 +177,17 @@ packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v1.json
 It is `status=approved` for Bhiksha shadow-only activation. It is not approved
 for live automated execution, and its runtime controls keep `shadow_only=true`
 and `live_automated_allowed=false`.
+
+The Monday live-pilot execution packet is:
+
+```text
+packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v2.json
+```
+
+It is `runtime_mode=live_approval_gated`. It does not open autonomous trading:
+`live_automated_allowed=false`, every order requires an approved live ticket,
+the first pilot is capped at one contract / $300 premium, and option preview
+requires the underlying stop price.
 
 ## Promotion Rule
 
