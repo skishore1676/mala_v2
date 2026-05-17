@@ -29,19 +29,6 @@ def test_retune_search_space_is_narrower_than_discovery() -> None:
     assert len(retune) < len(discovery)
 
 
-def test_kinematic_ladder_retune_surface_matches_bounded_expansion_plan() -> None:
-    configs = build_search_configs("Kinematic Ladder", mode="retune", max_configs=128)
-
-    assert configs
-    assert {config["regime_window"] for config in configs} <= {20, 30, 45}
-    assert {config["accel_window"] for config in configs} <= {10, 15, 20}
-    assert {config["kinematic_periods_back"] for config in configs} <= {1, 2, 3}
-    assert {config["use_volume_filter"] for config in configs} == {True}
-    assert {config["volume_multiplier"] for config in configs} <= {1.0, 1.05, 1.1}
-    assert any(config["accel_window"] == 15 for config in configs)
-    assert any(config["kinematic_periods_back"] == 2 for config in configs)
-
-
 def test_search_param_keys_come_from_strategy_surface() -> None:
     assert "entry_window_minutes" in search_param_keys("Market Impulse (Cross & Reclaim)")
     keys = search_param_keys("Market Impulse Descendants")

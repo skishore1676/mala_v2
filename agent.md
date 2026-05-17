@@ -9,7 +9,7 @@ You are working in a research-only backtesting engine. No deployment plumbing an
 Takes a trading hypothesis → validates it through M1-M5 gates → local CSV results.
 
 ```
-Polygon.io by default, Public optional (Parquet cache) → Newton (physics features) → Strategy → Oracle (MFE/MAE)
+Polygon.io (Parquet cache) → Newton (physics features) → Strategy → Oracle (MFE/MAE)
   → M1 walk-forward → M2 cost convergence → M3 OOS → M4 holdout → M5 exec stress
   → data/results/hypothesis_runs/{id}/{timestamp}/
 ```
@@ -34,9 +34,7 @@ python main.py --tickers SPY --start 2024-01-01 --end 2024-12-31
 python -m pytest tests/ -v
 ```
 
-`.env` defaults to `MARKET_DATA_PROVIDER=polygon` with `POLYGON_API_KEY=...`.
-Public remains available via `--data-provider public`, but keep it experimental
-for research/backfill until multi-day one-minute history is proven end-to-end.
+`.env` needs only `POLYGON_API_KEY=...`
 
 ---
 
@@ -51,7 +49,6 @@ for research/backfill until multi-day one-minute history is proven end-to-end.
 | `src/research/exit_optimizer.py` | M5-plus: evaluates thesis exit policy grid, writes per-candidate exit optimization artifacts |
 | `src/research/mala_handoff.py` | Publishes `Mala_Evidence_v1`: tested strategy evidence, thesis exits, and Bhiksha capability labels |
 | `src/research/bhiksha_capabilities.py` | Reads Bhiksha-owned capability manifest; Mala never guesses runtime support |
-| `src/research/catalog.py` | Legacy Strategy_Catalog upsert path kept for compatibility |
 | `src/research/catalog_steward.py` | Advisory `Mala_Evidence_v1` + `active_strategy` review; writes local recommendations |
 | `src/research/research_ops.py` | Research ledger/backfill/hot-start tool; reconstructs tested ideas, runs, promoted rows, and next-action findings |
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
@@ -87,9 +84,8 @@ for research/backfill until multi-day one-minute history is proven end-to-end.
 ```python
 from src.strategy.factory import available_strategy_names
 # ('Compression Expansion Breakout', 'Elastic Band Reversion',
-#  'Jerk-Pivot Momentum (tight)', 'Kinematic Ladder',
-#  'Market Impulse (Cross & Reclaim)', 'Opening Drive Classifier',
-#  'Opening Drive v2 (Short Continue)', 'Regime Router (Kinematic + Compression)')
+#  'Intraday Mean Reversion at Extremes', 'Jerk-Pivot Momentum (tight)',
+#  'Market Impulse (Cross & Reclaim)', 'Opening Drive Classifier', ...)
 ```
 
 ---
@@ -102,6 +98,12 @@ Use `skills/catalog-steward/SKILL.md` when reviewing `Mala_Evidence_v1`
 against `active_strategy`. That role is advisory: it can write local
 recommendation artifacts by default and must not change runtime authorization
 unless explicitly asked.
+
+Use `skills/playbook-replay-consultation/SKILL.md` when the user is manually
+reviewing Thinkorswim or chart replay timestamps against a playbook
+consultation surface. That role is chart-first and human-in-the-loop: the
+trader supplies timestamp, symbol, direction, and chart read; Mala runs the
+query/policy/close commands and computes historical actuals.
 
 Use `src.research.research_ops` whenever you need the research memory layer:
 
@@ -184,7 +186,7 @@ Mental model:
 - M6 provider validation is advisory post-M5 evidence: it writes `M6_provider_validation.csv`, `M6_feature_parity.csv`, and `M6_PROVIDER_REVIEW.md`; use `mala_handoff --publish-provider-validation-only` to add only provider status/risk/overlap/report columns to existing `Mala_Evidence_v1` rows.
 - Bhiksha owns runtime capability in `config/capabilities/bhiksha_capabilities_v1.yaml`; Mala consumes that manifest and marks unsupported variants as not `bhiksha_ready`.
 - `active_strategy` is the operator authorization layer. A row is only executable when the operator authorizes it and Bhiksha confirms the strategy variant is supported.
-- Legacy `Strategy_Catalog` paths exist for compatibility and migration history, but new handoff review should start from `Mala_Evidence_v1`.
+- Legacy `Strategy_Catalog` publishers are archived; handoff review starts from `Mala_Evidence_v1`.
 - Catalog Steward ranks current evidence candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.
 

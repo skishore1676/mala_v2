@@ -1,17 +1,17 @@
 """
-Market-data clients for the Chronos data pipeline.
+Polygon.io REST API client for the Chronos data pipeline.
 
 Handles:
   - Authentication via API key
-  - Fetching 1-minute OHLCV aggregates
+  - Fetching 1-minute OHLCV aggregates with automatic pagination
   - Rate-limit-aware retries
 """
 
 from __future__ import annotations
 
 import time
-from datetime import UTC, date, datetime, timedelta
-from typing import List, Optional, Protocol
+from datetime import date, timedelta
+from typing import List, Optional
 
 import requests
 from loguru import logger
@@ -24,22 +24,6 @@ BASE_URL = "https://api.polygon.io"
 AGGS_ENDPOINT = "/v2/aggs/ticker/{ticker}/range/1/minute/{start}/{end}"
 MAX_RESULTS_PER_PAGE = 50_000  # Polygon max limit per request
 REQUEST_DELAY_S = 0.25  # polite pause between paginated calls
-
-PUBLIC_BARS_ENDPOINT = "/userapigateway/historicdata/{type}/{symbol}/{period}/{aggregation}"
-PUBLIC_SESSIONS = ("preMarket", "regularMarket", "afterMarket")
-
-
-class ChronosMarketDataClient(Protocol):
-    """Provider interface consumed by the Chronos pipeline."""
-
-    def fetch_aggs(
-        self,
-        ticker: str,
-        start: date,
-        end: date,
-        adjusted: bool = True,
-    ) -> List[dict]:
-        """Fetch provider bars normalized to Polygon-style aggregate dicts."""
 
 
 class PolygonClient:
@@ -164,216 +148,3 @@ class PolygonClient:
                 time.sleep(wait)
         # unreachable, but keeps mypy happy
         raise RuntimeError("Unreachable")
-
-
-class PublicMarketDataClient:
-    """Thin wrapper around Public historical bars, normalized for Chronos."""
-
-    def __init__(
-        self,
-        *,
-        access_token: Optional[str] = None,
-        secret_token: Optional[str] = None,
-        base_url: Optional[str] = None,
-        auth_endpoint: Optional[str] = None,
-        period: Optional[str] = None,
-        aggregation: Optional[str] = None,
-        instrument_type: Optional[str] = None,
-    ) -> None:
-        self.access_token = access_token or settings.public_access_token
-        self.secret_token = secret_token or settings.public_secret_token
-        self.base_url = (base_url or settings.public_api_base_url).rstrip("/")
-        self.auth_endpoint = auth_endpoint or settings.public_auth_endpoint
-        self.period = (period or settings.public_bars_period).upper()
-        self.aggregation = (aggregation or settings.public_bars_aggregation).upper()
-        self.instrument_type = (instrument_type or settings.public_instrument_type).upper()
-        self._session = requests.Session()
-
-    def fetch_aggs(
-        self,
-        ticker: str,
-        start: date,
-        end: date,
-        adjusted: bool = True,
-    ) -> List[dict]:
-        """
-        Download Public historical bars and return Polygon-style aggregate dicts.
-
-        Public's bars endpoint is period-based rather than arbitrary date-range
-        based, so Chronos requests a configured period and filters locally.
-        """
-        del adjusted  # Public's endpoint does not expose an adjusted toggle.
-        url = self.base_url + PUBLIC_BARS_ENDPOINT.format(
-            type=self.instrument_type,
-            symbol=ticker.upper(),
-            period=self.period,
-            aggregation=self.aggregation,
-        )
-        logger.debug(
-            "Fetching Public bars for {} period={} aggregation={}",
-            ticker,
-            self.period,
-            self.aggregation,
-        )
-        resp = self._get_with_retry(url, headers=self._headers())
-        payload = resp.json()
-        bars = [
-            bar
-            for bar in self._normalize_public_bars(ticker, payload)
-            if start <= _bar_date(bar) <= end
-        ]
-        bars.sort(key=lambda bar: bar["t"])
-        logger.info(
-            "Downloaded {} Public bars for {} ({} → {})",
-            len(bars),
-            ticker,
-            start,
-            end,
-        )
-        return bars
-
-    def fetch_aggs_chunked(
-        self,
-        ticker: str,
-        start: date,
-        end: date,
-        chunk_days: int = 30,
-        adjusted: bool = True,
-    ) -> List[dict]:
-        """Compatibility shim; Public fetches by period and filters locally."""
-        del chunk_days
-        return self.fetch_aggs(ticker, start, end, adjusted=adjusted)
-
-    def _headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self._get_access_token()}",
-            "Content-Type": "application/json",
-        }
-
-    def _get_access_token(self) -> str:
-        if self.access_token:
-            return self.access_token
-        if not self.secret_token:
-            raise ValueError(
-                "PUBLIC_SECRET_TOKEN or PUBLIC_ACCESS_TOKEN is not set. "
-                "Provide Public API credentials in .env or pass them explicitly."
-            )
-        resp = self._post_with_retry(
-            self.auth_endpoint,
-            json={"secret": self.secret_token, "validityInMinutes": 60},
-        )
-        data = resp.json()
-        token = data.get("accessToken")
-        if not token:
-            raise ValueError("Public auth response did not include accessToken")
-        self.access_token = str(token)
-        return self.access_token
-
-    @staticmethod
-    def _normalize_public_bars(ticker: str, payload: dict) -> List[dict]:
-        bars: List[dict] = []
-        for session_name in PUBLIC_SESSIONS:
-            session_payload = payload.get(session_name) or {}
-            for raw in session_payload.get("bars") or []:
-                normalized = _public_bar_to_polygon_shape(raw)
-                if normalized is not None:
-                    normalized["ticker"] = ticker.upper()
-                    normalized["session"] = session_name
-                    bars.append(normalized)
-        return bars
-
-    def _get_with_retry(
-        self,
-        url: str,
-        headers: Optional[dict] = None,
-        max_retries: int = 3,
-        backoff: float = 2.0,
-    ) -> requests.Response:
-        for attempt in range(1, max_retries + 1):
-            try:
-                resp = self._session.get(url, headers=headers, timeout=30)
-                resp.raise_for_status()
-                return resp
-            except requests.exceptions.RequestException as exc:
-                if attempt == max_retries:
-                    logger.error("Public request failed after {} retries: {}", max_retries, exc)
-                    raise
-                wait = backoff ** attempt
-                logger.warning(
-                    "Public attempt {}/{} failed ({}). Retrying in {:.1f}s",
-                    attempt,
-                    max_retries,
-                    exc,
-                    wait,
-                )
-                time.sleep(wait)
-        raise RuntimeError("Unreachable")
-
-    def _post_with_retry(
-        self,
-        url: str,
-        json: Optional[dict] = None,
-        max_retries: int = 3,
-        backoff: float = 2.0,
-    ) -> requests.Response:
-        for attempt in range(1, max_retries + 1):
-            try:
-                resp = self._session.post(url, json=json, timeout=30)
-                resp.raise_for_status()
-                return resp
-            except requests.exceptions.RequestException as exc:
-                if attempt == max_retries:
-                    logger.error("Public auth failed after {} retries: {}", max_retries, exc)
-                    raise
-                wait = backoff ** attempt
-                logger.warning(
-                    "Public auth attempt {}/{} failed ({}). Retrying in {:.1f}s",
-                    attempt,
-                    max_retries,
-                    exc,
-                    wait,
-                )
-                time.sleep(wait)
-        raise RuntimeError("Unreachable")
-
-
-def build_market_data_client(provider: Optional[str] = None) -> ChronosMarketDataClient:
-    """Build the configured Chronos market-data client."""
-    selected = (provider or settings.market_data_provider or "public").strip().lower()
-    if selected == "public":
-        return PublicMarketDataClient()
-    if selected == "polygon":
-        return PolygonClient(api_key=settings.polygon_api_key)
-    raise ValueError(f"Unsupported market data provider: {provider}")
-
-
-def _public_bar_to_polygon_shape(raw: dict) -> dict | None:
-    try:
-        timestamp_ms = _public_timestamp_ms(raw["timestamp"])
-        open_ = float(raw["open"])
-        high = float(raw["high"])
-        low = float(raw["low"])
-        close = float(raw["close"])
-        volume = float(raw.get("volume") or 0)
-    except (KeyError, TypeError, ValueError):
-        return None
-    return {
-        "t": timestamp_ms,
-        "o": open_,
-        "h": high,
-        "l": low,
-        "c": close,
-        "v": volume,
-    }
-
-
-def _public_timestamp_ms(value: str) -> int:
-    normalized = value.replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return int(parsed.timestamp() * 1000)
-
-
-def _bar_date(bar: dict) -> date:
-    return datetime.fromtimestamp(bar["t"] / 1000, tz=UTC).date()

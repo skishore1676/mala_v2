@@ -1,3 +1,7 @@
+**Status:** closed / superseded. This was a pre-M5.5 comparison prompt. Do not
+run it as current operating guidance; the resulting report is archived under
+`research/reports/archive/legacy_runtime_20260517/`.
+
 You are running inside the mala_v2 research workbench.
 Read skills/research-workbench/SKILL.md first, then follow the protocol exactly.
 
@@ -47,7 +51,7 @@ For each hypothesis:
 
 Write one report:
 
-`research/reports/top-family-guardrail-comparison.md`
+`research/reports/archive/legacy_runtime_20260517/top-family-guardrail-comparison.md`
 
 It must cover:
 
@@ -58,7 +62,7 @@ It must cover:
 - Whether Market Impulse and Jerk-Pivot are still the top two options-primary families
 - Recommendation: continue, retune after M1, or pause for more execution-model hardening
 
-In your final chat response, give the absolute path to `research/reports/top-family-guardrail-comparison.md`.
+In your final chat response, give the absolute path to `research/reports/archive/legacy_runtime_20260517/top-family-guardrail-comparison.md`.
 
 ## Rules
 

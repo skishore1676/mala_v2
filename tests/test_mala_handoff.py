@@ -55,9 +55,21 @@ def test_mala_handoff_packet_keeps_runtime_fields_out_of_evidence(tmp_path: Path
     assert packet.strategy.signal_window_end_et == "10:15"
     assert packet.thesis_exit.tested is True
     assert packet.thesis_exit.policy == "fixed_rr_underlying"
+    assert packet.thesis_exit.metrics["option_trade_ready"] is True
     assert "runtime_requirements" not in packet.to_dict()
     assert not any(warning.startswith("legacy_m5_execution_mapping_ignored") for warning in packet.warnings)
     assert str(run_dir) == packet.provenance.run_dir
+
+
+def test_mala_handoff_latest_run_without_catalog_suppresses_stale_selected_rows(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path)
+    latest_run = tmp_path / "market-impulse-test" / "2026-05-17T010000"
+    latest_run.mkdir(parents=True)
+    (latest_run / "RUN_SUMMARY.md").write_text("decision: retune\n", encoding="utf-8")
+
+    packets = build_handoff_packets(runs_root=tmp_path)
+
+    assert packets == []
 
 
 def test_mala_handoff_marks_market_impulse_descendant_unsupported(tmp_path: Path) -> None:
@@ -191,6 +203,19 @@ def test_mala_handoff_missing_m6_file_is_advisory_unknown(tmp_path: Path) -> Non
     assert row["provider_signal_overlap"] == ""
     assert row["provider_validation_report"] == ""
     assert row["bhiksha_ready"] in {"true", "false"}
+
+
+def test_mala_handoff_exports_option_exit_fields(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path)
+
+    row = packet_to_csv_row(build_handoff_packets(runs_root=tmp_path)[0])
+
+    assert "option_trade_ready" in handoff_csv_fieldnames()
+    assert row["option_trade_ready"] == "true"
+    assert row["option_adjusted_expectancy_pct"] == "0.36"
+    assert row["recommended_dte_min"] == "0"
+    assert row["recommended_dte_max"] == "3"
+    assert row["pnl_pct_per_minute"] == "0.018"
 
 
 
@@ -449,7 +474,28 @@ def _write_market_impulse_run(
                     "stop_loss_underlying_pct": 0.005,
                     "take_profit_underlying_r_multiple": 2.0,
                 },
-                "selected_metrics": {"trade_count": 24, "expectancy": 0.42},
+                "selected_metrics": {
+                    "trade_count": 24,
+                    "expectancy": 0.42,
+                    "option_trade_ready": True,
+                    "option_adjusted_expectancy_pct": 0.36,
+                    "option_exit_quality": "fast_scalp",
+                    "recommended_dte_min": 0,
+                    "recommended_dte_max": 3,
+                    "theta_penalty_pct": 0.092308,
+                    "expectancy_pct": 0.452308,
+                    "avg_win_pct": 0.7,
+                    "avg_loss_pct_abs": 0.35,
+                    "pnl_pct_per_minute": 0.018,
+                    "pnl_pct_per_bar": 0.09,
+                    "median_minutes_held": 25.0,
+                    "avg_minutes_held": 27.5,
+                    "target_hit_rate": 0.58,
+                    "stop_loss_rate": 0.42,
+                    "target_hit_within_15_minutes": 0.25,
+                    "target_hit_within_30_minutes": 0.5,
+                    "stop_loss_within_15_minutes": 0.1,
+                },
                 "catastrophe_exit_params": {"hard_flat_time_et": "15:55", "stop_loss_pct": 0.35},
             }
         ),

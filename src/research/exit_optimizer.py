@@ -1,9 +1,10 @@
 """Underlying-anchored thesis exit optimization for validated research candidates.
 
 Called after M5 execution mapping for candidates that pass. Evaluates a
-small policy grid (fixed reward-risk and VMA trailing where applicable),
-selects the best by expectancy, and writes per-candidate exit optimization
-artifacts to the run directory.
+policy grid tuned for same-session options use, including fast scalp exits,
+fixed reward-risk, time stops, and trailing exits. It selects the best policy
+with a short-options-aware objective and writes per-candidate exit
+optimization artifacts to the run directory.
 
 Output fields formerly fed into legacy Strategy_Catalog playbook_summary_json:
     thesis_exit_policy     e.g. "fixed_rr_underlying"
@@ -16,9 +17,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time as dt_time
+from datetime import UTC, date, datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import polars as pl
 from pydantic import BaseModel, Field
@@ -44,6 +46,10 @@ DEFAULT_CATASTROPHE_EXIT: dict[str, Any] = {
     "stop_loss_pct": 0.35,
 }
 
+MARKET_SESSION_MINUTES = 390.0
+LATE_DAY_THETA_START_ET = dt_time(15, 0)
+EASTERN_TZ = ZoneInfo("America/New_York")
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +66,7 @@ class ExitOptimizationResult(BaseModel):
     strategy_key: str
     symbol: str
     direction: str
-    selection_metric: str = "expectancy"
+    selection_metric: str = "option_adjusted_expectancy_pct"
     selection_slice: dict[str, str]
     selected_policy_name: str
     thesis_exit_anchor: str = "underlying"
@@ -80,10 +86,7 @@ _FIXED_RR_GRID: dict[str, list[tuple[float, float]]] = {
     "jerk_pivot_momentum":         [(0.0025, 1.25), (0.0035, 1.5), (0.005, 1.75)],
     "elastic_band_reversion":      [(0.0035, 1.0), (0.005, 1.5), (0.0075, 2.0)],
     "opening_drive_classifier":    [(0.0035, 1.25), (0.005, 1.5), (0.0075, 2.0)],
-    "opening_drive_v2":            [(0.0035, 1.25), (0.005, 1.5), (0.0075, 2.0)],
-    "kinematic_ladder":            [(0.003, 1.25), (0.0035, 1.5), (0.005, 2.0)],
     "compression_expansion_breakout": [(0.003, 1.5), (0.005, 2.0), (0.0075, 2.5)],
-    "regime_router":               [(0.0035, 1.5), (0.005, 2.0), (0.0075, 2.5)],
 }
 
 _DEFAULT_FIXED_RR_GRID: list[tuple[float, float]] = [
@@ -95,8 +98,6 @@ _RUNNER_FIXED_RR_GRID: dict[str, list[tuple[float, float]]] = {
     "jerk_pivot_momentum": [(0.005, 2.5), (0.0075, 3.0), (0.01, 3.0)],
     "compression_expansion_breakout": [(0.0075, 3.0), (0.01, 3.0), (0.01, 4.0)],
     "opening_drive_classifier": [(0.0075, 2.5), (0.01, 3.0)],
-    "opening_drive_v2": [(0.0075, 2.5), (0.01, 3.0)],
-    "kinematic_ladder": [(0.005, 2.5), (0.0075, 3.0)],
 }
 
 _ATR_GRID: dict[str, list[tuple[str, float]]] = {
@@ -108,7 +109,23 @@ _ATR_GRID: dict[str, list[tuple[str, float]]] = {
 
 _MA_TRAILING_COLS = ["ema_8_exit", "ema_12_exit", "ema_20_exit", "ema_50_exit"]
 _MA_CROSSOVER_PAIRS = [("ema_8_exit", "ema_20_exit"), ("ema_12_exit", "ema_50_exit")]
-_TIME_STOP_GRID = [dt_time(11, 30), dt_time(14, 30), dt_time(15, 55)]
+_TIME_STOP_GRID = [
+    dt_time(10, 15),
+    dt_time(10, 30),
+    dt_time(11, 0),
+    dt_time(11, 30),
+    dt_time(13, 0),
+    dt_time(14, 30),
+    dt_time(15, 55),
+]
+
+_SCALP_FIXED_RR_GRID: dict[str, list[tuple[float, float]]] = {
+    "default": [(0.0015, 1.0), (0.0025, 1.0), (0.0025, 1.5), (0.0035, 1.0)],
+    "market_impulse": [(0.0015, 1.0), (0.0025, 1.0), (0.0025, 1.5), (0.0035, 1.0)],
+    "opening_drive_classifier": [(0.0025, 1.0), (0.0035, 1.0), (0.0035, 1.5)],
+    "jerk_pivot_momentum": [(0.0025, 1.0), (0.0035, 1.0), (0.0035, 1.5)],
+    "elastic_band_reversion": [(0.0015, 1.0), (0.0025, 1.0), (0.0035, 1.0)],
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +187,13 @@ def optimize_underlying_exit(
             "total_pnl":      float(result.total_pnl),
             "avg_winner":     float(result.avg_winner),
             "avg_loser":      float(result.avg_loser),
+            "avg_bars_held":  _avg_bars_held(result),
+            "median_bars_held": _median_bars_held(result),
+            "target_hit_rate": _exit_reason_rate(result, "take_profit"),
+            "stop_loss_rate": _exit_reason_rate(result, "stop_loss"),
+            "pnl_per_bar":    _pnl_per_bar(result),
         }
+        metrics.update(_option_adjusted_metrics(result))
         if metrics["trade_count"] <= 0:
             continue
         evaluation = ExitPolicyEvaluation(
@@ -363,6 +386,33 @@ def _policy_candidates(
             )
         )
 
+    # Fast fixed reward-risk grid for short-term options. These intentionally
+    # test smaller underlying moves because near-DTE options often need quick
+    # management before theta/spread noise overwhelms the thesis.
+    for stop_loss_pct, reward_multiple in _SCALP_FIXED_RR_GRID.get(
+        strategy_key, _SCALP_FIXED_RR_GRID["default"]
+    ):
+        name = f"fixed_rr_underlying_scalp:{stop_loss_pct:.4f}x{reward_multiple:.2f}"
+        candidates.append(
+            _PolicyCandidate(
+                name=name,
+                thesis_exit_policy="fixed_rr_underlying",
+                thesis_exit_params={
+                    "stop_loss_underlying_pct": stop_loss_pct,
+                    "take_profit_underlying_r_multiple": reward_multiple,
+                },
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=FixedPercentRewardRiskExitPolicy(
+                        stop_loss_pct=stop_loss_pct,
+                        reward_multiple=reward_multiple,
+                    )
+                ),
+            )
+        )
+
     # Fixed reward-risk grid
     grid = [
         *_FIXED_RR_GRID.get(strategy_key, _DEFAULT_FIXED_RR_GRID),
@@ -419,13 +469,16 @@ def _with_exit_policy_features(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _sort_key(e: ExitPolicyEvaluation) -> tuple[float, float, float, float]:
+def _sort_key(e: ExitPolicyEvaluation) -> tuple[float, float, float, float, float, float]:
     m = e.metrics
+    median_minutes = _metric(m, "median_minutes_held", default=float("inf"))
     return (
-        _metric(m, "expectancy"),
+        _metric(m, "option_adjusted_expectancy_pct"),
+        _metric(m, "pnl_pct_per_minute"),
+        _metric(m, "target_hit_within_30_minutes"),
+        -median_minutes,
         _metric(m, "profit_factor"),
         _metric(m, "win_rate"),
-        _metric(m, "trade_count", default=0.0),
     )
 
 
@@ -434,3 +487,221 @@ def _metric(metrics: dict[str, Any], key: str, *, default: float = float("-inf")
     if value is None:
         return default
     return float(value)
+
+
+def _avg_bars_held(result: Any) -> float:
+    if not result.trades:
+        return 0.0
+    return round(sum(float(trade.bars_held) for trade in result.trades) / len(result.trades), 4)
+
+
+def _median_bars_held(result: Any) -> float:
+    if not result.trades:
+        return 0.0
+    values = sorted(float(trade.bars_held) for trade in result.trades)
+    mid = len(values) // 2
+    if len(values) % 2:
+        return round(values[mid], 4)
+    return round((values[mid - 1] + values[mid]) / 2.0, 4)
+
+
+def _exit_reason_rate(result: Any, prefix: str) -> float:
+    if not result.trades:
+        return 0.0
+    count = sum(1 for trade in result.trades if str(trade.exit_reason).startswith(prefix))
+    return round(count / len(result.trades), 6)
+
+
+def _pnl_per_bar(result: Any) -> float:
+    bars = sum(max(1, int(trade.bars_held)) for trade in result.trades)
+    if not result.trades or bars <= 0:
+        return 0.0
+    return round(float(result.total_pnl) / bars, 6)
+
+
+def _option_adjusted_metrics(result: Any) -> dict[str, Any]:
+    trades = list(result.trades or [])
+    if not trades:
+        return {
+            "expectancy_pct": 0.0,
+            "avg_win_pct": 0.0,
+            "avg_loss_pct_abs": 0.0,
+            "pnl_pct_per_minute": 0.0,
+            "pnl_pct_per_bar": 0.0,
+            "median_minutes_held": 0.0,
+            "avg_minutes_held": 0.0,
+            "target_hit_within_15_minutes": 0.0,
+            "target_hit_within_30_minutes": 0.0,
+            "stop_loss_within_15_minutes": 0.0,
+            "theta_penalty_pct": 0.0,
+            "option_adjusted_expectancy_pct": 0.0,
+            "recommended_dte_min": 0,
+            "recommended_dte_max": 3,
+            "option_exit_quality": "no_trades",
+            "option_trade_ready": False,
+        }
+
+    minutes = [_trade_minutes_held(trade) for trade in trades]
+    median_minutes = _median(minutes)
+    avg_minutes = sum(minutes) / len(minutes)
+    pnl_pcts = [_trade_pnl_pct(trade) for trade in trades]
+    win_pcts = [value for value in pnl_pcts if value > 0]
+    loss_pcts = [abs(value) for value in pnl_pcts if value < 0]
+    total_pnl_pct = sum(pnl_pcts)
+    total_minutes = sum(max(value, 1e-9) for value in minutes)
+    total_bars = sum(max(1, int(trade.bars_held)) for trade in trades)
+    dte_min, dte_max, base_penalty = _dte_bucket_for_minutes(median_minutes)
+    theta_penalty = _theta_penalty_pct(trades, dte_min=dte_min, base_penalty_pct=base_penalty)
+    expectancy_pct = total_pnl_pct / len(trades)
+    option_adjusted = expectancy_pct - theta_penalty
+    trade_ready = bool(option_adjusted > 0 and dte_max <= 14)
+
+    metrics: dict[str, Any] = {
+        "expectancy_pct": round(expectancy_pct, 6),
+        "avg_win_pct": round(sum(win_pcts) / len(win_pcts), 6) if win_pcts else 0.0,
+        "avg_loss_pct_abs": round(sum(loss_pcts) / len(loss_pcts), 6) if loss_pcts else 0.0,
+        "pnl_pct_per_minute": round(total_pnl_pct / total_minutes, 8),
+        "pnl_pct_per_bar": round(total_pnl_pct / total_bars, 8) if total_bars > 0 else 0.0,
+        "median_minutes_held": round(median_minutes, 4),
+        "avg_minutes_held": round(avg_minutes, 4),
+        "target_hit_within_15_minutes": _exit_reason_within_minutes_rate(result, "take_profit", 15),
+        "target_hit_within_30_minutes": _exit_reason_within_minutes_rate(result, "take_profit", 30),
+        "stop_loss_within_15_minutes": _exit_reason_within_minutes_rate(result, "stop_loss", 15),
+        "theta_penalty_pct": round(theta_penalty, 6),
+        "option_adjusted_expectancy_pct": round(option_adjusted, 6),
+        "recommended_dte_min": dte_min,
+        "recommended_dte_max": dte_max,
+        "option_exit_quality": _option_exit_quality(
+            option_adjusted_expectancy_pct=option_adjusted,
+            recommended_dte_max=dte_max,
+            median_minutes_held=median_minutes,
+        ),
+        "option_trade_ready": trade_ready,
+    }
+    return metrics
+
+
+def _trade_pnl_pct(trade: Any) -> float:
+    entry_price = float(getattr(trade, "entry_price", 0.0) or 0.0)
+    if entry_price <= 0:
+        return 0.0
+    return float(getattr(trade, "pnl", 0.0) or 0.0) / entry_price * 100.0
+
+
+def _trade_minutes_held(trade: Any) -> float:
+    entry = getattr(trade, "entry_time", None)
+    exit_ = getattr(trade, "exit_time", None)
+    delta = _datetime_delta(exit_, entry)
+    if delta is not None:
+        return max(0.0, delta.total_seconds() / 60.0)
+    return float(max(1, int(getattr(trade, "bars_held", 1) or 1)))
+
+
+def _datetime_delta(exit_: Any, entry: Any) -> timedelta | None:
+    if not isinstance(entry, datetime) or not isinstance(exit_, datetime):
+        return None
+    try:
+        return exit_ - entry
+    except TypeError:
+        return _as_utc_datetime(exit_) - _as_utc_datetime(entry)
+
+
+def _as_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _median(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    mid = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return float(sorted_values[mid])
+    return (float(sorted_values[mid - 1]) + float(sorted_values[mid])) / 2.0
+
+
+def _exit_reason_within_minutes_rate(result: Any, prefix: str, minutes: float) -> float:
+    trades = list(result.trades or [])
+    if not trades:
+        return 0.0
+    count = sum(
+        1
+        for trade in trades
+        if str(trade.exit_reason).startswith(prefix)
+        and _trade_minutes_held(trade) <= minutes
+    )
+    return round(count / len(trades), 6)
+
+
+def _dte_bucket_for_minutes(median_minutes_held: float) -> tuple[int, int, float]:
+    if median_minutes_held <= 30:
+        return 0, 3, 1.2
+    if median_minutes_held <= 120:
+        return 3, 7, 0.6
+    if median_minutes_held <= MARKET_SESSION_MINUTES:
+        return 7, 14, 0.3
+    return 14, 21, 0.15
+
+
+def _theta_penalty_pct(trades: list[Any], *, dte_min: int, base_penalty_pct: float) -> float:
+    if not trades:
+        return 0.0
+    weighted_minutes = [
+        _theta_weighted_minutes_held(trade, apply_late_day=dte_min == 0)
+        for trade in trades
+    ]
+    return base_penalty_pct * _median(weighted_minutes) / MARKET_SESSION_MINUTES
+
+
+def _theta_weighted_minutes_held(trade: Any, *, apply_late_day: bool) -> float:
+    minutes = _trade_minutes_held(trade)
+    if not apply_late_day:
+        return minutes
+    return minutes + _late_day_minutes_held(trade)
+
+
+def _late_day_minutes_held(trade: Any) -> float:
+    entry = getattr(trade, "entry_time", None)
+    exit_ = getattr(trade, "exit_time", None)
+    if not isinstance(entry, datetime) or not isinstance(exit_, datetime):
+        return 0.0
+    start = _to_et_datetime(entry)
+    end = _to_et_datetime(exit_)
+    if end <= start:
+        return 0.0
+
+    total = 0.0
+    current_date = start.date()
+    while current_date <= end.date():
+        late_start = datetime.combine(current_date, LATE_DAY_THETA_START_ET, tzinfo=EASTERN_TZ)
+        day_start = max(start, late_start)
+        day_end = min(end, datetime.combine(current_date, dt_time(23, 59, 59), tzinfo=EASTERN_TZ))
+        if day_end > day_start:
+            total += (day_end - day_start).total_seconds() / 60.0
+        current_date = current_date + timedelta(days=1)
+    return total
+
+
+def _to_et_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC).astimezone(EASTERN_TZ)
+    return value.astimezone(EASTERN_TZ)
+
+
+def _option_exit_quality(
+    *,
+    option_adjusted_expectancy_pct: float,
+    recommended_dte_max: int,
+    median_minutes_held: float,
+) -> str:
+    if option_adjusted_expectancy_pct <= 0:
+        return "negative_after_theta"
+    if recommended_dte_max > 14:
+        return "too_slow_for_short_dated_options"
+    if median_minutes_held <= 30:
+        return "fast_scalp"
+    if median_minutes_held <= 120:
+        return "fast_intraday"
+    return "slow_intraday"

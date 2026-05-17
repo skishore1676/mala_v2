@@ -3,8 +3,7 @@
 reoptimize_exits.py — Exit-Only Optimizer Against Existing M5 Artifacts
 ========================================================================
 Re-runs the exit optimizer on M5 catalog candidates from an existing run
-without touching M1-M5 discovery, hypothesis state files, or the Google
-Strategy_Catalog (unless --catalog-write is explicitly set).
+without touching M1-M5 discovery, hypothesis state files, or Google Sheets.
 
 Typical use case: you added new exit policy families to exit_optimizer.py
 and want to see whether they improve the selected exits for already-validated
@@ -21,10 +20,6 @@ Usage:
     python reoptimize_exits.py --hypothesis research/hypotheses/jerk-pivot-current-basket-discovery.md \\
         --run-dir data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-04-15T225844
 
-    # Re-optimize AND write results back to Google Strategy_Catalog (explicit opt-in):
-    python reoptimize_exits.py --hypothesis research/hypotheses/market-impulse-all-basket-discovery.md \\
-        --catalog-write
-
 What it does:
     1. Parses the hypothesis file to get strategy, tickers, guardrail settings.
     2. Finds the target run directory (--run-dir or the latest run with M5_execution.csv).
@@ -35,12 +30,12 @@ What it does:
        optimize_underlying_exit() with the full current policy grid.
     6. Writes updated per-candidate JSON artifacts and m5_exit_optimizations.json
        to the SAME run directory, overwriting old exit artifacts.
-    7. Optionally upserts to Strategy_Catalog only when --catalog-write is set.
+    7. Leaves Sheet publication to the canonical Mala_Evidence_v1 handoff.
 
 What it does NOT do:
     - Does not re-run M1, M2, M3, M4, or M5.
     - Does not modify the hypothesis .md state file.
-    - Does not write to the Google Sheet unless --catalog-write is passed.
+    - Does not write to Google Sheets.
 """
 
 from __future__ import annotations
@@ -72,9 +67,7 @@ def _load_config() -> dict[str, Any]:
 _CFG = _load_config()
 
 from src.chronos.storage import LocalStorage
-from src.config import settings
 from src.newton.engine import PhysicsEngine
-from src.research.catalog import upsert_strategy_catalog
 from src.research.exit_optimizer import (
     DEFAULT_CATASTROPHE_EXIT,
     ExitOptimizationResult,
@@ -291,14 +284,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--end",            type=date.fromisoformat, default=DEFAULT_END)
     p.add_argument("--min-mc-prob",    type=float, default=None,
                    help=f"Minimum mc_prob to include a candidate (default: {MIN_MC_PROB_FOR_CATALOG})")
-    p.add_argument("--catalog-write",  action="store_true",
-                   help="Write updated exit policies to Google Strategy_Catalog. "
-                        "Requires GOOGLE_API_CREDENTIALS_PATH and STRATEGY_CATALOG_SHEET_ID. "
-                        "Default: off (never writes to Sheet).")
-    p.add_argument("--google-credentials", default=None,
-                   help="Path to Google service-account JSON")
-    p.add_argument("--catalog-sheet-id", default=None,
-                   help="Override spreadsheet ID for Strategy_Catalog")
     p.add_argument("--dry-run", action="store_true",
                    help="Print what would be done without running the optimizer or writing files")
     return p.parse_args()
@@ -480,52 +465,7 @@ def main() -> None:
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     log(f"SUMMARY  {summary_path}  ({rebuilt} rebuilt, {len(summary)} total candidates)")
 
-    # ── Optional catalog upsert ───────────────────────────────────────────────
-    if not args.catalog_write:
-        log("CATALOG_SKIP  --catalog-write not set — Google Sheet unchanged")
-        log("              Re-run with --catalog-write to push updated exits to Strategy_Catalog.")
-        return
-
-    creds    = args.google_credentials or settings.google_api_credentials_path
-    sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
-    if not creds or not sheet_id:
-        log("CATALOG_SKIP  --catalog-write set but no credentials/sheet-id found — check .env")
-        return
-
-    written = 0
-    for ckey, result in exit_opts.items():
-        ckey_dict = dict(ckey)
-        ticker    = ckey_dict.get("ticker", "")
-        direction = ckey_dict.get("direction", "")
-        catalog_key = f"{h['id']}__{ticker.lower()}_{direction}"
-
-        # Find the corresponding M5 row to pass to the upsert
-        m5_row = _best_m5_row(
-            m5_df.filter(
-                (pl.col("ticker") == ticker) & (pl.col("direction") == direction)
-            )
-        )
-        if not m5_row:
-            log(f"CATALOG_SKIP  {catalog_key}  — no M5 row found")
-            continue
-
-        try:
-            upsert_strategy_catalog(
-                catalog_key=catalog_key,
-                symbol=ticker,
-                strategy=strategy,
-                m5_best=m5_row,
-                spreadsheet_id=sheet_id,
-                credentials_path=creds,
-                sheet_name=settings.strategy_catalog_sheet_name,
-                exit_opt=result.model_dump(mode="json"),
-            )
-            written += 1
-            log(f"CATALOG  upserted  {catalog_key}  policy={result.selected_policy_name}")
-        except Exception as exc:
-            log(f"CATALOG_WARN  {catalog_key}: {exc}")
-
-    log(f"CATALOG  {written} rows upserted to Strategy_Catalog")
+    log("MALA_EVIDENCE_READY  publish with `python -m src.research.mala_handoff --publish-sheets`")
 
 
 if __name__ == "__main__":

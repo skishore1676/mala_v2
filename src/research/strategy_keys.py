@@ -14,11 +14,8 @@ _DISPLAY_STRATEGY_KEYS: dict[str, str] = {
     "MI High Close Reclaim": "market_impulse",
     "MI Push Through": "market_impulse",
     "Opening Drive Classifier": "opening_drive_classifier",
-    "Opening Drive v2 (Short Continue)": "opening_drive_classifier",
     "Jerk-Pivot Momentum (tight)": "jerk_pivot_momentum",
-    "Kinematic Ladder": "kinematic_ladder",
     "Compression Expansion Breakout": "compression_expansion_breakout",
-    "Regime Router (Kinematic + Compression)": "regime_router",
 }
 
 

@@ -4,15 +4,10 @@ from datetime import time
 
 from src.strategy.base import required_feature_union
 from src.strategy.factory import available_strategy_names, build_strategy, build_strategy_by_name
+from src.strategy.intraday_mean_reversion import IntradayMeanReversionStrategy
 from src.strategy.jerk_pivot_momentum import JerkPivotMomentumStrategy
-from src.strategy.kinematic_ladder import KinematicLadderStrategy
 from src.strategy.market_impulse import MarketImpulseStrategy
 from src.strategy.opening_drive_classifier import OpeningDriveClassifierStrategy
-
-
-def test_build_opening_drive_v2_by_name() -> None:
-    strat = build_strategy_by_name("Opening Drive v2 (Short Continue)")
-    assert strat.name == "Opening Drive v2 (Short Continue)"
 
 
 def test_build_jerk_pivot_tight_by_name() -> None:
@@ -42,10 +37,21 @@ def test_build_strategy_with_override_params() -> None:
 def test_available_strategy_names_includes_research_candidates() -> None:
     names = available_strategy_names()
     assert "Jerk-Pivot Momentum (tight)" in names
-    assert "Opening Drive v2 (Short Continue)" in names
     assert "Market Impulse (Cross & Reclaim)" in names
     assert "Market Impulse Descendants" in names
     assert "MI Shallow Spring" in names
+    assert "Intraday Mean Reversion at Extremes" in names
+
+
+def test_build_intraday_mean_reversion_strategy() -> None:
+    strategy = build_strategy(
+        "Intraday Mean Reversion at Extremes",
+        {"stretch_source": "prior_close_atr", "entry_window_end": "10:00"},
+    )
+
+    assert isinstance(strategy, IntradayMeanReversionStrategy)
+    assert strategy.stretch_source == "prior_close_atr"
+    assert strategy.entry_window_end == time(10, 0)
 
 
 def test_build_market_impulse_with_timeframe_override() -> None:
@@ -183,12 +189,6 @@ def test_jerk_pivot_can_expose_multi_bar_kinematics_to_agents() -> None:
 
 def test_jerk_pivot_strategy_accepts_serialized_time_config() -> None:
     strategy = JerkPivotMomentumStrategy(session_start="09:35", session_end="15:30")
-    assert strategy.session_start == time(9, 35)
-    assert strategy.session_end == time(15, 30)
-
-
-def test_kinematic_ladder_strategy_accepts_serialized_time_config() -> None:
-    strategy = KinematicLadderStrategy(session_start="09:35", session_end="15:30")
     assert strategy.session_start == time(9, 35)
     assert strategy.session_end == time(15, 30)
 

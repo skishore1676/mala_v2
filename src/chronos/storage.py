@@ -5,7 +5,7 @@ Organises data as:
     data/<TICKER>/<YYYY-MM-DD>.parquet
 
 Provides:
-  - save_bars()    → persist normalized raw provider results
+  - save_bars()    → persist raw API results
   - load_bars()    → read back into a Polars DataFrame
   - missing_dates() → identify gaps for incremental downloads
 """
@@ -37,7 +37,7 @@ class LocalStorage:
 
     def save_bars(self, ticker: str, raw_bars: List[dict]) -> int:
         """
-        Persist normalized raw bar dicts to per-day Parquet files.
+        Persist raw Polygon bar dicts to per-day Parquet files.
         Returns the number of files written.
         """
         if not raw_bars:
@@ -120,10 +120,10 @@ class LocalStorage:
 
     @staticmethod
     def _bars_to_dataframe(raw_bars: List[dict], ticker: str) -> pl.DataFrame:
-        """Convert provider bar dicts to a typed Polars DataFrame."""
+        """Convert Polygon bar dicts to a typed Polars DataFrame."""
         df = pl.DataFrame(raw_bars)
-        # Chronos clients normalize bars to Polygon-style keys:
-        # 't' for Unix-ms timestamp, 'o/h/l/c' for prices, 'v' for volume.
+        # Polygon uses 't' for Unix-ms timestamp, 'o/h/l/c' for prices,
+        # 'v' for volume, 'vw' for VWAP, 'n' for num transactions
         rename_map: Dict[str, str] = {
             "t": "timestamp",
             "o": "open",
@@ -167,6 +167,26 @@ class LocalStorage:
                 .cast(pl.Datetime("us", time_zone="UTC"))
                 .alias("timestamp")
             )
+        numeric_float_columns = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "vwap",
+        ]
+        present_float_columns = [
+            column for column in numeric_float_columns if column in df.columns
+        ]
+        if present_float_columns:
+            df = df.with_columns(
+                [
+                    pl.col(column).cast(pl.Float64).alias(column)
+                    for column in present_float_columns
+                ]
+            )
+        if "transactions" in df.columns:
+            df = df.with_columns(pl.col("transactions").cast(pl.Int64).alias("transactions"))
         return df
 
     @staticmethod

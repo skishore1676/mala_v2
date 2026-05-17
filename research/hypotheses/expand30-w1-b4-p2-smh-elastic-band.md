@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `SMH`
 - strategy: `Elastic Band Reversion`
-- max_stage: `M1`
-- last_run: `2026-04-22T13:59:59+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:09:31+0000`
 
 ## Thesis
 SMH may inherit a usable ETF-level mean-reversion profile when stretched far from 4-hour VPOC, providing a sector-level transfer test for Elastic Band in semiconductors.
@@ -25,19 +25,21 @@ SMH may inherit a usable ETF-level mean-reversion profile when stretched far fro
 
 ## Agent Report
 ### Run
-`2026-04-22T085659` — strategy: `Elastic Band Reversion`
+`2026-05-17T070909` — strategy: `Elastic Band Reversion`
 
 ### Stages Executed
-`M2 → M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M2: 3 candidates promoted
-- M3: 34 detail rows
-- M4: 2 promoted
-- M5: 8 execution mappings
+- M1 PASS: pct_pos=80%  exp_r=+0.0791  signals=1763  windows=5
+- M2: 4 candidates promoted
+- M3: 52 detail rows
+- M4: 1 promoted
+- M5: 4 execution mappings
+- exit_opt: 1 catalog candidates optimized
 
 ### Decision
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p2-smh-elastic-band/2026-04-22T085659`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p2-smh-elastic-band/2026-05-17T070909`

@@ -1,0 +1,225 @@
+{
+  "consultation_state": "ready_for_parity",
+  "created_at": "2026-05-16T22:39:11.474060Z",
+  "entry_model": {
+    "calibration_holdout_split": "per symbol/config/direction by first 80% of event dates",
+    "config_generation": "balanced_axis_sweep_v1: includes the prior config, one-axis feature coverage, stretch-threshold families by stretch source, and stop/exit coverage before any historical result ranking",
+    "match_grade_thresholds": {
+      "maximum_expectancy_drift_r": 0.05,
+      "maximum_win_rate_drift": 0.05,
+      "minimum_calibration_count": 30,
+      "minimum_expectancy_r": 0.1,
+      "minimum_holdout_count": 10,
+      "minimum_holdout_win_rate": 0.55,
+      "minimum_sample_count": 50
+    },
+    "strategy": "Intraday Mean Reversion at Extremes"
+  },
+  "feature_contract": {
+    "bar_interval": "1m",
+    "contract_id": "mean_reversion_at_extremes_intraday_v1",
+    "features": [
+      {
+        "name": "opening_vwap_rth",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "prior_rth_close_atr",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "vpoc_4h",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "market_pulse_stage",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "gap_state_rth_open",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "velocity",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "jerk",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      },
+      {
+        "name": "relative_volume_rth",
+        "parameters": {},
+        "provider_sensitive": true,
+        "required": true,
+        "version": "v1"
+      }
+    ],
+    "provider": "polygon",
+    "session": "rth",
+    "warmup_bars": 60
+  },
+  "intended_horizon": "intraday-short-horizon",
+  "kind": "playbook",
+  "lineage": {
+    "parent_packet": null,
+    "source_artifacts": [
+      {
+        "description": null,
+        "label": "run_config",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
+      },
+      {
+        "description": null,
+        "label": "conditional_surface",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
+      },
+      {
+        "description": null,
+        "label": "sample_events",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
+      },
+      {
+        "description": null,
+        "label": "receipt",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
+      },
+      {
+        "description": null,
+        "label": "surface_review",
+        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
+      }
+    ],
+    "source_system": "mala_v2"
+  },
+  "management_policies": [
+    {
+      "name": "reversal_extreme / fixed_1r",
+      "parameters": {
+        "exit_family": "fixed_1r",
+        "hard_flat_time_et": "15:55",
+        "holdout_expectancy_r": 0.1818,
+        "holdout_win_rate": 0.5909,
+        "match_grade": "favorable",
+        "option_stop_fallback_pct": 0.45,
+        "sample_count": 114,
+        "source_config_id": "f09fcdd6b5",
+        "stop_anchor": "underlying_reversal_extreme",
+        "stop_family": "reversal_extreme",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 1.0
+      },
+      "policy_id": "reversal_extreme__fixed_1r",
+      "rank": 1
+    },
+    {
+      "name": "immediate_entry_bar_failure / fixed_2r",
+      "parameters": {
+        "exit_family": "fixed_2r",
+        "hard_flat_time_et": "15:55",
+        "holdout_expectancy_r": 0.625,
+        "holdout_win_rate": 0.5417,
+        "match_grade": "partial",
+        "option_stop_fallback_pct": 0.45,
+        "sample_count": 115,
+        "source_config_id": "de1576e59d",
+        "stop_anchor": "underlying_entry_bar_failure",
+        "stop_family": "immediate_entry_bar_failure",
+        "target_model": "fixed_r",
+        "target_order_mode": "virtual_or_broker",
+        "target_r": 2.0
+      },
+      "policy_id": "immediate_entry_bar_failure__fixed_2r",
+      "rank": 2
+    }
+  ],
+  "metadata": {
+    "config_count": 64,
+    "date_range": {
+      "end": "2026-05-12",
+      "start": "2021-05-13"
+    },
+    "feature_families_tested": {
+      "exit": [
+        "fixed_1_5r",
+        "fixed_1r",
+        "fixed_2r",
+        "market_pulse_flip",
+        "partial_retrace_50",
+        "time_stop",
+        "vwap_return"
+      ],
+      "gap_state": [
+        "flat",
+        "gap_down_large",
+        "gap_down_small",
+        "gap_up_large",
+        "gap_up_small",
+        "no_filter"
+      ],
+      "stage": [
+        "accumulation",
+        "bearish",
+        "bullish",
+        "distribution",
+        "no_filter"
+      ],
+      "stop": [
+        "immediate_entry_bar_failure",
+        "reversal_extreme",
+        "reversal_midpoint"
+      ],
+      "stretch": [
+        "opening_vwap_rth",
+        "prior_rth_close_atr",
+        "vpoc_4h"
+      ],
+      "trigger": [
+        "reversal_range_breakout",
+        "confirming_bars",
+        "jerk",
+        "relative_volume"
+      ]
+    },
+    "generated_from": "src.research.playbook_packet_registry",
+    "source_run_dir": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64",
+    "surface_rows": 256
+  },
+  "operator_approval": {
+    "actor": null,
+    "approved_at": null,
+    "notes": null,
+    "status": "pending"
+  },
+  "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+  "playbook_id": "mean-reversion-at-extremes-intraday",
+  "status": "review",
+  "symbol_scope": [
+    "IWM",
+    "QQQ"
+  ],
+  "title": "IWM/QQQ Mean Reversion At Extremes",
+  "version": 1
+}

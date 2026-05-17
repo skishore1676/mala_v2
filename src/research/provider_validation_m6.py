@@ -250,7 +250,7 @@ def classify_feature_parity(
                     **_feature_provider_metric("directional_mass_pct", provider_feature_rows or []),
                 )
             )
-    elif strategy_key in {"jerk_pivot_momentum", "ema_momentum"}:
+    elif strategy_key == "jerk_pivot_momentum":
         rows.append(
             _feature_row(
                 catalog_key=catalog_key,
@@ -263,7 +263,7 @@ def classify_feature_parity(
             )
         )
 
-    if strategy_key in {"opening_drive_classifier", "regime_router"}:
+    if strategy_key == "opening_drive_classifier":
         if _truthy(strategy_params.get("use_directional_mass")):
             rows.append(
                 _feature_row(

@@ -53,7 +53,7 @@ Mala's current M1-M5 workflow is good at finding repeatable intraday edges, but 
 
 ## Expected Output
 - Write the final report to:
-  - `research/reports/big-move-miss-audit-current-basket.md`
+  - `research/reports/archive/legacy_runtime_20260517/big-move-miss-audit-current-basket.md`
 - Include:
   - top big-move table by ticker/date
   - classification of move type

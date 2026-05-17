@@ -29,6 +29,7 @@ ACTIVE_STRATEGY_HEADERS = [
     "strategy_id",
     "entry_window_start_et",
     "max_trade_premium_usd",
+    "execution_overrides",
     "notes",
 ]
 
@@ -166,8 +167,14 @@ def build_shadow_activation_packet(
                 "exit_reliability": _clean(evidence.get("exit_reliability")),
                 "exit_trade_count": _clean(evidence.get("exit_trade_count")),
                 "signal_window_et": _clean(evidence.get("signal_window_et")),
-                "option_dte_min": cfg.dte_min,
-                "option_dte_max": cfg.dte_max,
+                "option_trade_ready": _clean(evidence.get("option_trade_ready")),
+                "option_adjusted_expectancy_pct": _clean(evidence.get("option_adjusted_expectancy_pct")),
+                "option_exit_quality": _clean(evidence.get("option_exit_quality")),
+                "median_minutes_held": _clean(evidence.get("median_minutes_held")),
+                "pnl_pct_per_minute": _clean(evidence.get("pnl_pct_per_minute")),
+                "target_hit_within_30_minutes": _clean(evidence.get("target_hit_within_30_minutes")),
+                "option_dte_min": _option_int(evidence.get("recommended_dte_min"), cfg.dte_min),
+                "option_dte_max": _option_int(evidence.get("recommended_dte_max"), cfg.dte_max),
                 "option_delta_min": cfg.delta_min,
                 "option_delta_max": cfg.delta_max,
                 "max_bid_ask_spread_pct": cfg.max_bid_ask_spread_pct,
@@ -217,6 +224,15 @@ def classify_shadow_activation(
         reasons.append(f"tier_{tier or 'missing'}")
     if _float(row.get("expectancy")) <= config.min_expectancy:
         reasons.append("non_positive_expectancy")
+    if "option_trade_ready" in row and _clean(row.get("option_trade_ready")):
+        if not _truthy(row.get("option_trade_ready")):
+            reasons.append("option_trade_not_ready")
+    if "option_adjusted_expectancy_pct" in row and _clean(row.get("option_adjusted_expectancy_pct")):
+        if _float(row.get("option_adjusted_expectancy_pct")) <= 0:
+            reasons.append("non_positive_option_adjusted_expectancy")
+    if "recommended_dte_max" in row and _clean(row.get("recommended_dte_max")):
+        if _int(row.get("recommended_dte_max")) > 14:
+            reasons.append("option_dte_outside_short_packet")
     robustness = _float(row.get("execution_robustness"))
     if robustness < config.min_execution_robustness:
         if include_experiments and robustness >= config.experiment_min_execution_robustness:
@@ -226,7 +242,14 @@ def classify_shadow_activation(
     if _int(row.get("signal_count")) < config.min_signal_count:
         reasons.append("thin_signal_count")
 
-    hard_blocks = {"bhiksha_not_ready", "runtime_unsupported", "non_positive_expectancy"}
+    hard_blocks = {
+        "bhiksha_not_ready",
+        "runtime_unsupported",
+        "non_positive_expectancy",
+        "option_trade_not_ready",
+        "non_positive_option_adjusted_expectancy",
+        "option_dte_outside_short_packet",
+    }
     if any(reason in hard_blocks for reason in reasons):
         return "blocked", reasons
     if any(reason.startswith("tier_") for reason in reasons):
@@ -238,11 +261,21 @@ def classify_shadow_activation(
 
 
 def active_strategy_row_from_recommendation(row: dict[str, Any]) -> dict[str, Any]:
+    execution_overrides = {
+        "dte_min": _int(row.get("option_dte_min")),
+        "dte_max": _int(row.get("option_dte_max")),
+        "target_abs_delta_min": _float(row.get("option_delta_min")),
+        "target_abs_delta_max": _float(row.get("option_delta_max")),
+        "max_bid_ask_spread_pct": _float(row.get("max_bid_ask_spread_pct")),
+        "min_open_interest": _int(row.get("min_open_interest")),
+    }
     notes = (
         "Shadow campaign candidate; "
         f"tier={row['recommendation_tier']} mc={row['execution_robustness']} "
         f"exp={row['expectancy']} signals={row['signal_count']} "
-        f"exit={row['thesis_exit_policy']} exit_trades={row['exit_trade_count']}."
+        f"exit={row['thesis_exit_policy']} option_exp={row.get('option_adjusted_expectancy_pct', '')} "
+        f"dte={row.get('option_dte_min', '')}-{row.get('option_dte_max', '')} "
+        f"median_min={row.get('median_minutes_held', '')} exit_trades={row['exit_trade_count']}."
     )
     return {
         "enabled": "TRUE",
@@ -250,6 +283,7 @@ def active_strategy_row_from_recommendation(row: dict[str, Any]) -> dict[str, An
         "strategy_id": row["catalog_key"],
         "entry_window_start_et": _entry_start(row.get("signal_window_et")),
         "max_trade_premium_usd": str(_format_number(row["max_trade_premium_usd"])),
+        "execution_overrides": json.dumps(execution_overrides, sort_keys=True, separators=(",", ":")),
         "notes": notes,
     }
 
@@ -661,6 +695,16 @@ def _int(value: Any) -> int:
         return int(float(_clean(value) or 0))
     except ValueError:
         return 0
+
+
+def _option_int(value: Any, default: int) -> int:
+    text = _clean(value)
+    if not text:
+        return default
+    try:
+        return int(float(text))
+    except ValueError:
+        return default
 
 
 def _format_number(value: Any) -> str:

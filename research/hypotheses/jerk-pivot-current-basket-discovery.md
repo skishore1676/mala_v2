@@ -8,7 +8,7 @@
 - strategy: `Jerk-Pivot Momentum (tight)`
 - max_stage: `M5`
 - max_configs: `48`
-- last_run: `2026-04-16T04:03:47+0000`
+- last_run: `2026-05-17T12:14:34+0000`
 
 ## Thesis
 Jerk inflections near VPOC can identify moments where intraday momentum is re-accelerating from a high-participation reference level. If velocity, acceleration, and jerk align near VPOC, continuation should be strong enough to survive cost and execution stress.
@@ -27,21 +27,21 @@ Jerk inflections near VPOC can identify moments where intraday momentum is re-ac
 
 ## Agent Report
 ### Run
-`2026-04-15T225844` — strategy: `Jerk-Pivot Momentum (tight)`
+`2026-05-17T070931` — strategy: `Jerk-Pivot Momentum (tight)`
 
 ### Stages Executed
 `M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M1 PASS: pct_pos=100%  exp_r=+0.3855  signals=119  windows=5
-- M2: 13 candidates promoted
-- M3: 190 detail rows
-- M4: 6 promoted
-- M5: 24 execution mappings
-- exit_opt: 2 catalog candidates optimized
+- M1 PASS: pct_pos=80%  exp_r=+0.3477  signals=100  windows=5
+- M2: 15 candidates promoted
+- M3: 218 detail rows
+- M4: 7 promoted
+- M5: 28 execution mappings
+- exit_opt: 3 catalog candidates optimized
 
 ### Decision
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-04-15T225844`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-05-17T070931`

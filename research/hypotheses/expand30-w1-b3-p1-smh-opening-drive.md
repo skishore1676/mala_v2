@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `SMH`
 - strategy: `Opening Drive Classifier`
-- max_stage: `M1`
-- last_run: `2026-04-22T14:25:38+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:08:40+0000`
 
 ## Thesis
 SMH may carry the same opening-drive continuation behavior already observed in single-name semiconductor tests, with the sector ETF capturing broad early directional follow-through when the opening auction resolves cleanly.
@@ -26,19 +26,21 @@ SMH may carry the same opening-drive continuation behavior already observed in s
 
 ## Agent Report
 ### Run
-`2026-04-22T092236` — strategy: `Opening Drive Classifier`
+`2026-05-17T070825` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
-`M2 → M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M2: 4 candidates promoted
-- M3: 52 detail rows
-- M4: 3 promoted
-- M5: 12 execution mappings
+- M1 PASS: pct_pos=100%  exp_r=+0.1775  signals=60  windows=3
+- M2: 2 candidates promoted
+- M3: 26 detail rows
+- M4: 2 promoted
+- M5: 8 execution mappings
+- exit_opt: 1 catalog candidates optimized
 
 ### Decision
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p1-smh-opening-drive/2026-04-22T092236`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p1-smh-opening-drive/2026-05-17T070825`

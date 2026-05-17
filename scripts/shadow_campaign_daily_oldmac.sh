@@ -8,9 +8,12 @@ BHIKSHA_PYTHON="${BHIKSHA_PYTHON:-$BHIKSHA_ROOT/.venv/bin/python}"
 ACTIVE_PLAN_PATH="${ACTIVE_PLAN_PATH:-$BHIKSHA_ROOT/artifacts/playbook/active_plan.json}"
 BHIKSHA_DB_PATH="${BHIKSHA_DB_PATH:-$BHIKSHA_ROOT/bhiksha.db}"
 ACTIVE_PLAN_ID="${ACTIVE_PLAN_ID:-active_plan_$(date +%F)}"
+EXPECTED_STRATEGY_DEPLOYMENTS="${EXPECTED_STRATEGY_DEPLOYMENTS:-11}"
+EXPECTED_MANUAL_DEPLOYMENTS="${EXPECTED_MANUAL_DEPLOYMENTS:-1}"
 TRADING_DAYS="${TRADING_DAYS:-3}"
 SIGNAL_EV_LOOKBACK_DAYS="${SIGNAL_EV_LOOKBACK_DAYS:-21}"
 POLYGON_CACHE_BACKFILL_DAYS="${POLYGON_CACHE_BACKFILL_DAYS:-$SIGNAL_EV_LOOKBACK_DAYS}"
+SHADOW_SKIP_POLYGON_BACKFILL="${SHADOW_SKIP_POLYGON_BACKFILL:-0}"
 OBSIDIAN_VAULT_ROOT="${OBSIDIAN_VAULT_ROOT:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar}"
 OBSIDIAN_SHADOW_DIR="${OBSIDIAN_SHADOW_DIR:-areas/trading/mala-shadow}"
 
@@ -26,47 +29,69 @@ fi
 cd "$BHIKSHA_ROOT"
 "$BHIKSHA_PYTHON" -m bhiksha.tools.sync_active_plan
 
-if [[ "${SHADOW_SKIP_POLYGON_BACKFILL:-0}" != "1" ]]; then
-  cd "$MALA_ROOT"
-  "$MALA_PYTHON" - "$ACTIVE_PLAN_PATH" "$POLYGON_CACHE_BACKFILL_DAYS" <<'PY'
+if [[ "${SHADOW_SKIP_ACTIVE_PLAN_PREFLIGHT:-0}" != "1" ]]; then
+  "$BHIKSHA_PYTHON" - "$ACTIVE_PLAN_PATH" "$EXPECTED_STRATEGY_DEPLOYMENTS" "$EXPECTED_MANUAL_DEPLOYMENTS" <<'PY'
 import json
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
-from src.chronos.client import PolygonClient
-from src.chronos.storage import LocalStorage
-
 active_plan_path = Path(sys.argv[1]).expanduser()
-lookback_days = max(int(sys.argv[2]), 0)
-today = date.today()
-start = today - timedelta(days=lookback_days)
-
-payload = json.loads(active_plan_path.read_text())
-symbols = sorted(
-    {
-        str(deployment.get("symbol", "")).upper()
-        for deployment in payload.get("deployments", [])
-        if deployment.get("enabled", True) and deployment.get("symbol")
-    }
+expected_strategy = int(sys.argv[2])
+expected_manual = int(sys.argv[3])
+plan = json.loads(active_plan_path.read_text(encoding="utf-8"))
+deployments = plan.get("deployments", [])
+summary = plan.get("summary", {})
+suppressed = int(summary.get("suppressed_count") or 0)
+strategy_count = sum(
+    1
+    for deployment in deployments
+    if ((deployment.get("source") or {}).get("metadata") or {}).get("row_type") == "strategy"
 )
-if not symbols:
-    print("POLYGON_BACKFILL symbols=0")
-    raise SystemExit(0)
+manual_count = sum(
+    1
+    for deployment in deployments
+    if ((deployment.get("source") or {}).get("metadata") or {}).get("row_type") == "manual"
+)
+not_shadow = [
+    deployment.get("deployment_id", "<unknown>")
+    for deployment in deployments
+    if not ((deployment.get("execution") or {}).get("shadow_only") is True)
+]
+disabled = [
+    deployment.get("deployment_id", "<unknown>")
+    for deployment in deployments
+    if deployment.get("enabled") is not True
+]
+errors = []
+if suppressed:
+    errors.append(f"suppressed_count={suppressed}")
+if strategy_count != expected_strategy:
+    errors.append(f"strategy_count={strategy_count} expected={expected_strategy}")
+if manual_count != expected_manual:
+    errors.append(f"manual_count={manual_count} expected={expected_manual}")
+if not_shadow:
+    errors.append(f"non_shadow_deployments={not_shadow}")
+if disabled:
+    errors.append(f"disabled_deployments={disabled}")
 
-storage = LocalStorage()
-client = PolygonClient()
-for symbol in symbols:
-    missing = storage.missing_dates(symbol, start, today)
-    written = 0
-    for day in missing:
-        bars = client.fetch_aggs(symbol, day, day)
-        written += storage.save_bars(symbol, bars)
-    print(
-        f"POLYGON_BACKFILL symbol={symbol} "
-        f"missing_days={len(missing)} files_written={written}"
-    )
+print(
+    "ACTIVE_PLAN_PREFLIGHT "
+    f"deployments={len(deployments)} strategy={strategy_count} manual={manual_count} "
+    f"suppressed={suppressed} shadow_only_ok={not not_shadow} enabled_ok={not disabled}"
+)
+if errors:
+    raise SystemExit("ACTIVE_PLAN_PREFLIGHT_FAIL " + "; ".join(errors))
 PY
+fi
+
+if [[ "$SHADOW_SKIP_POLYGON_BACKFILL" != "1" ]]; then
+  cd "$MALA_ROOT"
+  "$MALA_PYTHON" "$MALA_ROOT/scripts/polygon_cache_topup.py" \
+    --data-dir "$MALA_ROOT/data" \
+    --active-plan "$ACTIVE_PLAN_PATH" \
+    --lookback-days "$POLYGON_CACHE_BACKFILL_DAYS"
+else
+  echo "POLYGON_BACKFILL skipped=1 reason=scheduled_checkin_uses_bhiksha_feedback"
 fi
 
 review_args=(

@@ -21,6 +21,11 @@ from src.newton.transforms import (
     FeatureTransform,
     JerkTransform,
     MarketImpulseTransform,
+    OpeningVwapRthTransform,
+    OpeningVwapTransform,
+    PriorCloseAtrTransform,
+    PriorRthCloseAtrTransform,
+    RelativeVolumeRthTransform,
     RelativeVolumeTransform,
     VelocityTransform,
     VolumeMaTransform,
@@ -57,8 +62,14 @@ class PhysicsEngine:
             "market_impulse_vwma_<short>_<medium>_<long>",
             "relative_volume:<period>",
             "relative_volume_<period>",
+            "relative_volume_rth:<period>",
+            "relative_volume_rth_<period>",
             "aggregated_relative_volume:<sum_window>:<ma_period>",
             "relative_volume_sum_<sum_window>_over_ma_<ma_period>",
+            "opening_vwap",
+            "opening_vwap_rth",
+            "prior_close_atr",
+            "prior_rth_close_atr",
         ]
 
     def enrich(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -80,6 +91,7 @@ class PhysicsEngine:
         ]
         candidates.extend(self._kinematic_transforms_for_features(required_features))
         candidates.extend(self._relative_volume_transforms_for_features(required_features))
+        candidates.extend(self._relative_volume_rth_transforms_for_features(required_features))
         candidates.extend(self._aggregated_relative_volume_transforms_for_features(required_features))
         candidates.extend(self._market_impulse_transforms_for_features(required_features))
         return self._resolve_transforms(candidates)
@@ -241,6 +253,18 @@ class PhysicsEngine:
             )
         return transforms
 
+    def _relative_volume_rth_transforms_for_features(
+        self,
+        required_features: set[str],
+    ) -> list[FeatureTransform]:
+        transforms: list[FeatureTransform] = []
+        for feature in sorted(required_features):
+            match = _RELATIVE_VOLUME_RTH_RE.fullmatch(feature)
+            if not match:
+                continue
+            transforms.append(RelativeVolumeRthTransform(period=int(match.group("period"))))
+        return transforms
+
     def _build_registry(self) -> dict[str, FeatureTransform]:
         transforms: list[FeatureTransform] = [
             VelocityTransform(),
@@ -250,6 +274,10 @@ class PhysicsEngine:
             VolumeMaTransform(period=self.volume_ma_period),
             DirectionalMassTransform(volume_ma_period=self.volume_ma_period),
             VpocTransform(lookback=self.vpoc_lookback),
+            OpeningVwapTransform(),
+            OpeningVwapRthTransform(),
+            PriorCloseAtrTransform(),
+            PriorRthCloseAtrTransform(),
         ]
         return {transform.name: transform for transform in transforms}
 
@@ -312,6 +340,9 @@ class PhysicsEngine:
             relative_volume_match = _RELATIVE_VOLUME_SPEC_RE.fullmatch(item)
             if relative_volume_match:
                 return RelativeVolumeTransform(period=int(relative_volume_match.group("period")))
+            relative_volume_rth_match = _RELATIVE_VOLUME_RTH_SPEC_RE.fullmatch(item)
+            if relative_volume_rth_match:
+                return RelativeVolumeRthTransform(period=int(relative_volume_rth_match.group("period")))
             aggregated_relative_volume_match = _AGGREGATED_RELATIVE_VOLUME_SPEC_RE.fullmatch(item)
             if aggregated_relative_volume_match:
                 return AggregatedRelativeVolumeTransform(
@@ -347,7 +378,7 @@ class PhysicsEngine:
 
 _MARKET_IMPULSE_SPEC_RE = re.compile(r"^market_impulse(?::(?P<timeframe>[^:]+))?$")
 _MARKET_IMPULSE_COLUMN_RE = re.compile(
-    r"^impulse_(?:regime|stage)(?:_(?P<timeframe>[0-9]+[A-Za-z]+))?$"
+    r"^(?:impulse_(?:regime|stage)|market_pulse_stage|vwma_stage)(?:_(?P<timeframe>[0-9]+[A-Za-z]+))?$"
 )
 _MARKET_IMPULSE_VMA_RE = re.compile(
     r"^vma_(?P<vma_length>\d+)(?:_(?P<timeframe>[0-9]+[A-Za-z]+))?$"
@@ -357,6 +388,8 @@ _MARKET_IMPULSE_VWMA_SPEC_RE = re.compile(
 )
 _RELATIVE_VOLUME_RE = re.compile(r"^relative_volume_(?P<period>\d+)$")
 _RELATIVE_VOLUME_SPEC_RE = re.compile(r"^relative_volume:(?P<period>\d+)$")
+_RELATIVE_VOLUME_RTH_RE = re.compile(r"^relative_volume_rth_(?P<period>\d+)$")
+_RELATIVE_VOLUME_RTH_SPEC_RE = re.compile(r"^relative_volume_rth:(?P<period>\d+)$")
 _AGGREGATED_RELATIVE_VOLUME_RE = re.compile(
     r"^relative_volume_sum_(?P<sum_window>\d+)_over_ma_(?P<ma_period>\d+)$"
 )

@@ -1,0 +1,40 @@
+{
+  "packets": [
+    {
+      "kind": "execution",
+      "packet_id": "execution.mean_reversion_at_extremes.iwm_qqq",
+      "path": "packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v1.json",
+      "status": "approved",
+      "symbol_scope": [
+        "IWM",
+        "QQQ"
+      ],
+      "title": "IWM/QQQ Mean Reversion Shadow Execution",
+      "version": 1
+    },
+    {
+      "kind": "execution",
+      "packet_id": "execution.mean_reversion_at_extremes.iwm_qqq",
+      "path": "packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v2.json",
+      "status": "approved",
+      "symbol_scope": [
+        "IWM",
+        "QQQ"
+      ],
+      "title": "IWM/QQQ Mean Reversion Live Approval-Gated Execution",
+      "version": 2
+    },
+    {
+      "kind": "playbook",
+      "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+      "path": "packets/playbook/playbook.mean_reversion_at_extremes.iwm_qqq/v1.json",
+      "status": "review",
+      "symbol_scope": [
+        "IWM",
+        "QQQ"
+      ],
+      "title": "IWM/QQQ Mean Reversion At Extremes",
+      "version": 1
+    }
+  ]
+}

@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `AMZN`
 - strategy: `Opening Drive Classifier`
-- max_stage: `M1`
-- last_run: `2026-04-22T13:53:34+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:07:54+0000`
 
 ## Thesis
 Apply the existing Opening Drive Classifier to AMZN as a config-only transfer test for same-session continuation after an opening directional drive. The honest mapping is continuation-only using current opening-drive, acceleration, optional jerk, directional-mass, and volume filters already exposed by mala_v2.
@@ -26,20 +26,21 @@ Apply the existing Opening Drive Classifier to AMZN as a config-only transfer te
 
 ## Agent Report
 ### Run
-`2026-04-22T085239` — strategy: `Opening Drive Classifier`
+`2026-05-17T070739` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
-`M2 → M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M2: 1 candidates promoted
-- M3: 15 detail rows
-- M4: 1 promoted
-- M5: 4 execution mappings
+- M1 PASS: pct_pos=80%  exp_r=+0.1734  signals=96  windows=5
+- M2: 4 candidates promoted
+- M3: 58 detail rows
+- M4: 4 promoted
+- M5: 16 execution mappings
 - exit_opt: 1 catalog candidates optimized
 
 ### Decision
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p2-amzn-opening-drive/2026-04-22T085239`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p2-amzn-opening-drive/2026-05-17T070739`
