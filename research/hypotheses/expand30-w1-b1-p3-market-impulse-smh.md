@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `SMH`
 - strategy: `Market Impulse (Cross & Reclaim)`
-- max_stage: `M1`
-- last_run: `2026-04-24T13:42:24+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:07:38+0000`
 
 ## Thesis
 SMH may preserve part of the open cross-and-reclaim impulse edge seen in the broader liquid basket because the semiconductor ETF can express early directional regime alignment with less single-name idiosyncratic noise.
@@ -26,12 +26,14 @@ SMH may preserve part of the open cross-and-reclaim impulse edge seen in the bro
 
 ## Agent Report
 ### Run
-`2026-04-24T084200` — strategy: `Market Impulse (Cross & Reclaim)`
+`2026-05-17T070720` — strategy: `Market Impulse (Cross & Reclaim)`
 
 ### Stages Executed
-`M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
+- M1 PASS: pct_pos=80%  exp_r=+0.2128  signals=230  windows=5
+- M2: 3 candidates promoted
 - M3: 45 detail rows
 - M4: 1 promoted
 - M5: 4 execution mappings
@@ -41,4 +43,4 @@ SMH may preserve part of the open cross-and-reclaim impulse edge seen in the bro
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b1-p3-market-impulse-smh/2026-04-24T084200`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b1-p3-market-impulse-smh/2026-05-17T070720`

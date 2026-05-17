@@ -1,5 +1,8 @@
 # Mala 2.2 Consultation Journal
 
+**Status:** active consultation feedback contract. This remains current for the
+playbook consultation lane; it is not a runtime promotion surface.
+
 The consultation journal is the feedback loop for every operator-facing
 playbook, not a feature of one reversion study.
 

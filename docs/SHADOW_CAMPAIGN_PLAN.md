@@ -1,5 +1,9 @@
 # Shadow Campaign Plan
 
+**Status:** current strategy-shadow operating plan as of 2026-05-17. The active
+book is the 11-row M5.5 option-aware packet, not the older broad
+Strategy_Catalog-era campaign.
+
 ## Purpose
 
 Run a two-stage shadow campaign before any new live promotion decision.
@@ -47,17 +51,20 @@ Rows are eligible for `active_strategy` shadow when all are true:
 
 - `bhiksha_ready = TRUE`
 - `bhiksha_capability_status = supported`
+- `option_trade_ready = TRUE`
+- `option_adjusted_expectancy_pct > 0`
 - `recommendation_tier` is `shadow` or `promote`
-- `expectancy > 0`
 - `execution_robustness >= 0.75`
 - `signal_count >= 20`
+- row-level `execution_overrides` are present for DTE, delta, spread, and open-interest policy
 
 Rows below the normal robustness floor can be included only as explicit
 experiments when they are otherwise supported and at least
 `execution_robustness >= 0.65`.
 
-Unsupported rows remain blocked. This currently keeps Market Impulse
-descendants and Compression Breakout out of runtime shadow until adapters exist.
+Unsupported rows remain blocked. No family is grandfathered because it passed
+an older M1-M5 run. Rows that are Bhiksha-capable but option-unready remain in
+evidence only; they do not enter active shadow.
 
 ## Option Constraints
 
@@ -65,10 +72,11 @@ Use single-leg long premium options during the campaign:
 
 - Direction long: long call
 - Direction short: long put
-- DTE: 7-21
-- Absolute delta: 0.15-0.35
-- Max bid/ask spread: 0.08
-- Minimum open interest: 100
+- DTE: row-level M5.5 recommendation, normally 0-14 DTE for the short-term
+  packet and 14-21 only as not-ready/diagnostic evidence
+- Absolute delta: row-level override, default target range 0.30-0.60
+- Max bid/ask spread: row-level override, default no wider than 0.08
+- Minimum open interest: row-level override, default at least 100
 - Default max premium per trade: 2000 USD
 - One open position per symbol
 

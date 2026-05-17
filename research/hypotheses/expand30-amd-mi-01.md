@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `AMD`
 - strategy: `Market Impulse (Cross & Reclaim)`
-- max_stage: `M1`
-- last_run: `2026-04-24T13:40:39+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:06:58+0000`
 
 ## Thesis
 Run Expand30 single-ticker Market Impulse feasibility/M1 on AMD. This is a high-priority transfer candidate because AMD short is a recurring promoted Market Impulse edge and a clean nightly smoke-test complement to QQQ.
@@ -29,7 +29,7 @@ Run Expand30 single-ticker Market Impulse feasibility/M1 on AMD. This is a high-
 
 ## Agent Report
 ### Run
-`2026-04-24T083939` — strategy: `Market Impulse (Cross & Reclaim)`
+`2026-05-17T070638` — strategy: `Market Impulse (Cross & Reclaim)`
 
 ### Stages Executed
 `M1 → M2 → M3 → M4 → M5`
@@ -46,4 +46,4 @@ Run Expand30 single-ticker Market Impulse feasibility/M1 on AMD. This is a high-
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-amd-mi-01/2026-04-24T083939`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-amd-mi-01/2026-05-17T070638`

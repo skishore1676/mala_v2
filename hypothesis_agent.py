@@ -57,11 +57,9 @@ def _load_config() -> dict[str, Any]:
 _CFG = _load_config()
 
 from src.chronos.storage import LocalStorage
-from src.config import settings
 from src.newton.engine import PhysicsEngine
 from src.oracle.metrics import MetricsCalculator
 from src.oracle.monte_carlo import ExecutionStressConfig
-from src.research.catalog import upsert_strategy_catalog
 from src.research.exit_optimizer import (
     DEFAULT_CATASTROPHE_EXIT,
     ExitOptimizationResult,
@@ -1190,14 +1188,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run",         action="store_true")
     parser.add_argument("--force-rerun",     action="store_true",
                         help="Run from M1 even when the hypothesis state is completed or kill")
-    parser.add_argument("--google-credentials", default=None,
-                        help="Path to Google service-account JSON (enables Strategy_Catalog write on promote)")
-    parser.add_argument("--catalog-sheet-id", default=None,
-                        help="Override spreadsheet ID for Strategy_Catalog")
     parser.add_argument("--no-catalog-write", action="store_true",
-                        help="Skip Strategy_Catalog upsert even when credentials are present. "
-                             "Use this for reruns, exit experiments, or any run where you do not "
-                             "want to touch the live Google Sheet.")
+                        help="Deprecated no-op kept for old rerun wrappers; Strategy_Catalog writes are removed.")
     return parser.parse_args()
 
 
@@ -1390,42 +1382,10 @@ def main() -> None:
         update_hypothesis(hyp_path, new_state=new_state, new_decision=d, report=report)
 
         if d == "promote":
-            creds = args.google_credentials or settings.google_api_credentials_path
-            sheet_id = args.catalog_sheet_id or settings.strategy_catalog_sheet_id
-            if args.no_catalog_write:
-                log("CATALOG_SKIP  --no-catalog-write set — skipping Strategy_Catalog upsert")
-            elif creds and sheet_id and not m5_df.is_empty():
-                # Write one catalog entry per ticker×direction that clears the mc_prob threshold
-                written = 0
-                for row in _catalog_candidate_rows(m5_df):
-                    _t, _d = str(row["ticker"]), str(row["direction"])
-                    mc_prob = float(row.get("mc_prob_positive_exp", 0) or 0)
-                    if mc_prob < MIN_MC_PROB_FOR_CATALOG:
-                        log(f"CATALOG_SKIP  {_t} {_d}  mc_prob={mc_prob:.1%} < {MIN_MC_PROB_FOR_CATALOG:.0%}")
-                        continue
-                    catalog_key = f"{h.id}__{_t.lower()}_{_d}"
-                    exit_opt = m5_exit_opts.get(_candidate_key(row, param_keys))
-                    if not exit_opt:
-                        log(f"CATALOG_SKIP  {catalog_key}: missing tested thesis exit artifact")
-                        continue
-                    try:
-                        upsert_strategy_catalog(
-                            catalog_key=catalog_key,
-                            symbol=_t,
-                            strategy=strategy,
-                            m5_best=row,
-                            spreadsheet_id=sheet_id,
-                            credentials_path=creds,
-                            sheet_name=settings.strategy_catalog_sheet_name,
-                            exit_opt=exit_opt.model_dump(mode="json") if exit_opt else None,
-                        )
-                        written += 1
-                        log(f"CATALOG  upserted  {catalog_key}  mc_prob={mc_prob:.1%}")
-                    except Exception as exc:
-                        log(f"CATALOG_WARN  {catalog_key}: {exc}")
-                notes.append(f"catalog: {written} entries written")
-            else:
-                log("CATALOG_SKIP  no google credentials configured — skipping Strategy_Catalog write")
+            log(
+                "MALA_EVIDENCE_READY  publish with "
+                "`python -m src.research.mala_handoff --publish-sheets`"
+            )
 
     # ── M1 ────────────────────────────────────────────────────────────────────
     if "M1" in active_stages:
@@ -1641,7 +1601,9 @@ def main() -> None:
                     write_exit_optimization_result(exit_opt, path=path)
                     log(
                         f"EXIT_OPT  {_ticker} {_direction}  {exit_opt.selected_policy_name}"
-                        f"  expectancy={exit_opt.selected_metrics.get('expectancy', 0):+.4f}"
+                        f"  option_exp_pct={exit_opt.selected_metrics.get('option_adjusted_expectancy_pct', 0):+.4f}"
+                        f"  median_min={exit_opt.selected_metrics.get('median_minutes_held', 0)}"
+                        f"  dte={exit_opt.selected_metrics.get('recommended_dte_min', '')}-{exit_opt.selected_metrics.get('recommended_dte_max', '')}"
                     )
             except Exception as exc:
                 log(f"EXIT_OPT_WARN  {_ticker} {_direction}: {exc}")

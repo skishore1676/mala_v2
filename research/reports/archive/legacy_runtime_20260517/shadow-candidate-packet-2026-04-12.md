@@ -10,7 +10,7 @@ Source evidence:
 
 - Market Impulse guardrail run: `data/results/hypothesis_runs/market-impulse-all-basket-discovery/2026-04-12T201909`
 - Jerk-Pivot guardrail run: `data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-04-12T203208`
-- Comparison report: `research/reports/top-family-guardrail-comparison.md`
+- Comparison report: `research/reports/archive/legacy_runtime_20260517/top-family-guardrail-comparison.md`
 
 Guardrails in force:
 

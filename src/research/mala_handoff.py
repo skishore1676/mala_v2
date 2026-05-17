@@ -105,6 +105,15 @@ M6_PROVIDER_FIELDNAMES = [
 ]
 
 _REVIEW_METRIC_ORDER = [
+    "option_adjusted_expectancy_pct",
+    "option_trade_ready",
+    "option_exit_quality",
+    "recommended_dte_min",
+    "recommended_dte_max",
+    "theta_penalty_pct",
+    "expectancy_pct",
+    "pnl_pct_per_minute",
+    "median_minutes_held",
     "expectancy",
     "profit_factor",
     "trade_count",
@@ -228,22 +237,31 @@ class SelectedArtifactRow:
 
 def discover_selected_rows(*, runs_root: str | Path, latest_only: bool = True) -> list[SelectedArtifactRow]:
     root = Path(runs_root)
+    if latest_only:
+        latest_run_by_hypothesis: dict[str, Path] = {}
+        for run_dir in sorted(path for path in root.glob("*/*") if path.is_dir()):
+            hypothesis_id = run_dir.parent.name
+            previous = latest_run_by_hypothesis.get(hypothesis_id)
+            if previous is None or _run_sort_token(run_dir) >= _run_sort_token(previous):
+                latest_run_by_hypothesis[hypothesis_id] = run_dir
+
+        rows: list[SelectedArtifactRow] = []
+        for run_dir in latest_run_by_hypothesis.values():
+            selected_path = run_dir / "CATALOG_SELECTED.csv"
+            if not selected_path.exists():
+                continue
+            for selected in _read_csv_dicts(selected_path):
+                if selected.get("catalog_key"):
+                    rows.append(SelectedArtifactRow(run_dir=run_dir, selected=selected))
+        return rows
+
     rows: list[SelectedArtifactRow] = []
     for path in sorted(root.glob("*/*/CATALOG_SELECTED.csv")):
         run_dir = path.parent
         for selected in _read_csv_dicts(path):
             if selected.get("catalog_key"):
                 rows.append(SelectedArtifactRow(run_dir=run_dir, selected=selected))
-    if not latest_only:
-        return rows
-
-    latest: dict[str, SelectedArtifactRow] = {}
-    for row in rows:
-        key = str(row.selected.get("catalog_key") or "")
-        previous = latest.get(key)
-        if previous is None or _run_sort_token(row.run_dir) >= _run_sort_token(previous.run_dir):
-            latest[key] = row
-    return list(latest.values())
+    return rows
 
 
 def build_handoff_packet(
@@ -453,6 +471,12 @@ def packet_warnings(
         warnings.append("selected_exit_policy_without_matching_exit_artifact")
     if selected.get("recommendation_tier") == "watch_only":
         warnings.append("watch_only_candidate_not_catalog_ready")
+    metrics = (exit_opt or {}).get("selected_metrics") or {}
+    if metrics and metrics.get("option_trade_ready") is False:
+        warnings.append("option_exit_not_trade_ready")
+    option_adjusted = _float_or_none(metrics.get("option_adjusted_expectancy_pct"))
+    if option_adjusted is not None and option_adjusted <= 0:
+        warnings.append("option_adjusted_expectancy_non_positive")
     return warnings
 
 
@@ -702,6 +726,24 @@ def handoff_csv_fieldnames() -> list[str]:
         "thesis_exit_tested",
         "thesis_exit_policy",
         "thesis_exit_params_json",
+        "option_trade_ready",
+        "option_adjusted_expectancy_pct",
+        "option_exit_quality",
+        "recommended_dte_min",
+        "recommended_dte_max",
+        "theta_penalty_pct",
+        "expectancy_pct",
+        "avg_win_pct",
+        "avg_loss_pct_abs",
+        "pnl_pct_per_minute",
+        "pnl_pct_per_bar",
+        "median_minutes_held",
+        "avg_minutes_held",
+        "target_hit_rate",
+        "stop_loss_rate",
+        "target_hit_within_15_minutes",
+        "target_hit_within_30_minutes",
+        "stop_loss_within_15_minutes",
         "thesis_exit_metrics_json",
         "exit_reliability",
         "exit_trade_count",
@@ -711,6 +753,7 @@ def handoff_csv_fieldnames() -> list[str]:
 
 
 def packet_to_csv_row(packet: MalaHandoffPacket) -> dict[str, Any]:
+    exit_metrics = packet.thesis_exit.metrics
     return {
         "mala_handoff_version": packet.mala_handoff_version,
         "catalog_key": packet.catalog_key,
@@ -742,6 +785,24 @@ def packet_to_csv_row(packet: MalaHandoffPacket) -> dict[str, Any]:
         "thesis_exit_tested": packet.thesis_exit.tested,
         "thesis_exit_policy": packet.thesis_exit.policy or "",
         "thesis_exit_params_json": json.dumps(packet.thesis_exit.params, sort_keys=True),
+        "option_trade_ready": _format_bool_metric(exit_metrics.get("option_trade_ready")),
+        "option_adjusted_expectancy_pct": _format_metric(exit_metrics, "option_adjusted_expectancy_pct"),
+        "option_exit_quality": _format_metric(exit_metrics, "option_exit_quality"),
+        "recommended_dte_min": _format_metric(exit_metrics, "recommended_dte_min"),
+        "recommended_dte_max": _format_metric(exit_metrics, "recommended_dte_max"),
+        "theta_penalty_pct": _format_metric(exit_metrics, "theta_penalty_pct"),
+        "expectancy_pct": _format_metric(exit_metrics, "expectancy_pct"),
+        "avg_win_pct": _format_metric(exit_metrics, "avg_win_pct"),
+        "avg_loss_pct_abs": _format_metric(exit_metrics, "avg_loss_pct_abs"),
+        "pnl_pct_per_minute": _format_metric(exit_metrics, "pnl_pct_per_minute"),
+        "pnl_pct_per_bar": _format_metric(exit_metrics, "pnl_pct_per_bar"),
+        "median_minutes_held": _format_metric(exit_metrics, "median_minutes_held"),
+        "avg_minutes_held": _format_metric(exit_metrics, "avg_minutes_held"),
+        "target_hit_rate": _format_metric(exit_metrics, "target_hit_rate"),
+        "stop_loss_rate": _format_metric(exit_metrics, "stop_loss_rate"),
+        "target_hit_within_15_minutes": _format_metric(exit_metrics, "target_hit_within_15_minutes"),
+        "target_hit_within_30_minutes": _format_metric(exit_metrics, "target_hit_within_30_minutes"),
+        "stop_loss_within_15_minutes": _format_metric(exit_metrics, "stop_loss_within_15_minutes"),
         "thesis_exit_metrics_json": json.dumps(review_thesis_exit_metrics(packet.thesis_exit.metrics)),
         "exit_reliability": packet.thesis_exit.reliability,
         "exit_trade_count": _format_optional(packet.thesis_exit.trade_count),
@@ -971,6 +1032,23 @@ def _format_optional(value: Any) -> str:
         return ""
     if isinstance(value, float):
         return f"{value:g}"
+    return str(value)
+
+
+def _format_metric(metrics: dict[str, Any], key: str) -> str:
+    if key not in metrics:
+        return ""
+    return _format_optional(metrics.get(key))
+
+
+def _format_bool_metric(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, bool):
+        return str(value).lower()
+    text = str(value).strip().lower()
+    if text in {"true", "false"}:
+        return text
     return str(value)
 
 

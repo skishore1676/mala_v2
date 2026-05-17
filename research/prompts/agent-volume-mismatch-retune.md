@@ -1,12 +1,16 @@
 # Agent Handoff: Volume Mismatch Retune Pass
 
+**Status:** closed / superseded by the 2026-05-17 refactor cleanup. Do not run
+this as a current operating prompt; its report and legacy replay machinery are
+archived under `research/reports/archive/`.
+
 You are working in `/Users/suman/code/mala_v2`.
 
 Read these first:
 
 ```text
 agent.md
-research/reports/provider-volume-mismatch-audit-2026-05-03.md
+research/reports/archive/legacy_runtime_20260517/provider-volume-mismatch-audit-2026-05-03.md
 data/results/provider_volume_parity/20260503T_volume_mismatch_baseline/PROVIDER_VOLUME_PARITY_REPORT.md
 ```
 
@@ -60,8 +64,8 @@ data/results/provider_volume_parity/20260503T_volume_mismatch_baseline/provider_
 Volume sensitivity machinery:
 
 ```text
-src/research/catalog_volume_sensitivity.py
-tests/test_catalog_volume_sensitivity.py
+research/reports/archive/scripts/legacy_forensics_20260517/catalog_volume_sensitivity.py
+research/reports/archive/scripts/legacy_forensics_20260517/catalog_volume_sensitivity_test_legacy.py
 ```
 
 Mala/Bhiksha replay and runtime EV machinery:
@@ -76,7 +80,7 @@ tests/test_bhiksha_signal_ev.py
 Write a report to:
 
 ```text
-research/reports/volume-mismatch-retune-findings.md
+research/reports/archive/legacy_runtime_20260517/volume-mismatch-retune-findings.md
 ```
 
 Use this structure:

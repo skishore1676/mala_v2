@@ -1,5 +1,9 @@
 # OpenClaw Research Ops Handoff - Mala Shadow Decision Week
 
+**Status:** active for the current strategy-shadow evidence loop. This is an
+operating handoff for daily shadow evidence, not a source of strategy
+authorization.
+
 ## Operating Role
 
 Research Ops owns the daily evidence loop for the Mala/Bhiksha shadow campaign.

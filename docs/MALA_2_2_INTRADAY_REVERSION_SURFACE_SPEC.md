@@ -1,12 +1,18 @@
 # Mala 2.2 Intraday Reversion Surface Spec
 
-**Status:** build contract
+**Status:** implemented / historical build contract as of 2026-05-17. This
+documents the original surface build; current promotion and automation status
+lives in `MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md` and
+`PLAYBOOK_AUTOMATION_GATES.md`.
+
 **Owner:** Suman + Codex
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First-slice source:** `docs/MALA_2_2_FIRST_SLICE.md`
 **Family source:** `research/playbooks/mean_reversion_at_extremes_v0.md`
 **Playbook source:** `research/playbooks/mean_reversion_at_extremes_intraday_v1.md`
-**Implementation state:** Phase 1 spine implemented.
+**Implementation state:** surface spine, consultation path, packet path, parity,
+and automation gate evaluator implemented; current blocker is locked-packet
+validation/stress evidence.
 
 This is the first build target for Mala 2.2.
 

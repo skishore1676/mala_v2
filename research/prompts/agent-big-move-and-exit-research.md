@@ -1,5 +1,9 @@
 # Agent Handoff: Big Move Miss Audit + Exit Expansion Feasibility
 
+**Status:** closed / superseded by the 2026-05-17 refactor cleanup. Do not run
+this as a current operating prompt; its reports are archived under
+`research/reports/archive/legacy_runtime_20260517/`.
+
 You are working in `/Users/suman/code/mala_v2`.
 
 Read `/Users/suman/code/mala_v2/agent.md` first. Follow the research-only workflow. Do not write to Google Sheets. Do not make broad code changes unless the report proves a small infrastructure change is required and you clearly document it.
@@ -48,7 +52,7 @@ Next Hypothesis:
 Write final report to:
 
 ```text
-research/reports/big-move-miss-audit-current-basket.md
+research/reports/archive/legacy_runtime_20260517/big-move-miss-audit-current-basket.md
 ```
 
 ## Task B - Exit Expansion Feasibility
@@ -58,9 +62,9 @@ Question: if we keep the same winners from the known strategy-family sweep, do b
 Start by reading:
 
 ```text
-research/reports/known-strategy-family-map.md
-research/reports/shadow-candidate-packet-2026-04-12.md
-research/reports/top-family-guardrail-comparison.md
+research/reports/archive/legacy_runtime_20260517/known-strategy-family-map.md
+research/reports/archive/legacy_runtime_20260517/shadow-candidate-packet-2026-04-12.md
+research/reports/archive/legacy_runtime_20260517/top-family-guardrail-comparison.md
 data/results/hypothesis_runs/*/*/RUN_SUMMARY.md
 data/results/hypothesis_runs/*/*/M5_execution.csv
 data/results/hypothesis_runs/*/*/m5_exit_optimizations.json

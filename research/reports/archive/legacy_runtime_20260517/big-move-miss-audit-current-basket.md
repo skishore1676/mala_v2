@@ -38,9 +38,9 @@ Next Hypothesis:
 - `data/results/hypothesis_runs/*/M4_holdout.csv` (calibration and holdout signal counts)
 - `data/results/hypothesis_runs/*/M5_execution.csv` (mc_prob, mc_dd, base_exp_r)
 - `data/results/hypothesis_runs/*/m5_exit_optimizations.json` (all 9 exit artifacts)
-- `research/reports/known-strategy-family-map.md`
-- `research/reports/shadow-candidate-packet-2026-04-12.md`
-- `research/reports/top-family-guardrail-comparison.md`
+- `research/reports/archive/legacy_runtime_20260517/known-strategy-family-map.md`
+- `research/reports/archive/legacy_runtime_20260517/shadow-candidate-packet-2026-04-12.md`
+- `research/reports/archive/legacy_runtime_20260517/top-family-guardrail-comparison.md`
 - `src/research/exit_optimizer.py` (policy grid)
 - `src/oracle/trade_simulator.py` (same-day flat logic)
 

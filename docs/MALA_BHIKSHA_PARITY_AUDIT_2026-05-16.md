@@ -1,5 +1,9 @@
 # Mala / Bhiksha Parity Audit - 2026-05-16
 
+**Status:** completed audit snapshot. Keep for provenance; current parity and
+promotion state lives in `MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md` and current
+packet/gate artifacts.
+
 ## Verdict
 
 Yes: the Mala transformation issue we found can plausibly explain some wrong

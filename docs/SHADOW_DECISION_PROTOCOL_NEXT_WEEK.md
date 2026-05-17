@@ -1,5 +1,9 @@
 # Mala/Bhiksha Shadow Decision Protocol - Next Week
 
+**Status:** active protocol for the week starting Monday 2026-05-18. It applies
+to the cleaned 11-row strategy-shadow book and should end in continue,
+promote-review, retune, or kill decisions.
+
 ## Purpose
 
 This is not an open-ended experiment. Next week is a decision gate for whether

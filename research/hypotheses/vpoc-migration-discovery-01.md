@@ -5,7 +5,7 @@
 - symbol_scope: `SPY,QQQ,IWM,NVDA,TSLA,AMD,MU,SMH,PANW,TLT,XLE,AAPL`
 - strategy:     `Compression Expansion Breakout`
 - max_stage:    `M5`
-- last_run:     `2026-05-13T05:35:48+0000`
+- last_run:     `2026-05-17T12:31:55+0000`
 
 ## Thesis
 Big multi-day moves may be preceded by compressed realized volatility while the
@@ -21,12 +21,13 @@ surface passes the normal M1-M5 gates.
 
 ## Agent Report
 ### Run
-`2026-05-13T003303` — strategy: `Compression Expansion Breakout`
+`2026-05-17T072830` — strategy: `Compression Expansion Breakout`
 
 ### Stages Executed
-`M2 → M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
+- M1 PASS: pct_pos=100%  exp_r=+0.0749  signals=1749  windows=5
 - M2: 8 candidates promoted
 - M3: 120 detail rows
 - M4: 8 promoted
@@ -37,4 +38,4 @@ surface passes the normal M1-M5 gates.
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/vpoc-migration-discovery-01/2026-05-13T003303`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/vpoc-migration-discovery-01/2026-05-17T072830`

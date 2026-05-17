@@ -1,5 +1,7 @@
 # Mala / Bhiksha Operating Lanes
 
+**Status:** current lane boundary as of 2026-05-17.
+
 This note keeps two different routes from collapsing into one blurry handoff.
 The larger target architecture is in
 [`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md).
@@ -38,7 +40,8 @@ This is the older hypothesis-to-strategy promotion lane.
 ```text
 Mala hypothesis
   -> M1-M5 gates
-  -> thesis-exit optimization and provider review where relevant
+  -> M5.5 option-aware thesis-exit optimization
+  -> provider review where relevant
   -> Mala_Evidence_v1 evidence packet
   -> active_strategy operator authorization
   -> Bhiksha active-plan compile
@@ -55,7 +58,9 @@ Names:
   trade, subject to Bhiksha capability checks and execution mode.
 
 Default stance: passing M1-M5 does not prove runtime parity. Bhiksha must still
-show that it can recompute the same features and trigger semantics live.
+show that it can recompute the same features and trigger semantics live. The
+current active strategy book is the 11-row M5.5 packet authorized for
+aggressive shadow; old M1-M5 survivors are not grandfathered.
 
 ## Shared Rule
 

@@ -6,8 +6,8 @@
 - decision: `promote`
 - symbol_scope: `AVGO`
 - strategy: `Opening Drive Classifier`
-- max_stage: `M1`
-- last_run: `2026-04-22T14:09:53+0000`
+- max_stage: `M5`
+- last_run: `2026-05-17T12:08:10+0000`
 
 ## Thesis
 AVGO may carry the established opening-drive continuation behavior seen in the current basket, especially when the first auction imbalance resolves into a directional continuation rather than an early fade.
@@ -26,14 +26,15 @@ AVGO may carry the established opening-drive continuation behavior seen in the c
 
 ## Agent Report
 ### Run
-`2026-04-22T090751` — strategy: `Opening Drive Classifier`
+`2026-05-17T070754` — strategy: `Opening Drive Classifier`
 
 ### Stages Executed
-`M2 → M3 → M4 → M5`
+`M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M2: 3 candidates promoted
-- M3: 45 detail rows
+- M1 PASS: pct_pos=80%  exp_r=+0.1171  signals=162  windows=5
+- M2: 4 candidates promoted
+- M3: 60 detail rows
 - M4: 2 promoted
 - M5: 8 execution mappings
 - exit_opt: 1 catalog candidates optimized
@@ -42,4 +43,4 @@ AVGO may carry the established opening-drive continuation behavior seen in the c
 `promote`
 
 ### Artifacts
-`/Users/sunny/Documents/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p3-avgo-opening-drive/2026-04-22T090751`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p3-avgo-opening-drive/2026-05-17T070754`

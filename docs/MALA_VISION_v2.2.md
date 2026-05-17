@@ -1,6 +1,10 @@
 # Mala — Vision Document v2.2
 
-**Status:** Mala 2.2 doctrine. Captures the strategic direction for an operator-bias-conditioned, playbook-based trading rule system built on top of the useful research infrastructure from Mala v2.
+**Status:** current doctrine, refreshed 2026-05-17. This document explains the
+why and mental model for Mala 2.2. Current operating truth lives in
+[`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md),
+[`MALA_BHIKSHA_OPERATING_LANES.md`](MALA_BHIKSHA_OPERATING_LANES.md), and the
+playbook/strategy gate docs.
 
 
 ## 1. The journey that led here
@@ -17,6 +21,10 @@ Mala v2 was built as an autonomous strategy-discovery system. The intended workf
 - Bhiksha consumes the catalog and executes the strategies, in shadow first, then in live, using options as the trading vehicle (7-21 DTE, 15-35 delta)
 
 The architecture had genuine strengths: clean separation between research (Mala) and execution (Bhiksha), hypothesis-as-markdown lab notebook pattern for state-machine discipline, Monte Carlo bootstrap and holdout gates designed to prevent overfitting.
+
+That exact publication path is closed. `Strategy_Catalog` is historical. The
+current strategy handoff is `Mala_Evidence_v1` plus explicit `active_strategy`
+authorization and Bhiksha capability checks.
 
 ### What shadow deployment revealed
 
@@ -47,6 +55,16 @@ The system:
 
 The trader brings: the bias, the conviction, final approval, and the decision to consult versus arm. The system brings: historical analog evidence, conditional analysis, empirical management options, proposed rule packets, vehicle feasibility checks, rule execution, and the discipline of not deviating once committed.
 
+The current architecture has two live lanes:
+
+1. **Strategy lane:** Mala can still run automated M1-M5 research. Survivors
+   must re-earn publication through M5.5 option-aware exit evidence, publish to
+   `Mala_Evidence_v1`, receive explicit `active_strategy` authorization, and
+   shadow aggressively before any promote/retune/kill decision.
+2. **Playbook lane:** Mala 2.2 builds trader-defined playbooks as consultation
+   surfaces first. A playbook becomes automated only through a locked packet,
+   parity evidence, shadow evidence, and operator approval.
+
 ### The crucial design principles
 
 **1. The system filters bias, it doesn't generate alpha.** The trader's bias is the primary input. The system's job is to make sure conviction trades are concentrated in conditions where historical hit rates are favorable. The system does not claim every trade will be a winner; losses are expected.
@@ -68,7 +86,11 @@ The trader brings: the bias, the conviction, final approval, and the decision to
 ### What this system is explicitly not
 
 - **Not an alpha-discovery engine.** The trader supplies all biases.
-- **Not an autonomous trading system.** No trades initiate without trader thesis input.
+- **Not a silent autonomous trading system.** No strategy row or playbook
+  packet initiates without published evidence, explicit operator
+  authorization, Bhiksha runtime capability, and the appropriate shadow/live
+  mode gate. In the playbook lane, trader thesis input remains the starting
+  point.
 - **Not a comprehensive market-monitoring platform.** It evaluates playbook applicability on demand; it does not scan for opportunities.
 - **Not a backtest framework competing with Mala v2.** Much of the Mala v2 infrastructure is reused for analysis. The M1-M5 gate pipeline needs to be reimagined because a playbook x symbol that does not pass an autonomous-promotion gate may still provide useful conditional evidence when combined with operator bias.
 
@@ -82,10 +104,12 @@ The working name for the near-term system is:
 
 > **Mala 2.2 — operator-bias-conditioned playbooks on top of Mala's research base.**
 
-The first proof slice is defined separately in
-`docs/MALA_2_2_FIRST_SLICE.md`. That document is the build boundary for the
-near-term work: one playbook, one bounded evidence surface, and no runtime
-promotion until the proof earns it.
+The first proof slice is captured in
+[`MALA_2_2_FIRST_SLICE.md`](MALA_2_2_FIRST_SLICE.md) and
+[`MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`](MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md).
+Those are now implemented build contracts, not the current state-of-state.
+The current state is tracked in the refactor architecture doc and
+[`PLAYBOOK_AUTOMATION_GATES.md`](PLAYBOOK_AUTOMATION_GATES.md).
 
 Keep from Mala v2:
 - historical cache
@@ -97,9 +121,12 @@ Keep from Mala v2:
 
 Change from Mala v2:
 - no broad autonomous strategy discovery as the primary product
-- no direct Strategy_Catalog -> Bhiksha promotion without playbook, provider, vehicle, and exit checks
+- no direct `Strategy_Catalog` -> Bhiksha promotion; current publication is
+  `Mala_Evidence_v1` plus `active_strategy` and Bhiksha fail-closed compile
 - no confusion between Mala's optimized underlying thesis exits and Bhiksha's option-premium catastrophe defaults; runtime must consume the published `thesis_exit_policy` and use option-premium stops only as backstops
-- no broad shadow campaign before one playbook slice is understood
+- no legacy broad shadow campaign carried by inertia; the current strategy
+  shadow lane is a smaller M5.5-selected packet whose job is to learn quickly
+  and then promote, retune, or kill
 
 ---
 
@@ -287,7 +314,7 @@ Initial build scope:
 - chart visualization in Thinkorswim or another charting surface only after the first parameter surface produces candidates worth inspecting
 - no broad runtime deployment until the trader can visually and statistically recognize the playbook surface
 
-### Two operating lanes
+### Two playbook operating lanes
 
 Mala 2.2 has one evidence layer and two downstream operating lanes:
 
@@ -296,6 +323,13 @@ Mala 2.2 has one evidence layer and two downstream operating lanes:
 **Lane B — armed execution packet.** This is earned, not assumed. A favorable surface region must survive chart review, holdout discipline, multiple-comparisons scrutiny, cost and slippage checks, Monte Carlo stress, provider parity when relevant, and vehicle feasibility if options are used. Only then does Mala propose a locked packet for Bhiksha/Kamandal to shadow or execute with human authorization.
 
 The future LLM-agent layer belongs above the policy card, not inside the core proof engine. Its job is to add context the deterministic policy cannot see: macro events, earnings, unusual news flow, correlated-asset stress, or analog-cohort anomalies. It can caveat or escalate a consultation. It cannot silently promote a play into execution.
+
+The separate **strategy lane** remains available for fully automated research
+families. It is not grandfathered from old M1-M5 output. Rows must be rebuilt
+through the current gates, selected by option-aware exit evidence, published to
+`Mala_Evidence_v1`, and authorized in `active_strategy`. The 2026-05-17 active
+book is intentionally aggressive shadow: learn in one to two weeks, then
+promote to review, retune, or kill.
 
 ### Phase 0: Playbook-spec exercise (trader, ongoing)
 

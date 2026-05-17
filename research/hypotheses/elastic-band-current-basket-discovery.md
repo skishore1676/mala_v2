@@ -7,7 +7,7 @@
 - symbol_scope: `SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA`
 - strategy: `Elastic Band Reversion`
 - max_stage: `M5`
-- last_run: `2026-04-13T00:11:21+0000`
+- last_run: `2026-05-17T12:06:38+0000`
 
 ## Thesis
 Large intraday stretches away from 4-hour VPOC should mean-revert when short-term kinematics show exhaustion. The goal is to let mala_v2 rediscover which symbols, directions, and Elastic Band configurations survive the staged gates across the current trading basket.
@@ -26,21 +26,21 @@ Large intraday stretches away from 4-hour VPOC should mean-revert when short-ter
 
 ## Agent Report
 ### Run
-`2026-04-12T191121` — strategy: `Elastic Band Reversion`
+`2026-05-17T070215` — strategy: `Elastic Band Reversion`
 
 ### Stages Executed
 `M1 → M2 → M3 → M4 → M5`
 
 ### Notes
-- M1 PASS
+- M1 PASS: pct_pos=80%  exp_r=+0.2300  signals=1275  windows=5
 - M2: 24 candidates promoted
-- M3: walk-forward detail
-- M4: 1 promoted (NVDA short, z=1.75, w=360+dm, kin_lb=5)
-- M5: 4 execution profiles; stock_like mc_prob=0.956 (promote); options paths marginal/kill
-- Note: exit optimization step errored (exit code 1); no exit opt artifact written
+- M3: 298 detail rows
+- M4: 3 promoted
+- M5: 12 execution mappings
+- exit_opt: 2 catalog candidates optimized
 
 ### Decision
 `promote`
 
 ### Artifacts
-`/Users/suman/kg_env/projects/mala_v2/data/results/hypothesis_runs/elastic-band-current-basket-discovery/2026-04-12T191121`
+`/Users/suman/code/mala_v2/data/results/hypothesis_runs/elastic-band-current-basket-discovery/2026-05-17T070215`

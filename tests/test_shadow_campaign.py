@@ -46,6 +46,28 @@ def test_shadow_activation_blocks_unsupported_runtime() -> None:
     assert "runtime_unsupported" in reasons
 
 
+def test_shadow_activation_blocks_non_ready_option_exit() -> None:
+    decision, reasons = classify_shadow_activation(
+        {
+            "bhiksha_ready": "TRUE",
+            "bhiksha_capability_status": "supported",
+            "recommendation_tier": "shadow",
+            "expectancy": "0.5",
+            "execution_robustness": "0.99",
+            "signal_count": "100",
+            "option_trade_ready": "false",
+            "option_adjusted_expectancy_pct": "-0.01",
+            "recommended_dte_max": "21",
+        },
+        config=ShadowActivationConfig(),
+    )
+
+    assert decision == "blocked"
+    assert "option_trade_not_ready" in reasons
+    assert "non_positive_option_adjusted_expectancy" in reasons
+    assert "option_dte_outside_short_packet" in reasons
+
+
 def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> None:
     evidence_rows = [
         {
@@ -65,6 +87,13 @@ def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> Non
             "exit_reliability": "thin",
             "exit_trade_count": "25",
             "signal_window_et": "09:35-11:00",
+            "option_trade_ready": "true",
+            "option_adjusted_expectancy_pct": "0.21",
+            "option_exit_quality": "fast_intraday",
+            "recommended_dte_min": "3",
+            "recommended_dte_max": "7",
+            "median_minutes_held": "55",
+            "pnl_pct_per_minute": "0.004",
         }
     ]
 
@@ -78,6 +107,10 @@ def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> Non
     assert artifacts.packet_csv.exists()
     assert artifacts.active_strategy_rows[0]["strategy_id"] == "idea__amd_short"
     assert artifacts.active_strategy_rows[0]["entry_window_start_et"] == "09:35"
+    overrides = json.loads(artifacts.active_strategy_rows[0]["execution_overrides"])
+    assert overrides["dte_min"] == 3
+    assert overrides["dte_max"] == 7
+    assert overrides["target_abs_delta_min"] == 0.15
     assert "Shadow Activation Packet" in artifacts.packet_md.read_text(encoding="utf-8")
 
 
@@ -90,6 +123,7 @@ def test_merge_active_strategy_rows_preserves_existing_and_updates_matches() -> 
                 "strategy_id": "old",
                 "entry_window_start_et": "09:30",
                 "max_trade_premium_usd": "1000",
+                "execution_overrides": "{}",
                 "notes": "old",
             }
         ],
@@ -100,6 +134,7 @@ def test_merge_active_strategy_rows_preserves_existing_and_updates_matches() -> 
                 "strategy_id": "old",
                 "entry_window_start_et": "09:35",
                 "max_trade_premium_usd": "500",
+                "execution_overrides": "{}",
                 "notes": "new",
             },
             {
@@ -108,6 +143,7 @@ def test_merge_active_strategy_rows_preserves_existing_and_updates_matches() -> 
                 "strategy_id": "new",
                 "entry_window_start_et": "10:00",
                 "max_trade_premium_usd": "500",
+                "execution_overrides": "{}",
                 "notes": "new row",
             },
         ],
@@ -127,6 +163,7 @@ def test_merge_active_strategy_rows_can_disable_non_recommended() -> None:
                 "strategy_id": "old",
                 "entry_window_start_et": "09:30",
                 "max_trade_premium_usd": "1000",
+                "execution_overrides": "{}",
                 "notes": "old",
             }
         ],

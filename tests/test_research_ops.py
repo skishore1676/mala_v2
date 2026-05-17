@@ -845,8 +845,8 @@ def test_publish_catalog_rows_blocks_rows_without_exit_artifact(tmp_path: Path) 
         dry_run=True,
     )
 
-    assert results[0]["action"] == "blocked_missing_thesis_exit"
-    assert "backfill" in results[0]["block_reason"]
+    assert results[0]["action"] == "blocked_legacy_catalog_removed"
+    assert "Mala_Evidence_v1" in results[0]["block_reason"]
 
 
 
@@ -1080,9 +1080,9 @@ def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: 
                 "action_type": "retune_plan",
                 "key": "idea-b",
                 "brief": {
-                    "title": "Idea B Kinematic Ladder",
+                    "title": "Idea B Market Impulse",
                     "hypothesis_id": "idea-b",
-                    "strategy": "Kinematic Ladder",
+                    "strategy": "Market Impulse (Cross & Reclaim)",
                     "symbol_scope": "QQQ",
                     "stage": "M1",
                     "decision": "retune",
@@ -1239,7 +1239,7 @@ def test_researcher_scoring_path_has_no_current_batch_identity_branches() -> Non
         ]
     ).lower()
     forbidden = [
-        "kinematic-ladder-current-basket-discovery",
+        "market-impulse-current-basket-discovery",
         "expand30-w1-b2-p2-msft-opening-drive",
         "opening-drive-v2",
         "msft",
@@ -1369,18 +1369,18 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
     hypotheses.mkdir(parents=True)
     hyp_path = _write_hypothesis(
         hypotheses,
-        hypothesis_id="kinematic-ladder-current-basket-discovery",
+        hypothesis_id="market-impulse-current-basket-discovery",
         state="retune",
         decision="retune",
-        strategy="Kinematic Ladder",
+        strategy="Market Impulse (Cross & Reclaim)",
         symbol_scope="SPY, QQQ, IWM, AAPL, AMD, META, NVDA, PLTR, TSLA",
     )
     hyp_path.write_text(
         hyp_path.read_text(encoding="utf-8")
-        + "\n\n## Thesis\nIntraday continuation should improve when velocity, acceleration, and jerk align across the ladder.\n",
+        + "\n\n## Thesis\nIntraday continuation should improve when market impulse reclaims hold after VWMA pierces.\n",
         encoding="utf-8",
     )
-    run_dir = runs / "kinematic-ladder-current-basket-discovery" / "2026-05-10T070455"
+    run_dir = runs / "market-impulse-current-basket-discovery" / "2026-05-10T070455"
     run_dir.mkdir(parents=True)
     (run_dir / "RUN_SUMMARY.md").write_text(
         "- decision: `retune`\n\n## Notes\n\n- M1 FAIL: top candidate signals=17<50; windows=1<3\n",
@@ -1389,7 +1389,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
     rows = [
         {
             "ticker": "AMD",
-            "strategy": "Kinematic Ladder rw=45/aw=10+vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "4",
             "oos_signals": "96",
@@ -1406,7 +1406,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
         },
         {
             "ticker": "META",
-            "strategy": "Kinematic Ladder rw=30/aw=20+vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "4",
             "oos_signals": "89",
@@ -1423,7 +1423,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
         },
         {
             "ticker": "NVDA",
-            "strategy": "Kinematic Ladder rw=45/aw=15+vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "3",
             "oos_signals": "72",
@@ -1440,7 +1440,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
         },
         {
             "ticker": "SPY",
-            "strategy": "Kinematic Ladder rw=20/aw=10+vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "4",
             "oos_signals": "63",
@@ -1463,7 +1463,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
         [
             {
                 "ticker": "AMD",
-                "strategy": "Kinematic Ladder rw=45/aw=10+vol",
+                "strategy": "Market Impulse (Cross & Reclaim)",
                 "direction": "combined",
                 "window_idx": "1",
                 "test_signals": "24",
@@ -1493,7 +1493,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
     )
 
     status = build_program_status(args)
-    item = next(item for item in status["items"] if item["key"] == "kinematic-ladder-current-basket-discovery")
+    item = next(item for item in status["items"] if item["key"] == "market-impulse-current-basket-discovery")
     brief = item["brief"]
     verdict = brief["researcher_verdict"]
 
@@ -1586,19 +1586,19 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
     card_dir.mkdir(parents=True)
     _write_hypothesis(
         hypotheses,
-        hypothesis_id="kinematic-ladder-current-basket-discovery",
+        hypothesis_id="market-impulse-current-basket-discovery",
         state="retune",
         decision="retune",
-        strategy="Kinematic Ladder",
+        strategy="Market Impulse (Cross & Reclaim)",
         symbol_scope="SPY",
     )
-    run_dir = runs / "kinematic-ladder-current-basket-discovery" / "2026-05-01T000000"
+    run_dir = runs / "market-impulse-current-basket-discovery" / "2026-05-01T000000"
     run_dir.mkdir(parents=True)
     (run_dir / "RUN_SUMMARY.md").write_text("- decision: `retune`\n", encoding="utf-8")
     rows = [
         {
             "ticker": "SPY",
-            "strategy": "Kinematic Ladder",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "4",
             "oos_signals": "90",
@@ -1608,7 +1608,7 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
         },
         {
             "ticker": "QQQ",
-            "strategy": "Kinematic Ladder",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "3",
             "oos_signals": "80",
@@ -1618,7 +1618,7 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
         },
         {
             "ticker": "IWM",
-            "strategy": "Kinematic Ladder",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "combined",
             "oos_windows": "3",
             "oos_signals": "65",
@@ -1629,16 +1629,16 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
     ]
     _write_csv(run_dir / "M1_top.csv", rows)
     _write_csv(run_dir / "M1_aggregate.csv", rows)
-    card = card_dir / "retune_plan-kinematic-ladder-current-basket-discovery.md"
+    card = card_dir / "retune_plan-market-impulse-current-basket-discovery.md"
     card.write_text(
         "\n".join(
             [
                 "---",
-                "card_id: retune_plan-kinematic-ladder-current-basket-discovery",
+                "card_id: retune_plan-market-impulse-current-basket-discovery",
                 "program_id: mala_next_gen_research_ops_flow",
                 "---",
                 "",
-                "# Mala Decision Card: retune_plan: kinematic-ladder-current-basket-discovery",
+                "# Mala Decision Card: retune_plan: market-impulse-current-basket-discovery",
                 "",
                 "## Decision",
                 "- [x] approve",
@@ -1660,7 +1660,7 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
 
     assert len(records) == 1
     assert records[0]["status"] == "ready"
-    assert records[0]["action_id"] == "retune_plan:kinematic-ladder-current-basket-discovery"
+    assert records[0]["action_id"] == "retune_plan:market-impulse-current-basket-discovery"
     assert records[0]["operator_action"] == "APPROVE_SURFACE_EXPANSION"
     assert records[0]["comments"] == "- approve this one"
 

@@ -259,13 +259,12 @@ def test_build_candidate_strategy_ignores_rank_columns() -> None:
     strategy = build_candidate_strategy(
         {
             "ticker": "TSLA",
-            "strategy": "Kinematic Ladder rw=45/aw=20-vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "short",
-            "catalog_strategy": "Kinematic Ladder",
-            "regime_window": 45,
-            "accel_window": 20,
-            "use_volume_filter": False,
-            "volume_multiplier": 1.2,
+            "catalog_strategy": "Market Impulse (Cross & Reclaim)",
+            "entry_buffer_minutes": 4,
+            "entry_window_minutes": 75,
+            "regime_timeframe": "15m",
             "m1_score": 301.0,
             "avg_test_mfe_mae_ratio": 1.7,
             "trades": 42,
@@ -274,23 +273,22 @@ def test_build_candidate_strategy_ignores_rank_columns() -> None:
         }
     )
 
-    assert strategy.name == "Kinematic Ladder rw=45/aw=20-vol"
-    assert strategy.strategy_config()["regime_window"] == 45
-    assert strategy.strategy_config()["accel_window"] == 20
-    assert strategy.strategy_config()["use_volume_filter"] is False
+    assert strategy.name == "Market Impulse (Cross & Reclaim)"
+    assert strategy.strategy_config()["entry_buffer_minutes"] == 4
+    assert strategy.strategy_config()["entry_window_minutes"] == 75
+    assert strategy.strategy_config()["regime_timeframe"] == "15m"
 
 
 def test_build_candidate_strategy_ignores_plateau_rank_columns() -> None:
     strategy = build_candidate_strategy(
         {
             "ticker": "TSLA",
-            "strategy": "Kinematic Ladder rw=30/aw=12-vol",
+            "strategy": "Market Impulse (Cross & Reclaim)",
             "direction": "short",
-            "catalog_strategy": "Kinematic Ladder",
-            "regime_window": 30,
-            "accel_window": 12,
-            "use_volume_filter": False,
-            "volume_multiplier": 1.0,
+            "catalog_strategy": "Market Impulse (Cross & Reclaim)",
+            "entry_buffer_minutes": 5,
+            "entry_window_minutes": 90,
+            "regime_timeframe": "30m",
             "discovery_score": 180.0,
             "plateau_neighbor_count": 8,
             "plateau_positive_ratio": 1.0,
@@ -299,10 +297,10 @@ def test_build_candidate_strategy_ignores_plateau_rank_columns() -> None:
         }
     )
 
-    assert strategy.name == "Kinematic Ladder rw=30/aw=12-vol"
-    assert strategy.strategy_config()["regime_window"] == 30
-    assert strategy.strategy_config()["accel_window"] == 12
-    assert strategy.strategy_config()["use_volume_filter"] is False
+    assert strategy.name == "Market Impulse (Cross & Reclaim)"
+    assert strategy.strategy_config()["entry_buffer_minutes"] == 5
+    assert strategy.strategy_config()["entry_window_minutes"] == 90
+    assert strategy.strategy_config()["regime_timeframe"] == "30m"
 
 
 def test_holdout_helpers(tmp_path) -> None:
@@ -510,7 +508,7 @@ def test_run_late_stage_helpers_with_real_strategy() -> None:
         }
     )
     promoted = pl.DataFrame(
-        [{"ticker": "SPY", "strategy": "Opening Drive v2 (Short Continue)", "direction": "short"}]
+        [{"ticker": "SPY", "strategy": "Opening Drive Classifier", "direction": "short"}]
     )
     metrics = MetricsCalculator()
 
@@ -531,7 +529,7 @@ def test_run_late_stage_helpers_with_real_strategy() -> None:
 
     execution_rows = run_execution_mapping_for_candidates(
         promoted=pl.DataFrame(
-            [{"ticker": "SPY", "strategy": "Opening Drive v2 (Short Continue)", "direction": "short"}]
+            [{"ticker": "SPY", "strategy": "Opening Drive Classifier", "direction": "short"}]
         ),
         holdout_detail=pl.DataFrame(detail_rows),
         ticker_frames={"SPY": frame},

@@ -4074,52 +4074,19 @@ def _publish_catalog_rows(
     args: argparse.Namespace,
     dry_run: bool,
 ) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    if not dry_run:
-        raise SystemExit(
-            "Legacy Strategy_Catalog writes are disabled. Publish canonical Mala_Evidence_v1 with "
-            "`python -m src.research.mala_handoff --publish-sheets` after exact-tab preflight."
-        )
-    credentials = args.catalog_google_credentials or args.google_credentials
-    for row in rows:
-        run_dir = REPO_ROOT / row.artifact_dir
-        selected_rows = [
-            selected
-            for selected in _read_csv_dicts(run_dir / "CATALOG_SELECTED.csv")
-            if selected.get("catalog_key") == row.catalog_key
-        ]
-        if not selected_rows:
-            raise RuntimeError(f"CATALOG_SELECTED.csv row missing for {row.catalog_key}")
-        selected = selected_rows[-1]
-        m5_best = _matching_m5_row(run_dir, selected)
-        exit_opt = _exit_opt_for_selected(run_dir, selected)
-        result = {
+    return [
+        {
             "catalog_key": row.catalog_key,
             "ticker": row.ticker,
             "direction": row.direction,
             "strategy": row.strategy,
             "recommendation_tier": row.recommendation_tier,
             "artifact_dir": row.artifact_dir,
-            "action": "would_publish" if dry_run else "published",
+            "action": "blocked_legacy_catalog_removed",
+            "block_reason": "Publish canonical Mala_Evidence_v1 with src.research.mala_handoff.",
         }
-        if not exit_opt:
-            result["action"] = "blocked_missing_thesis_exit"
-            result["block_reason"] = "Run exit optimization/backfill before Mala_Evidence_v1 publish."
-            results.append(result)
-            continue
-        if not dry_run:
-            upsert_strategy_catalog(
-                catalog_key=row.catalog_key,
-                symbol=row.ticker,
-                strategy=row.strategy,
-                m5_best=m5_best,
-                spreadsheet_id=args.catalog_sheet_id,
-                credentials_path=Path(credentials),
-                sheet_name=args.catalog_sheet_name,
-                exit_opt=exit_opt,
-            )
-        results.append(result)
-    return results
+        for row in rows
+    ]
 
 
 def _board_status_for(row: HypothesisLedgerRow) -> dict[str, str]:
@@ -4494,33 +4461,6 @@ def cmd_publish_pending(args: argparse.Namespace) -> int:
         "Use `python -m src.research.mala_handoff --publish-sheets` to publish canonical Mala_Evidence_v1, "
         "and use `research_ops shadow-activation-packet --apply-active-strategy` only after explicit active_strategy approval."
     )
-    catalog_client = _strategy_catalog_client(args)
-    catalog_rows = catalog_client.read_rows(range_suffix="A1:ZZ5000")
-    catalog_keys = {
-        str(row.get("catalog_key", "")).strip()
-        for row in catalog_rows
-        if str(row.get("catalog_key", "")).strip()
-    }
-    ledger = build_ledger(
-        hypotheses_dir=Path(args.hypotheses_dir),
-        runs_dir=Path(args.runs_dir),
-        strategy_catalog_rows=catalog_rows,
-    )
-    rows = _catalog_publish_plan(
-        ledger=ledger,
-        catalog_keys=catalog_keys,
-        only_catalog_key=args.catalog_key,
-    )
-    results = _publish_catalog_rows(rows=rows, args=args, dry_run=not args.apply)
-    if args.output:
-        _write_csv(Path(args.output), results)
-    else:
-        print(json.dumps(results, indent=2))
-    print(f"CATALOG_PENDING={len(rows)}")
-    published_count = sum(1 for item in results if item.get("action") == "published")
-    print(f"CATALOG_PUBLISHED={published_count}")
-    print(f"DRY_RUN={'false' if args.apply else 'true'}")
-    return 0
 
 
 def cmd_sync_board(args: argparse.Namespace) -> int:

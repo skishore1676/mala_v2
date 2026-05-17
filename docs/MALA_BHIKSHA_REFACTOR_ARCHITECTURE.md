@@ -1,7 +1,43 @@
 # Mala / Bhiksha Refactor Architecture
 
 Status: active refactor implementation. The original proposal has crossed into
-the first working cutover path for the IWM/QQQ mean-reversion playbook.
+the first working cutover path for the IWM/QQQ mean-reversion playbook, plus
+a cleaned strategy-shadow lane that must prove itself under option-aware
+evidence.
+
+## Immediate Action Status - 2026-05-17
+
+1. **Trader Evidence Audit: action taken.** M5.5 evidence was audited, the
+   duplicate active exposure flagged by the audit was removed from
+   `active_strategy`, and oldmac now verifies `11` strategy shadow rows plus
+   `1` manual row with `0` suppressed rows and all deployments
+   `shadow_only=true`. No trader input is needed before Monday shadow; the
+   next decision is after runtime evidence: promote-review, retune, or kill.
+2. **Source Surface Dead-Weight Review: action taken.** Legacy
+   `Strategy_Catalog` publishers, old forensic scripts, and retired strategy
+   modules have been moved out of active `src`; retired factory strategies no
+   longer remain as hidden compatibility paths. Mala full suite is green:
+   `332 passed`.
+3. **Monday Shadow Readiness And Promotion Gates: action taken.** The oldmac
+   daily shadow wrapper now has an active-plan preflight and fails fast unless
+   the expected `11` strategy rows, `1` manual row, `0` suppressed rows, all
+   enabled, and all `shadow_only=true` conditions hold. Promotion gates are
+   explicit: live-review candidates need matched option fills, positive
+   executable option evidence, clean plumbing, no manual artifact repair, and
+   row-specific review. Weak rows are retuned or killed; they do not sit in
+   the sheet by inertia.
+4. **Playbook automation path: action taken.** The automated playbook lane now
+   has a concrete gate evaluator and spec: surface gate, locked validation
+   gate, parity gate, shadow execution gate, live approval gate, and automation
+   gate. Full automation remains intentionally blocked until feedback ingestion
+   and a separate autonomous-control approval exist. First report was generated
+   for the current reversion run and is blocked at `locked_validation_gate`:
+   the playbook packet and parity report exist, but locked-packet validation /
+   stress evidence is not yet attached.
+
+**Open questions:** none blocking Monday strategy shadow. For the automated
+playbook lane, the next concrete action is locked-packet validation/stress for
+the current mean-reversion packet.
 
 ## Milestone Log
 
@@ -32,12 +68,26 @@ the first working cutover path for the IWM/QQQ mean-reversion playbook.
 - 2026-05-16: Added packet-declared management-policy specs; Mala now writes stop/target/hard-flat management contracts and Bhiksha option preview/live lifecycle consume those specs instead of relying on hidden defaults.
 - 2026-05-16: Generated approved reversion execution packet v2 as `live_approval_gated` for the Monday small-account pilot; live automation is still forbidden and every order requires an explicit live ticket.
 - 2026-05-16: Added Bhiksha live underlying-anchor management; an open playbook lifecycle can now monitor the packet-declared stop anchor and hard-flat time, then submit an emergency close only when run with `--execute`.
+- 2026-05-17: Added the M5.5 option-exit layer for the strategy lane: minute-based hold-time metrics, DTE-aware theta penalty, option-adjusted expectancy, option tradeability gates, dynamic Sheet readback validation, and active-strategy execution overrides.
+- 2026-05-17: Rebuilt and published `Mala_Evidence_v1` from the current M5 candidate set: `36` evidence rows, `53` columns, `0` readback mismatches.
+- 2026-05-17: Cleaned `active_strategy` down to the `11` rows intended for aggressive shadow, each with a one-week learning note; Bhiksha active-plan compile and zero-bar dry startup passed with all strategy deployments `shadow_only=true`.
+- 2026-05-17: Archived the old evidence book and pre-M5.5 option-exit book so the live review surface is the current `Mala_Evidence_v1` plus current `active_strategy`, not two competing books.
+- 2026-05-17: Completed the next Mala deletion pass: legacy `Strategy_Catalog` publishers and forensic scripts moved to archive, dead strategy modules removed from active `src`, and factory reachability cut for `Kinematic Ladder`, `Regime Router (Kinematic + Compression)`, `Opening Drive v2 (Short Continue)`, and `EMA Momentum`.
+- 2026-05-17: Verified the deletion pass with Mala full suite `332 passed`; canonical handoff still generates `36` rows.
+- 2026-05-17: Added active-plan preflight to the oldmac daily shadow wrapper: expected `11` strategy deployments, `1` manual deployment, `0` suppressed rows, all enabled, all `shadow_only=true`.
+- 2026-05-17: Added the playbook automation gate evaluator and canonical spec: `src.research.playbook_automation_gates` plus `docs/PLAYBOOK_AUTOMATION_GATES.md`.
+- 2026-05-17: Reconciled the Mala 2.2 vision/refactor docs with the current two-lane model and moved stale runtime reports out of the active report surface.
 
 ## Current Stock Check
 
-As of 2026-05-16, the refactor is no longer only an architecture proposal. The
-first end-to-end path exists for one clean forward target: the IWM/QQQ
-mean-reversion playbook.
+As of 2026-05-17, the refactor is no longer only an architecture proposal. Two
+lanes are now distinct:
+
+1. **Kernel/playbook lane:** the IWM/QQQ mean-reversion playbook is the first
+   clean shared-contract target.
+2. **Strategy-shadow lane:** legacy M1-M5 families are not grandfathered, but
+   a small set has re-earned short-term shadow through M5.5 option-aware
+   evidence and current `active_strategy` approval.
 
 ### Done
 
@@ -56,9 +106,21 @@ mean-reversion playbook.
   present and `passed` at packet compile time, but parity is not yet a CI gate.
 - **Old Bhiksha runtime wires are retired from reachability.** The diagnostic
   retirement gate is clear; old promoted strategies are no longer silently
-  available as runtime authorization paths. This is disabled-and-detectable,
-  not deletion; the old strategy modules still need physical removal or a
-  revised retirement doctrine.
+  available as runtime authorization paths.
+- **Mala legacy source reachability is cut.** Legacy `Strategy_Catalog`
+  publishers, catalog volume forensics, volume mismatch retune helpers, and
+  retired strategy implementations have been moved under
+  `research/reports/archive`. Active strategy factory reachability is limited
+  to current strategy families.
+- **M5.5 option-aware strategy evidence exists.** Mala now selects exits by
+  option-adjusted expectancy, velocity, rapid target hit rate, lower hold time,
+  profit factor, and win rate. The theta model uses wall-clock minutes instead
+  of bar-count denominators.
+- **`Mala_Evidence_v1` is current and read back.** The current evidence publish
+  is `36` rows by `53` columns with zero readback mismatches.
+- **`active_strategy` is cleaned for aggressive shadow.** The active strategy
+  sheet contains the `11` rows intended to shadow now, not the prior mixed
+  20-row surface. Each row carries a one-week learning note.
 - **Reversion execution packet v1 is approved for shadow.** It is compileable
   by Bhiksha, but runtime controls forbid live automation.
 - **Reversion execution packet v2 is approved for live approval-gated pilot.**
@@ -108,21 +170,36 @@ mean-reversion playbook.
 - **Live approval promotion.** The reversion packet has a v2
   `live_approval_gated` version for a small-account pilot, but live automation
   remains explicitly disallowed.
+- **Strategy-shadow promotion learning.** The 11-row strategy packet is
+  intentionally aggressive shadow. The decision in one to two weeks is promote,
+  retune, or kill based on executable option behavior, not old underlying
+  expectancy.
+- **Playbook automation gates.** The playbook lane now has a concrete gate
+  evaluator. It can show where a playbook is blocked, in review, or ready for
+  approval-gated live pilot, while still blocking full automation until
+  feedback ingestion and autonomous-control approval are built.
 
 ### Next Pickup
 
-1. Build the minimal Bhiksha-native Trader Desk/API surface for the existing
+1. Run Monday's strategy-shadow lane as an autonomous check-in loop: confirm
+   the 11 active rows are loaded, collect shadow events, and summarize what
+   each row taught us against its one-week note.
+2. Build the minimal Bhiksha-native Trader Desk/API surface for the existing
    lane: load packet, consult, take/pass, choose management policy, run option
    preview, start shadow, view position state, and show live block reasons.
-2. Add the feedback ingestion bridge back into Mala so shadow outcomes and
+3. Run locked-packet validation/stress for the current reversion packet and
+   attach the artifact to the playbook automation gate report. The first gate
+   report already exists and is blocked at `locked_validation_gate`.
+4. Add the feedback ingestion bridge back into Mala so shadow outcomes and
    operator/analyst notes become packet-versioned review artifacts.
-3. Expand the monitor into a first-class Bhiksha service/desk control with
+5. Expand the monitor into a first-class Bhiksha service/desk control with
    broker/position reconciliation, visible health, and emergency square-off.
-4. Define the promotion bar from `shadow` to `live_approval_gated`: minimum
+6. Define the promotion bar from `shadow` to `live_approval_gated`: minimum
    trade count, non-negative executable expectancy, no manual artifact fixups,
    and operator sign-off.
-5. Only after that, decide whether any old M1-M5 family deserves a fresh
-   hypothesis rerun under the new packet/parity path.
+7. For rows that do not shadow enough, decide whether they get a bounded
+   retune packet or are killed. No idle row should remain authorized because
+   it once looked interesting.
 
 ### Current Blockers
 
@@ -132,9 +209,35 @@ mean-reversion playbook.
   validation, not drift-proofing.
 - No current packet is allowed to place live orders without an explicit live
   ticket and operator-run submit command.
-- Legacy strategy families remain disabled from runtime reachability, not
-  deleted. Reactivation requires fresh evidence, parity, and approval, but the
-  code/YAML deletion promise is not yet complete.
+- Strategy-shadow outcomes are not yet flowing back into Mala as structured
+  promotion/retune/kill evidence.
+
+## Doc Status
+
+Current docs:
+
+- [`MALA_VISION_v2.2.md`](MALA_VISION_v2.2.md): doctrine and mental model.
+- [`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md): state of state and next actions.
+- [`MALA_BHIKSHA_OPERATING_LANES.md`](MALA_BHIKSHA_OPERATING_LANES.md): lane boundaries.
+- [`PLAYBOOK_AUTOMATION_GATES.md`](PLAYBOOK_AUTOMATION_GATES.md): playbook automation gate contract.
+- [`PLAYBOOK_CONSULTATION_LAYER.md`](PLAYBOOK_CONSULTATION_LAYER.md) and
+  [`PLAYBOOK_REPLAY_CONSULTATION_SOP.md`](PLAYBOOK_REPLAY_CONSULTATION_SOP.md):
+  active consultation workflow.
+- [`MALA_PUBLICATION_GUARDRAILS.md`](MALA_PUBLICATION_GUARDRAILS.md):
+  publication safety rules.
+- [`SHADOW_CAMPAIGN_PLAN.md`](SHADOW_CAMPAIGN_PLAN.md) and
+  [`SHADOW_DECISION_PROTOCOL_NEXT_WEEK.md`](SHADOW_DECISION_PROTOCOL_NEXT_WEEK.md):
+  current aggressive strategy-shadow operating rules.
+
+Closed or historical docs:
+
+- [`MALA_2_2_FIRST_SLICE.md`](MALA_2_2_FIRST_SLICE.md) and
+  [`MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md`](MALA_2_2_INTRADAY_REVERSION_SURFACE_SPEC.md):
+  implemented build contracts.
+- [`MALA_BHIKSHA_PARITY_AUDIT_2026-05-16.md`](MALA_BHIKSHA_PARITY_AUDIT_2026-05-16.md):
+  completed audit snapshot.
+- `research/reports/archive/legacy_runtime_20260517/`: old runtime reports,
+  one-time audits, and pre-refactor campaign artifacts.
 
 ## Purpose
 
@@ -153,14 +256,14 @@ The core refactor is to introduce a small shared contract kernel, make packet
 authorization explicit, and make signal-level parity a first-class gate. Feature
 extraction should come after parity evidence, not before it.
 
-The refactor is also a clean transition, not a careful preservation. The
-M1-M5-promoted strategies currently in shadow have run roughly 30% win rate
-with negative expectancy over the last month. There is no runtime behavior to
-preserve by default. Re-evaluating those hypotheses against the new contracts
-is an unavoidable cost and is treated here as a feature, not a regression. The
-only thing that carries over as the first forward target is the IWM/QQQ
-mean-reversion playbook, because it is the only piece with clean evidence and
-bounded scope today.
+The refactor is also a clean transition, not a careful preservation. The old
+broad M1-M5 shadow campaign ran roughly 30% win rate with negative expectancy
+over the last month. There is no runtime behavior to preserve by default.
+Re-evaluating those hypotheses against the new contracts is an unavoidable
+cost and is treated here as a feature, not a regression. The kernel/playbook
+lane carries over the IWM/QQQ mean-reversion playbook. The strategy-shadow
+lane carries only the rows that re-earned current M5.5 option-aware evidence
+and explicit active authorization.
 
 Legacy code paths are deleted as families migrate. Dead strategies are retired
 loudly, not parked. Human review of a system half-converted is harder and
@@ -220,18 +323,24 @@ operator loop over time.
 
 The refactor assumes a clean baseline, not a careful preservation:
 
-- **Carrying over:** the IWM/QQQ mean-reversion playbook. It is the only
-  surface with clean evidence and bounded scope, and it is the first parity
-  target.
-- **Not carrying over:** Market Impulse, Opening Drive, Jerk Pivot, Elastic
-  Band, and any other M1-M5-promoted strategy that has not yet re-earned
-  promotion against the new kernel.
+- **Carrying over into the kernel/playbook lane:** the IWM/QQQ mean-reversion
+  playbook. It is the first shared-contract parity target and the only current
+  approval-gated live pilot candidate.
+- **Allowed into strategy shadow:** the current 11 active rows that re-earned
+  their place through M5.5 option-aware evidence and explicit
+  `active_strategy` cleanup. They are shadow candidates, not live candidates.
+- **Not carrying over:** any old M1-M5-promoted strategy that did not re-earn
+  current evidence and active authorization.
 
 Every retired strategy that wants to come back must re-run its evidence,
-parity, and operator approval against the new contracts. No grandfathering.
-Old M1-M5 runs become research leads, not runtime assets.
-The shadow campaign for the old strategies is wound down before the refactor
-opens, not kept running in parallel.
+option-exit selection, runtime capability, and operator approval against the
+new contracts. No grandfathering. Old M1-M5 runs become research leads, not
+runtime assets.
+
+The old broad shadow campaign is closed. The current strategy-shadow lane is a
+new, smaller packet whose job is to generate executable option evidence over
+the next one to two weeks. Rows that do not produce enough signal are retuned
+or killed; they do not sit in the sheet indefinitely.
 
 This is treated as a cost, not a loss. A month of negative-expectancy shadow
 is enough signal that the old configurations are not worth carrying. The
@@ -731,7 +840,7 @@ until a retired family is worth re-hypothesizing.
 
 ### Phase 1.5: Legacy Retirement, No Grandfathering
 
-**Progress: complete for runtime reachability.**
+**Progress: complete for runtime reachability and Mala active-source reachability.**
 
 **Goal.** Make it impossible to silently carry an old strategy forward.
 
@@ -751,15 +860,20 @@ must:
 - archived research artifacts and tunings, marked non-live
 - legacy execution code paths removed from Bhiksha as their migration
   candidates open in Phase 4 (not kept indefinitely)
+- legacy Mala publishers, forensic scripts, and retired strategy modules moved
+  out of active `src`
 
 **Stop condition.** The only thing the new-path runtime can compile and
-execute is the IWM/QQQ mean-reversion playbook. Everything else is either
-retired or re-promoted through the new path. Old code may exist only as
-archived source or under active removal; it must not be reachable by operator
-authorization.
+execute is an explicitly approved packet or active strategy row. Everything
+else is either retired or re-promoted through the new path. Old code may exist
+only as archived source; it must not be reachable by operator authorization or
+active factory/import paths.
 
 **Current note.** Bhiksha's legacy-retirement gate is clear, and the new-path
-compile surface no longer authorizes the old promoted strategy wires.
+compile surface no longer authorizes the old promoted strategy wires. Mala's
+active source no longer imports legacy `Strategy_Catalog` publishers, and the
+retired factory strategies have been moved to archive rather than kept as
+hidden compatibility paths.
 
 ### Phase 2: Minimal Kernel And Registry
 
@@ -817,8 +931,8 @@ compile for shadow-only execution.
 
 ### Phase 4: Hard Cutover Per Family
 
-**Progress: complete for legacy reachability; incomplete for shared feature
-extraction.**
+**Progress: complete for legacy strategy reachability in current Mala/Bhiksha
+surfaces; incomplete for shared feature extraction.**
 
 **Goal.** No permanent dual-wire confusion.
 
@@ -842,12 +956,12 @@ gated off.
 implementation, no `# old path` comment, and no disabled-but-present
 legacy strategy code.
 
-**Current note.** Old runtime wires are no longer reachable, which satisfies
-the operator-safety side of this phase. This phase is not done: legacy strategy
-modules and YAMLs are still present, so the implementation is currently
-disabled-and-detectable rather than deleted. We have not yet extracted every
-shared feature into the kernel; feature extraction remains evidence-driven and
-should happen only where parity or maintenance pressure justifies it.
+**Current note.** Old runtime wires are no longer reachable, and Mala's active
+factory/import surface no longer exposes retired strategies. This satisfies
+the no-grandfathering side of the phase for the current working surfaces. The
+phase is still not globally done because shared feature extraction remains
+evidence-driven and incomplete; only families under active parity or runtime
+pressure should move into the kernel.
 
 ### Phase 5: Minimal Trader Desk
 

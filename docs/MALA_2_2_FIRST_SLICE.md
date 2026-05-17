@@ -1,6 +1,10 @@
 # Mala 2.2 First Slice
 
-**Status:** working design contract
+**Status:** closed / implemented build contract as of 2026-05-17. Keep this as
+historical context for how the first playbook slice was scoped; use
+`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md` and `PLAYBOOK_AUTOMATION_GATES.md` for
+current state and next actions.
+
 **Owner:** Suman + Codex
 **Vision source:** `docs/MALA_VISION_v2.2.md`
 **First playbook surface:** `research/playbooks/mean_reversion_at_extremes_v0.md`
