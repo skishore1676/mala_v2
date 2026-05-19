@@ -12,8 +12,9 @@ from pathlib import Path
 
 
 DEFAULT_VAULT = Path(
-    "/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar"
+    "/Users/sunny/Documents/northstar"
 )
+DEFAULT_OUTPUT_DIR = "03 Agent Org/research_lab/Mala/Shadow"
 
 
 def main() -> int:
@@ -22,7 +23,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mala-root", default="/Users/sunny/Documents/mala_v2")
     parser.add_argument("--vault-root", default=str(DEFAULT_VAULT))
-    parser.add_argument("--output-dir", default="areas/trading/mala-shadow")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--trading-date", default=datetime.now().date().isoformat())
     parser.add_argument("--daily-report", default="")
     parser.add_argument("--signal-ev-report", default="")

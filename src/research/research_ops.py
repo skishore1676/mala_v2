@@ -2430,8 +2430,14 @@ def write_digest_report(
 
 
 PROGRAM_STATUS_TAGS = {"auto_continue", "needs_suman", "blocked", "running", "done"}
-DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar")
-DECISION_CARD_DIR = Path("Projects/Trading/Mala/Research/Decision Cards")
+DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Documents/northstar")
+DECISION_CARD_DIR = Path("03 Agent Org/research_lab/Mala/Research/Decision Cards")
+SHADOW_BRIEF_DIRS = (
+    Path("03 Agent Org/research_lab/Mala/Shadow"),
+    Path("Agent Org/research_lab/Mala/Shadow"),
+    Path("Projects/Trading/Mala/Shadow"),
+    Path("areas/trading/mala-shadow"),
+)
 COMMENTS_START = "<!-- mala-card-comments:start -->"
 COMMENTS_END = "<!-- mala-card-comments:end -->"
 RECEIPT_START = "<!-- mala-card-receipt:start -->"
@@ -2454,11 +2460,12 @@ def _latest_file(root: Path, pattern: str) -> Path | None:
 def _latest_shadow_brief(vault: Path | None = None) -> dict[str, str]:
     candidates: list[Path] = []
     if vault is not None:
-        root = vault / "Projects" / "Trading" / "Mala" / "Shadow"
-        if root.exists():
-            candidates.extend(root.glob("*.md"))
-    if DEFAULT_SHADOW_CAMPAIGN_DIR.exists():
-        candidates.extend(DEFAULT_SHADOW_CAMPAIGN_DIR.rglob("*.md"))
+        for relative_root in SHADOW_BRIEF_DIRS:
+            root = vault / relative_root
+            if root.exists():
+                candidates.extend(root.glob("*.md"))
+    if not candidates and DEFAULT_SHADOW_CAMPAIGN_DIR.exists():
+        candidates.extend(DEFAULT_SHADOW_CAMPAIGN_DIR.rglob("shadow_daily_report_*.md"))
     candidates = [path for path in candidates if path.is_file() and not path.name.startswith(".")]
     if not candidates:
         return {}
