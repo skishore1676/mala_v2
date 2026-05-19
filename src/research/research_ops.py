@@ -51,7 +51,7 @@ DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" 
 DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
 DEFAULT_INTAKE_SHEET_NAME = "Research_Intake"
 DEFAULT_OPTIONS_SHEET_NAME = "op_options"
-DEFAULT_SHADOW_CAMPAIGN_DIR = REPO_ROOT / "data" / "results" / "shadow_campaign"
+DEFAULT_SHADOW_CAMPAIGN_DIR = DEFAULT_OUT_DIR / "shadow_campaign"
 DEFAULT_LIVE_FEEDBACK_DIR = REPO_ROOT / "data" / "live_feedback"
 
 CONTROL_SHEET_HEADERS = [
@@ -2420,8 +2420,14 @@ def write_digest_report(
 
 
 PROGRAM_STATUS_TAGS = {"auto_continue", "needs_suman", "blocked", "running", "done"}
-DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar")
-DECISION_CARD_DIR = Path("Projects/Trading/Mala/Research/Decision Cards")
+DEFAULT_OBSIDIAN_VAULT = Path("/Users/sunny/Documents/northstar")
+DECISION_CARD_DIR = Path("03 Agent Org/research_lab/Mala/Research/Decision Cards")
+SHADOW_BRIEF_DIRS = (
+    Path("03 Agent Org/research_lab/Mala/Shadow"),
+    Path("Agent Org/research_lab/Mala/Shadow"),
+    Path("Projects/Trading/Mala/Shadow"),
+    Path("areas/trading/mala-shadow"),
+)
 COMMENTS_START = "<!-- mala-card-comments:start -->"
 COMMENTS_END = "<!-- mala-card-comments:end -->"
 RECEIPT_START = "<!-- mala-card-receipt:start -->"
@@ -2444,11 +2450,12 @@ def _latest_file(root: Path, pattern: str) -> Path | None:
 def _latest_shadow_brief(vault: Path | None = None) -> dict[str, str]:
     candidates: list[Path] = []
     if vault is not None:
-        root = vault / "Projects" / "Trading" / "Mala" / "Shadow"
-        if root.exists():
-            candidates.extend(root.glob("*.md"))
-    if DEFAULT_SHADOW_CAMPAIGN_DIR.exists():
-        candidates.extend(DEFAULT_SHADOW_CAMPAIGN_DIR.rglob("*.md"))
+        for relative_root in SHADOW_BRIEF_DIRS:
+            root = vault / relative_root
+            if root.exists():
+                candidates.extend(root.glob("*.md"))
+    if not candidates and DEFAULT_SHADOW_CAMPAIGN_DIR.exists():
+        candidates.extend(DEFAULT_SHADOW_CAMPAIGN_DIR.rglob("shadow_daily_report_*.md"))
     candidates = [path for path in candidates if path.is_file() and not path.name.startswith(".")]
     if not candidates:
         return {}
@@ -2469,12 +2476,17 @@ def _read_sheet_rows_for_status(args: argparse.Namespace, kind: str) -> tuple[li
     if not getattr(args, f"with_{kind}", False):
         return [], [f"{kind} sheet not requested; run with --with-{kind} and credentials to include live sheet state."]
     try:
-        rows = _read_control_rows(args) if kind == "control" else _read_intake_rows(args)
-        if not rows:
-            return [], [f"{kind} sheet returned no rows or sheet access was unavailable."]
-        return rows, []
+        client = _control_client(args) if kind == "control" else _intake_client(args)
+    except SystemExit:
+        return [], [f"{kind} sheet unavailable: missing credentials or sheet configuration."]
+    try:
+        return client.read_rows(range_suffix="A1:ZZ5000"), []
     except Exception as exc:  # pragma: no cover - defensive degradation path
         return [], [f"{kind} sheet unavailable: {exc}"]
+
+
+def _sheet_available_for_status(args: argparse.Namespace, kind: str, warnings: list[str]) -> bool:
+    return bool(getattr(args, f"with_{kind}", False)) and not warnings
 
 
 def _classify_action(action: NextAction) -> str:
@@ -2588,8 +2600,8 @@ def build_program_status(args: argparse.Namespace) -> dict[str, Any]:
         },
         "latest": {"digest": str(latest_digest) if latest_digest else "", "next_actions": str(next_actions_report) if next_actions_report.exists() else "", "shadow_brief": shadow},
         "state": {
-            "control": {"available": bool(control_rows), "active_rows": [row for row in control_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip() not in {"", "queued"}][:10]},
-            "intake": {"available": bool(intake_rows), "active_rows": [row for row in intake_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip()][:10]},
+            "control": {"available": _sheet_available_for_status(args, "control", control_warnings), "active_rows": [row for row in control_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip() not in {"", "queued"}][:10]},
+            "intake": {"available": _sheet_available_for_status(args, "intake", intake_warnings), "active_rows": [row for row in intake_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip()][:10]},
         },
         "items": items,
         "by_tag": by_tag,

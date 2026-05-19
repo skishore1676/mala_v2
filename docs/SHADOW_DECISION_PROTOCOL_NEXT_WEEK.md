@@ -41,9 +41,9 @@ The daily OpenClaw cron writes:
 
 - Mala raw reports under `data/results/research_ops/`
 - Obsidian brief under
-  `/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar/areas/trading/mala-shadow/YYYY-MM-DD.md`
+  `/Users/sunny/Documents/northstar/03 Agent Org/research_lab/Mala/Shadow/YYYY-MM-DD.md`
 - copied report artifacts under
-  `areas/trading/mala-shadow/attachments/YYYY-MM-DD/`
+  `03 Agent Org/research_lab/Mala/Shadow/attachments/YYYY-MM-DD/`
 
 ## Decision Gates
 

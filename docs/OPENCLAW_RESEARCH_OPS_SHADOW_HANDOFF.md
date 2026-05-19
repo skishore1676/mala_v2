@@ -16,7 +16,7 @@ Read:
 
 - `/Users/sunny/Documents/mala_v2/docs/SHADOW_DECISION_PROTOCOL_NEXT_WEEK.md`
 - latest Obsidian brief under
-  `/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar/areas/trading/mala-shadow/`
+  `/Users/sunny/Documents/northstar/03 Agent Org/research_lab/Mala/Shadow/`
 
 ## Daily Automation
 

@@ -1012,6 +1012,75 @@ def test_program_status_writes_json_markdown_and_degrades_without_sheets(tmp_pat
     assert "needs_suman" in md_path.read_text(encoding="utf-8")
 
 
+def test_program_status_treats_empty_requested_sheets_as_available(tmp_path: Path, monkeypatch) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "runs"
+    out_dir = tmp_path / "out"
+    vault = tmp_path / "vault"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
+
+    import src.research.research_ops as research_ops
+
+    class EmptySheetClient:
+        def read_rows(self, range_suffix: str) -> list[dict[str, str]]:
+            assert range_suffix == "A1:ZZ5000"
+            return []
+
+    monkeypatch.setattr(research_ops, "_control_client", lambda args: EmptySheetClient())
+    monkeypatch.setattr(research_ops, "_intake_client", lambda args: EmptySheetClient())
+
+    args = SimpleNamespace(
+        hypotheses_dir=str(hypotheses),
+        runs_dir=str(runs),
+        dispositions_path=str(tmp_path / "dispositions.jsonl"),
+        out_dir=str(out_dir),
+        with_catalog=False,
+        with_board=False,
+        with_control=True,
+        with_intake=True,
+        limit=50,
+        vault=str(vault),
+    )
+    status = research_ops.build_program_status(args)
+
+    assert status["summary"]["control_rows"] == 0
+    assert status["summary"]["intake_rows"] == 0
+    assert status["state"]["control"]["available"] is True
+    assert status["state"]["intake"]["available"] is True
+    assert not any("returned no rows" in warning for warning in status["warnings"])
+
+
+def test_latest_shadow_brief_finds_current_numbered_vault_path(tmp_path: Path) -> None:
+    import src.research.research_ops as research_ops
+
+    vault = tmp_path / "vault"
+    current = vault / "03 Agent Org" / "research_lab" / "Mala" / "Shadow" / "2026-05-18.md"
+    legacy = vault / "areas" / "trading" / "mala-shadow" / "2026-05-17.md"
+    current.parent.mkdir(parents=True)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        "# Mala Shadow Decision Brief - 2026-05-17\n"
+        "- decision_verdict: **YELLOW - stale legacy path**\n"
+        "\n## Recommendation\n"
+        "- Owner: legacy. Ignore this if a current note exists.\n",
+        encoding="utf-8",
+    )
+    current.write_text(
+        "# Mala Shadow Decision Brief - 2026-05-18\n"
+        "- decision_verdict: **YELLOW - signal/provider concordance not clean**\n"
+        "\n## Recommendation\n"
+        "- Owner: data/adoption. Investigate mismatched same-bar replay.\n",
+        encoding="utf-8",
+    )
+
+    shadow = research_ops._latest_shadow_brief(vault)
+
+    assert shadow["path"] == str(current)
+    assert shadow["verdict"] == "YELLOW - signal/provider concordance not clean"
+    assert shadow["owner"] == "data/adoption"
+
+
 def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Path) -> None:
     from src.research.research_ops import COMMENTS_END, COMMENTS_START, write_decision_cards
 
@@ -1027,7 +1096,7 @@ def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Pat
     assert len(first) == 1
     path = Path(first[0]["path"])
     text = path.read_text(encoding="utf-8")
-    relative_card_path = "Projects/Trading/Mala/Research/Decision Cards/run_m1-idea-a.md"
+    relative_card_path = "03 Agent Org/research_lab/Mala/Research/Decision Cards/run_m1-idea-a.md"
     body = text.split("---\n", 2)[2]
     assert "generated_at:" in text
     assert "- generated_at: `" in body
@@ -1050,7 +1119,7 @@ def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Pat
     assert "/Users/sunny/Library/" not in updated_body
     assert "- canonical_card_path:" not in updated_body
     assert f"- card: `{relative_card_path}`" in updated_body
-    assert len(list((vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards").glob("*.md"))) == 1
+    assert len(list((vault / "03 Agent Org" / "research_lab" / "Mala" / "Research" / "Decision Cards").glob("*.md"))) == 1
 
 def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: Path) -> None:
     from src.research.research_ops import COMMENTS_END, COMMENTS_START, RECEIPT_END, RECEIPT_START, write_decision_cards
@@ -1596,7 +1665,7 @@ def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(
     hypotheses = tmp_path / "research" / "hypotheses"
     runs = tmp_path / "data" / "results" / "hypothesis_runs"
     vault = tmp_path / "vault"
-    card_dir = vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards"
+    card_dir = vault / "03 Agent Org" / "research_lab" / "Mala" / "Research" / "Decision Cards"
     hypotheses.mkdir(parents=True)
     card_dir.mkdir(parents=True)
     _write_hypothesis(
