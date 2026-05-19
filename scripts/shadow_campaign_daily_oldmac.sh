@@ -14,8 +14,10 @@ TRADING_DAYS="${TRADING_DAYS:-3}"
 SIGNAL_EV_LOOKBACK_DAYS="${SIGNAL_EV_LOOKBACK_DAYS:-21}"
 POLYGON_CACHE_BACKFILL_DAYS="${POLYGON_CACHE_BACKFILL_DAYS:-$SIGNAL_EV_LOOKBACK_DAYS}"
 SHADOW_SKIP_POLYGON_BACKFILL="${SHADOW_SKIP_POLYGON_BACKFILL:-0}"
-OBSIDIAN_VAULT_ROOT="${OBSIDIAN_VAULT_ROOT:-$HOME/Documents/northstar}"
-OBSIDIAN_SHADOW_DIR="${OBSIDIAN_SHADOW_DIR:-03 Agent Org/research_lab/Mala/Shadow}"
+# Use OpenClaw-specific overrides so inherited legacy OBSIDIAN_* values do not
+# redirect scheduled reports into old iCloud-era vault folders.
+OBSIDIAN_VAULT_ROOT="${OPENCLAW_NORTHSTAR_VAULT:-$HOME/Documents/northstar}"
+OBSIDIAN_SHADOW_DIR="${OPENCLAW_MALA_SHADOW_DIR:-03 Agent Org/research_lab/Mala/Shadow}"
 
 if [[ ! -x "$MALA_PYTHON" ]]; then
   echo "Missing Mala python: $MALA_PYTHON" >&2
