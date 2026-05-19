@@ -194,6 +194,16 @@ def _render_brief(
 ) -> str:
     verdict = _overall_verdict(report_metrics, daily_metrics, root_causes, match_rate)
     lines = [
+        "---",
+        "surface: generated_report",
+        "rotation_class: daily_generated_brief",
+        "rotation: eligible",
+        "status: draft",
+        "generated_by: openclaw",
+        "producer: mala_shadow_daily",
+        f"trading_date: {trading_date}",
+        "---",
+        "",
         f"# Mala Shadow Decision Brief - {trading_date}",
         "",
         f"- generated_at: `{datetime.now().replace(microsecond=0).isoformat()}`",
