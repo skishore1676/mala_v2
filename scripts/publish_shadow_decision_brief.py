@@ -79,6 +79,7 @@ def main() -> int:
     output = publish_dir / f"{args.trading_date}.md"
     output.write_text(
         _render_brief(
+            vault_root=vault_root,
             trading_date=args.trading_date,
             daily_report=daily_report,
             signal_report=signal_report,
@@ -143,8 +144,44 @@ def _coerce_number(value: str):
         return value
 
 
+def _vault_relative(path: Path, vault_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(vault_root.resolve()).as_posix()
+    except ValueError:
+        try:
+            return path.relative_to(vault_root).as_posix()
+        except ValueError:
+            return path.as_posix()
+
+
+def _markdown_link(label: str, path: Path, vault_root: Path) -> str:
+    return f"[{label}](<{_vault_relative(path, vault_root)}>)"
+
+
+def _copied_target(copied: list[tuple[Path, Path]], source: Path | None) -> Path | None:
+    if source is None:
+        return None
+    for original, target in copied:
+        if original == source:
+            return target
+        try:
+            if original.resolve() == source.resolve():
+                return target
+        except OSError:
+            continue
+    return None
+
+
+def _report_link(source: Path | None, copied: list[tuple[Path, Path]], vault_root: Path) -> str:
+    target = _copied_target(copied, source)
+    if target:
+        return _markdown_link(target.name, target, vault_root)
+    return f"`{source}`" if source else ""
+
+
 def _render_brief(
     *,
+    vault_root: Path,
     trading_date: str,
     daily_report: Path | None,
     signal_report: Path | None,
@@ -161,8 +198,8 @@ def _render_brief(
         "",
         f"- generated_at: `{datetime.now().replace(microsecond=0).isoformat()}`",
         f"- decision_verdict: **{verdict}**",
-        f"- daily_report: `{daily_report or ''}`",
-        f"- signal_ev_report: `{signal_report or ''}`",
+        f"- daily_report: {_report_link(daily_report, copied, vault_root)}",
+        f"- signal_ev_report: {_report_link(signal_report, copied, vault_root)}",
         "",
         "## Plain-English Read",
         "",
@@ -230,7 +267,7 @@ def _render_brief(
         ]
     )
     for source, target in copied:
-        lines.append(f"- `{target}` from `{source}`")
+        lines.append(f"- {_markdown_link(target.name, target, vault_root)} from `{source}`")
     return "\n".join(lines) + "\n"
 
 
