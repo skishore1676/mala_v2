@@ -77,6 +77,18 @@ def test_shadow_brief_uses_vault_relative_report_links(tmp_path: Path) -> None:
     note = vault / "03 Agent Org" / "research_lab" / "Mala" / "Shadow" / "2026-05-18.md"
     text = note.read_text(encoding="utf-8")
 
+    assert text.startswith(
+        "---\n"
+        "surface: generated_report\n"
+        "rotation_class: daily_generated_brief\n"
+        "rotation: eligible\n"
+        "status: draft\n"
+        "generated_by: openclaw\n"
+        "producer: mala_shadow_daily\n"
+        "trading_date: 2026-05-18\n"
+        "---\n\n"
+    )
+
     daily_link = (
         "[shadow_daily_report_20260518T203713Z.md]"
         "(<03 Agent Org/research_lab/Mala/Shadow/attachments/2026-05-18/shadow_daily_report_20260518T203713Z.md>)"
