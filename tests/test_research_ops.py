@@ -17,6 +17,7 @@ from src.research.research_ops import (
     build_action_brief,
     build_control_rows,
     build_hot_start_findings,
+    INTAKE_SHEET_HEADERS,
     build_intake_proposal_row,
     build_operator_options_table,
     build_ledger,
@@ -707,6 +708,20 @@ def test_build_operator_options_table_lists_sheet_dropdown_values() -> None:
     assert any(row[0] == "APPROVE_RETUNE" for row in table)
     assert ["SKIP", "", ""] in table
     assert any(row[2] == "APPROVE_CREATE_HYPOTHESIS" for row in table)
+
+
+def test_intake_sheet_headers_keep_human_reading_columns_first() -> None:
+    assert INTAKE_SHEET_HEADERS[:8] == [
+        "symbol_scope",
+        "strategy",
+        "thesis",
+        "status",
+        "recommendation",
+        "recommended_operator_action",
+        "operator_action",
+        "decision_needed",
+    ]
+    assert len(INTAKE_SHEET_HEADERS) == len(set(INTAKE_SHEET_HEADERS))
 
 
 def test_process_intake_rows_creates_pending_hypothesis_when_approved(tmp_path: Path) -> None:
