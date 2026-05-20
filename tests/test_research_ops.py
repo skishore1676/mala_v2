@@ -17,6 +17,7 @@ from src.research.research_ops import (
     build_action_brief,
     build_control_rows,
     build_hot_start_findings,
+    INTAKE_SHEET_HEADERS,
     build_intake_proposal_row,
     build_operator_options_table,
     build_ledger,
@@ -709,6 +710,20 @@ def test_build_operator_options_table_lists_sheet_dropdown_values() -> None:
     assert any(row[2] == "APPROVE_CREATE_HYPOTHESIS" for row in table)
 
 
+def test_intake_sheet_headers_keep_human_reading_columns_first() -> None:
+    assert INTAKE_SHEET_HEADERS[:8] == [
+        "symbol_scope",
+        "strategy",
+        "thesis",
+        "status",
+        "recommendation",
+        "recommended_operator_action",
+        "operator_action",
+        "decision_needed",
+    ]
+    assert len(INTAKE_SHEET_HEADERS) == len(set(INTAKE_SHEET_HEADERS))
+
+
 def test_process_intake_rows_creates_pending_hypothesis_when_approved(tmp_path: Path) -> None:
     updates = process_intake_rows(
         rows=[
@@ -995,6 +1010,45 @@ def test_program_status_writes_json_markdown_and_degrades_without_sheets(tmp_pat
     assert status["summary"]["tags"]["needs_suman"] == 1
     assert any("control sheet not requested" in warning for warning in status["warnings"])
     assert "needs_suman" in md_path.read_text(encoding="utf-8")
+
+
+def test_program_status_treats_empty_requested_sheets_as_available(tmp_path: Path, monkeypatch) -> None:
+    hypotheses = tmp_path / "research" / "hypotheses"
+    runs = tmp_path / "runs"
+    out_dir = tmp_path / "out"
+    vault = tmp_path / "vault"
+    hypotheses.mkdir(parents=True)
+    _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
+
+    import src.research.research_ops as research_ops
+
+    class EmptySheetClient:
+        def read_rows(self, range_suffix: str) -> list[dict[str, str]]:
+            assert range_suffix == "A1:ZZ5000"
+            return []
+
+    monkeypatch.setattr(research_ops, "_control_client", lambda args: EmptySheetClient())
+    monkeypatch.setattr(research_ops, "_intake_client", lambda args: EmptySheetClient())
+
+    args = SimpleNamespace(
+        hypotheses_dir=str(hypotheses),
+        runs_dir=str(runs),
+        dispositions_path=str(tmp_path / "dispositions.jsonl"),
+        out_dir=str(out_dir),
+        with_catalog=False,
+        with_board=False,
+        with_control=True,
+        with_intake=True,
+        limit=50,
+        vault=str(vault),
+    )
+    status = research_ops.build_program_status(args)
+
+    assert status["summary"]["control_rows"] == 0
+    assert status["summary"]["intake_rows"] == 0
+    assert status["state"]["control"]["available"] is True
+    assert status["state"]["intake"]["available"] is True
+    assert not any("returned no rows" in warning for warning in status["warnings"])
 
 
 def test_decision_cards_preserve_comments_and_limit_to_needs_suman(tmp_path: Path) -> None:

@@ -115,26 +115,26 @@ CONTROL_OPERATOR_ACTION_DROPDOWN = [
 ]
 
 INTAKE_SHEET_HEADERS = [
+    "symbol_scope",
+    "strategy",
+    "thesis",
     "status",
     "recommendation",
     "recommended_operator_action",
     "operator_action",
     "decision_needed",
     "title",
-    "symbol_scope",
-    "strategy",
-    "thesis",
-    "reason_to_try",
-    "risk_or_overlap",
     "suggested_config",
-    "source",
+    "risk_or_overlap",
     "max_stage",
-    "intake_id",
-    "hypothesis_id",
-    "rules",
-    "notes",
+    "source",
     "feasibility_tag",
     "feasibility_summary",
+    "reason_to_try",
+    "rules",
+    "notes",
+    "intake_id",
+    "hypothesis_id",
     "search_param_keys",
     "discovery_config_count",
     "retune_config_count",
@@ -2469,12 +2469,17 @@ def _read_sheet_rows_for_status(args: argparse.Namespace, kind: str) -> tuple[li
     if not getattr(args, f"with_{kind}", False):
         return [], [f"{kind} sheet not requested; run with --with-{kind} and credentials to include live sheet state."]
     try:
-        rows = _read_control_rows(args) if kind == "control" else _read_intake_rows(args)
-        if not rows:
-            return [], [f"{kind} sheet returned no rows or sheet access was unavailable."]
-        return rows, []
+        client = _control_client(args) if kind == "control" else _intake_client(args)
+    except SystemExit:
+        return [], [f"{kind} sheet unavailable: missing credentials or sheet configuration."]
+    try:
+        return client.read_rows(range_suffix="A1:ZZ5000"), []
     except Exception as exc:  # pragma: no cover - defensive degradation path
         return [], [f"{kind} sheet unavailable: {exc}"]
+
+
+def _sheet_available_for_status(args: argparse.Namespace, kind: str, warnings: list[str]) -> bool:
+    return bool(getattr(args, f"with_{kind}", False)) and not warnings
 
 
 def _classify_action(action: NextAction) -> str:
@@ -2588,8 +2593,8 @@ def build_program_status(args: argparse.Namespace) -> dict[str, Any]:
         },
         "latest": {"digest": str(latest_digest) if latest_digest else "", "next_actions": str(next_actions_report) if next_actions_report.exists() else "", "shadow_brief": shadow},
         "state": {
-            "control": {"available": bool(control_rows), "active_rows": [row for row in control_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip() not in {"", "queued"}][:10]},
-            "intake": {"available": bool(intake_rows), "active_rows": [row for row in intake_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip()][:10]},
+            "control": {"available": _sheet_available_for_status(args, "control", control_warnings), "active_rows": [row for row in control_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip() not in {"", "queued"}][:10]},
+            "intake": {"available": _sheet_available_for_status(args, "intake", intake_warnings), "active_rows": [row for row in intake_rows if str(row.get("operator_action", "")).strip() or str(row.get("status", "")).strip()][:10]},
         },
         "items": items,
         "by_tag": by_tag,
