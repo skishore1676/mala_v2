@@ -110,6 +110,9 @@ def test_bhiksha_signal_ev_report_joins_runtime_to_mala_metadata(tmp_path: Path)
     artifacts = build_bhiksha_signal_ev_report(db_path=db_path, out_dir=tmp_path / "out", lookback_days=7)
 
     assert artifacts.report_md.exists()
+    report = artifacts.report_md.read_text(encoding="utf-8")
+    assert "Signal Expected Value" in report
+    assert "## Metric Glossary" in report
     trades = list(csv.DictReader(artifacts.trade_csv.open()))
     assert len(trades) == 1
     row = trades[0]

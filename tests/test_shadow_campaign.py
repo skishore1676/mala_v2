@@ -229,7 +229,10 @@ def test_shadow_daily_report_reads_feedback_bundle(tmp_path: Path) -> None:
 
     assert artifacts.bundle_count == 1
     assert artifacts.observation_count == 1
-    assert "idea__amd_short" in artifacts.report_md.read_text(encoding="utf-8")
+    report = artifacts.report_md.read_text(encoding="utf-8")
+    assert "idea__amd_short" in report
+    assert "Signal Expected Value" in report
+    assert "## Metric Glossary" in report
 
 
 def test_shadow_daily_report_prefers_session_counts_when_replay_packet_failed(tmp_path: Path) -> None:
