@@ -12,9 +12,8 @@ from pathlib import Path
 
 
 DEFAULT_VAULT = Path(
-    "/Users/sunny/Documents/northstar"
+    "/Users/sunny/Library/Mobile Documents/iCloud~md~obsidian/Documents/northstar"
 )
-DEFAULT_OUTPUT_DIR = "03 Agent Org/research_lab/Mala/Shadow"
 
 
 def main() -> int:
@@ -23,7 +22,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mala-root", default="/Users/sunny/Documents/mala_v2")
     parser.add_argument("--vault-root", default=str(DEFAULT_VAULT))
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--output-dir", default="areas/trading/mala-shadow")
     parser.add_argument("--trading-date", default=datetime.now().date().isoformat())
     parser.add_argument("--daily-report", default="")
     parser.add_argument("--signal-ev-report", default="")
@@ -79,7 +78,6 @@ def main() -> int:
     output = publish_dir / f"{args.trading_date}.md"
     output.write_text(
         _render_brief(
-            vault_root=vault_root,
             trading_date=args.trading_date,
             daily_report=daily_report,
             signal_report=signal_report,
@@ -144,44 +142,8 @@ def _coerce_number(value: str):
         return value
 
 
-def _vault_relative(path: Path, vault_root: Path) -> str:
-    try:
-        return path.resolve().relative_to(vault_root.resolve()).as_posix()
-    except ValueError:
-        try:
-            return path.relative_to(vault_root).as_posix()
-        except ValueError:
-            return path.as_posix()
-
-
-def _markdown_link(label: str, path: Path, vault_root: Path) -> str:
-    return f"[{label}](<{_vault_relative(path, vault_root)}>)"
-
-
-def _copied_target(copied: list[tuple[Path, Path]], source: Path | None) -> Path | None:
-    if source is None:
-        return None
-    for original, target in copied:
-        if original == source:
-            return target
-        try:
-            if original.resolve() == source.resolve():
-                return target
-        except OSError:
-            continue
-    return None
-
-
-def _report_link(source: Path | None, copied: list[tuple[Path, Path]], vault_root: Path) -> str:
-    target = _copied_target(copied, source)
-    if target:
-        return _markdown_link(target.name, target, vault_root)
-    return f"`{source}`" if source else ""
-
-
 def _render_brief(
     *,
-    vault_root: Path,
     trading_date: str,
     daily_report: Path | None,
     signal_report: Path | None,
@@ -194,22 +156,17 @@ def _render_brief(
 ) -> str:
     verdict = _overall_verdict(report_metrics, daily_metrics, root_causes, match_rate)
     lines = [
-        "---",
-        "surface: generated_report",
-        "rotation_class: daily_generated_brief",
-        "rotation: eligible",
-        "status: draft",
-        "generated_by: openclaw",
-        "producer: mala_shadow_daily",
-        f"trading_date: {trading_date}",
-        "---",
-        "",
         f"# Mala Shadow Decision Brief - {trading_date}",
         "",
         f"- generated_at: `{datetime.now().replace(microsecond=0).isoformat()}`",
         f"- decision_verdict: **{verdict}**",
-        f"- daily_report: {_report_link(daily_report, copied, vault_root)}",
-        f"- signal_ev_report: {_report_link(signal_report, copied, vault_root)}",
+        f"- daily_report: `{daily_report or ''}`",
+        f"- signal_ev_report: `{signal_report or ''}`",
+        "",
+        "## Plain-English Read",
+        "",
+        "- Signal Expected Value asks whether Bhiksha's Mala-sourced signals matched the intended strategy, became trade plans, and produced option results that support or weaken the expected edge.",
+        "- The daily shadow report checks the session plumbing: deployments, signals, blocks, replay status, and runtime issues.",
         "",
         "## Next-Week Decision Questions",
         "",
@@ -226,14 +183,14 @@ def _render_brief(
         "",
         "## Current Evidence",
         "",
-        f"- true_signal_events: `{report_metrics.get('true_signal_events', '')}`",
-        f"- trade_plans: `{report_metrics.get('trade_plans', '')}`",
-        f"- closed_trades_with_realized_ev: `{report_metrics.get('closed_trades_with_realized_ev', '')}`",
-        f"- total_realized_pnl_usd: `{report_metrics.get('total_realized_pnl_usd', '')}`",
-        f"- positive_trades_vs_evidence: `{report_metrics.get('positive_trades_vs_evidence', '')}`",
-        f"- adverse_trades_vs_evidence: `{report_metrics.get('adverse_trades_vs_evidence', '')}`",
-        f"- same_bar_match_rate: `{'' if match_rate is None else round(match_rate, 4)}`",
-        f"- daily_runtime_issue_rows: `{daily_metrics.get('runtime_issue_rows', '')}`",
+        f"- true_signal_events: `{report_metrics.get('true_signal_events', '')}` - strategy conditions that fired in Bhiksha.",
+        f"- trade_plans: `{report_metrics.get('trade_plans', '')}` - true signals that reached option trade planning.",
+        f"- closed_trades_with_realized_signal_expected_value: `{report_metrics.get('closed_trades_with_realized_ev', '')}` - closed option trades with computed realized PnL/stop-R.",
+        f"- total_realized_pnl_usd: `{report_metrics.get('total_realized_pnl_usd', '')}` - realized option PnL across closed trades in the lookback.",
+        f"- positive_trades_vs_evidence: `{report_metrics.get('positive_trades_vs_evidence', '')}` - closed trades that supported the Mala edge.",
+        f"- adverse_trades_vs_evidence: `{report_metrics.get('adverse_trades_vs_evidence', '')}` - closed trades that worked against the Mala edge.",
+        f"- same_bar_match_rate: `{'' if match_rate is None else round(match_rate, 4)}` - share of Bhiksha signals also seen by same-bar Mala replay.",
+        f"- daily_runtime_issue_rows: `{daily_metrics.get('runtime_issue_rows', '')}` - deployments with runtime/replay issues in the daily shadow report.",
         "",
         "## Root-Cause Pressure",
         "",
@@ -272,7 +229,7 @@ def _render_brief(
         ]
     )
     for source, target in copied:
-        lines.append(f"- {_markdown_link(target.name, target, vault_root)} from `{source}`")
+        lines.append(f"- `{target}` from `{source}`")
     return "\n".join(lines) + "\n"
 
 
