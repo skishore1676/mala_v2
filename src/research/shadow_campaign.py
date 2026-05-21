@@ -407,11 +407,7 @@ def build_shadow_daily_report(
     active_plan_id: str | None = None,
 ) -> ShadowDailyReportArtifacts:
     feedback_dirs = _feedback_dirs(Path(feedback_root), active_plan_id=active_plan_id)
-    evidence_by_key = {
-        _clean(row.get("catalog_key")): row
-        for row in (evidence_rows or [])
-        if _clean(row.get("catalog_key"))
-    }
+    evidence_by_key = _evidence_lookup(evidence_rows or [])
     score_rows: list[dict[str, Any]] = []
     issue_count = 0
     for bundle_dir in feedback_dirs:
@@ -426,11 +422,24 @@ def build_shadow_daily_report(
             if not isinstance(packet, dict):
                 continue
             deployment_id = _clean(packet.get("deployment_id"))
-            evidence = evidence_by_key.get(deployment_id, {})
-            blocked = packet.get("blocked_entry_reasons") or {}
-            runtime_issues = packet.get("runtime_issue_counts") or {}
+            evidence_key = _packet_catalog_key(packet)
+            evidence = evidence_by_key.get(evidence_key) or evidence_by_key.get(deployment_id, {})
+            session_blocked = _dict_at(session, "blocked_entry_reasons_by_deployment", deployment_id)
+            blocked = _blocked_reasons(packet.get("blocked_entry_reasons") or session_blocked)
+            runtime_issues = _runtime_issues(
+                packet=packet,
+                session_issues=_dict_at(session, "runtime_issue_counts_by_deployment", deployment_id),
+            )
             if blocked or runtime_issues or packet.get("ambiguous_cancel_count"):
                 issue_count += 1
+            signal_true_count = _session_count(session, "signal_true_counts", deployment_id, packet.get("signal_true_count"))
+            exit_true_count = _session_count(session, "exit_true_counts", deployment_id, packet.get("exit_true_count"))
+            trade_plan_count = _session_count(
+                session,
+                "trade_plan_counts",
+                deployment_id,
+                _trade_plan_count(packet.get("trade_plan_count"), session_blocked),
+            )
             score_rows.append(
                 {
                     "active_plan_id": active_plan_name,
@@ -443,9 +452,9 @@ def build_shadow_daily_report(
                     "mala_expectancy": _clean(evidence.get("expectancy")),
                     "mala_mc_prob": _clean(evidence.get("execution_robustness")),
                     "signal_decisions_total": packet.get("signal_decisions_total", 0),
-                    "signal_true_count": packet.get("signal_true_count", 0),
-                    "trade_plan_count": packet.get("trade_plan_count", 0),
-                    "exit_true_count": packet.get("exit_true_count", 0),
+                    "signal_true_count": signal_true_count,
+                    "trade_plan_count": trade_plan_count,
+                    "exit_true_count": exit_true_count,
                     "pending_exit_count": packet.get("pending_exit_count", 0),
                     "blocked_entry_reasons": _json_compact(blocked),
                     "runtime_issue_counts": _json_compact(runtime_issues),
@@ -640,6 +649,69 @@ def _read_json(path: Path) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def _evidence_lookup(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        for field in ("catalog_key", "sheet_row_id", "strategy_id", "deployment_id"):
+            key = _clean(row.get(field))
+            if key:
+                by_key[key] = row
+    return by_key
+
+
+def _packet_catalog_key(packet: dict[str, Any]) -> str:
+    startup = packet.get("startup_deployment")
+    if isinstance(startup, dict):
+        source = startup.get("source")
+        if isinstance(source, dict):
+            metadata = source.get("metadata")
+            if isinstance(metadata, dict):
+                return _clean(metadata.get("catalog_key"))
+    return _clean(packet.get("catalog_key"))
+
+
+def _dict_at(session: dict[str, Any], key: str, deployment_id: str) -> dict[str, Any]:
+    value = session.get(key)
+    if not isinstance(value, dict):
+        return {}
+    item = value.get(deployment_id)
+    return item if isinstance(item, dict) else {}
+
+
+def _session_count(session: dict[str, Any], key: str, deployment_id: str, fallback: Any) -> int:
+    value = session.get(key)
+    if isinstance(value, dict) and deployment_id in value:
+        return _int(value.get(deployment_id))
+    return _int(fallback)
+
+
+def _blocked_reasons(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): count for key, count in value.items() if key != "approved" and _int(count) > 0}
+
+
+def _trade_plan_count(packet_value: Any, session_blocked: dict[str, Any]) -> int:
+    count = _int(packet_value)
+    if count:
+        return count
+    if not session_blocked:
+        return 0
+    return sum(_int(value) for key, value in session_blocked.items() if not str(key).startswith("lifecycle_state:"))
+
+
+def _runtime_issues(*, packet: dict[str, Any], session_issues: dict[str, Any]) -> dict[str, Any]:
+    issues: dict[str, Any] = {}
+    packet_issues = packet.get("runtime_issue_counts")
+    if isinstance(packet_issues, dict):
+        issues.update(packet_issues)
+    issues.update(session_issues)
+    replay = packet.get("replay")
+    if isinstance(replay, dict) and _clean(replay.get("status")) == "error":
+        issues.setdefault("replay_error", 1)
+    return {str(key): value for key, value in issues.items() if _int(value) > 0}
 
 
 def _activation_sort_key(row: dict[str, Any]) -> tuple[int, str, float, float]:
