@@ -230,3 +230,86 @@ def test_shadow_daily_report_reads_feedback_bundle(tmp_path: Path) -> None:
     assert artifacts.bundle_count == 1
     assert artifacts.observation_count == 1
     assert "idea__amd_short" in artifacts.report_md.read_text(encoding="utf-8")
+
+
+def test_shadow_daily_report_prefers_session_counts_when_replay_packet_failed(tmp_path: Path) -> None:
+    feedback = tmp_path / "feedback" / "active_plan_2026-05-20"
+    feedback.mkdir(parents=True)
+    (feedback / "active_plan.json").write_text(
+        json.dumps({"active_plan_id": "active_plan_2026-05-20"}),
+        encoding="utf-8",
+    )
+    deployment_id = "strategy_idea_amd_short_row_2"
+    (feedback / "session_summary.json").write_text(
+        json.dumps(
+            {
+                "signal_true_counts": {deployment_id: 3},
+                "exit_true_counts": {deployment_id: 1},
+                "blocked_entry_reasons_by_deployment": {
+                    deployment_id: {
+                        "approved": 2,
+                        "insufficient_budget_for_single_contract": 1,
+                        "lifecycle_state:open_protected": 4,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (feedback / "observation_index.json").write_text(
+        json.dumps(
+            {
+                "reports": [
+                    {
+                        "deployment_id": deployment_id,
+                        "symbol": "AMD",
+                        "strategy_key": "market_impulse",
+                        "authorization_mode": "shadow",
+                        "shadow_only": True,
+                        "signal_decisions_total": 0,
+                        "signal_true_count": 0,
+                        "trade_plan_count": 0,
+                        "exit_true_count": 0,
+                        "pending_exit_count": 0,
+                        "blocked_entry_reasons": {},
+                        "runtime_issue_counts": {},
+                        "signal_reason_counts": {},
+                        "exit_reason_counts": {},
+                        "latest_lifecycle_state": "closed",
+                        "replay": {"status": "error"},
+                        "startup_deployment": {
+                            "source": {
+                                "metadata": {
+                                    "catalog_key": "idea__amd_short",
+                                }
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artifacts = build_shadow_daily_report(
+        feedback_root=tmp_path / "feedback",
+        evidence_rows=[
+            {
+                "catalog_key": "idea__amd_short",
+                "recommendation_tier": "shadow",
+                "expectancy": "0.5",
+                "execution_robustness": "0.99",
+            }
+        ],
+        out_dir=tmp_path / "reports",
+    )
+
+    report = artifacts.report_md.read_text(encoding="utf-8")
+    scorecard = artifacts.scorecard_csv.read_text(encoding="utf-8")
+    assert artifacts.issue_count == 1
+    assert "signal_true_count: `3`" in report
+    assert "trade_plan_count: `3`" in report
+    assert "replay_error" in scorecard
+    assert "insufficient_budget_for_single_contract" in report
+    assert "mala_tier" in scorecard
+    assert "shadow" in scorecard
