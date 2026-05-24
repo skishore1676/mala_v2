@@ -884,6 +884,46 @@ def test_publish_pending_help_deprecates_strategy_catalog_and_points_to_mala_evi
     assert "Actually upsert rows into Strategy_Catalog" not in help_text
 
 
+def test_publish_schwab_adoption_dry_run_matches_evidence_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import src.research.research_ops as research_ops
+
+    adoption_csv = tmp_path / "schwab_adoption_by_row.csv"
+    _write_csv(
+        adoption_csv,
+        [
+            {
+                "catalog_key": "idea__amd_short",
+                "adoption_status": "adoption_pass",
+                "adoption_reason": "positive_schwab_replay",
+            },
+            {
+                "catalog_key": "missing__qqq_short",
+                "adoption_status": "adoption_blocked",
+                "adoption_reason": "non_positive_schwab_expectancy",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        research_ops,
+        "read_sheet_rows",
+        lambda **kwargs: ([{"catalog_key": "idea__amd_short"}], [], []),
+    )
+
+    args = parse_args(["publish-schwab-adoption", "--adoption-csv", str(adoption_csv)])
+    assert args.func(args) == 0
+
+    output = capsys.readouterr().out
+    assert "SCHWAB_ADOPTION_ROWS=2" in output
+    assert "SCHWAB_ADOPTION_MATCHED_ROWS=1" in output
+    assert 'SCHWAB_ADOPTION_MISSING_KEYS=["missing__qqq_short"]' in output
+    assert "DRY_RUN=true" in output
+
+
 def test_board_sync_plan_maps_terminal_states_to_operator_columns(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
     runs = tmp_path / "runs"

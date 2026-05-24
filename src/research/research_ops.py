@@ -37,6 +37,7 @@ from src.research.shadow_campaign import (
     apply_operator_defaults_patch,
     build_shadow_activation_packet,
     build_shadow_daily_report,
+    publish_schwab_adoption_columns,
     read_sheet_rows,
 )
 from src.research.time_utils import SHEET_TIMEZONE, sheet_timestamp
@@ -4581,6 +4582,7 @@ def cmd_shadow_activation_packet(args: argparse.Namespace) -> int:
             delta_max=args.delta_max,
             max_bid_ask_spread_pct=args.max_bid_ask_spread_pct,
             min_open_interest=args.min_open_interest,
+            require_provider_validation_pass=not args.allow_provider_unknown,
         ),
         include_experiments=args.include_experiments,
     )
@@ -4613,6 +4615,48 @@ def cmd_shadow_activation_packet(args: argparse.Namespace) -> int:
     print(f"ACTIVE_STRATEGY_APPLIED_ROWS={applied_active}")
     print(f"OPERATOR_DEFAULTS_APPLIED_ROWS={applied_defaults}")
     print(f"DRY_RUN={'false' if args.apply_active_strategy or args.apply_operator_defaults else 'true'}")
+    return 0
+
+
+def cmd_publish_schwab_adoption(args: argparse.Namespace) -> int:
+    adoption_csv = Path(args.adoption_csv)
+    if not adoption_csv.exists():
+        raise SystemExit(f"Schwab adoption CSV not found: {adoption_csv}")
+    with adoption_csv.open(encoding="utf-8", newline="") as handle:
+        adoption_rows = list(csv.DictReader(handle))
+    if not adoption_rows:
+        raise SystemExit(f"Schwab adoption CSV has no rows: {adoption_csv}")
+
+    report_path = args.report_path or str(adoption_csv.with_name("SCHWAB_ADOPTION_PASS.md"))
+    if not args.apply:
+        evidence_rows, _, _ = read_sheet_rows(
+            spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+            credentials_path=args.google_credentials,
+            evidence_sheet_name=args.evidence_sheet_name,
+            active_strategy_sheet_name=args.active_strategy_sheet_name,
+            operator_defaults_sheet_name=args.operator_defaults_sheet_name,
+        )
+        evidence_keys = {str(row.get("catalog_key") or "").strip() for row in evidence_rows}
+        adoption_keys = {str(row.get("catalog_key") or "").strip() for row in adoption_rows if str(row.get("catalog_key") or "").strip()}
+        missing = sorted(adoption_keys - evidence_keys)
+        print(f"SCHWAB_ADOPTION_ROWS={len(adoption_rows)}")
+        print(f"SCHWAB_ADOPTION_MATCHED_ROWS={len(adoption_keys - set(missing))}")
+        print(f"SCHWAB_ADOPTION_MISSING_KEYS={json.dumps(missing)}")
+        print("DRY_RUN=true")
+        return 0
+
+    result = publish_schwab_adoption_columns(
+        adoption_rows,
+        spreadsheet_id=args.sheet_id or args.catalog_sheet_id,
+        credentials_path=args.google_credentials,
+        evidence_sheet_name=args.evidence_sheet_name,
+        report_path=report_path,
+    )
+    print(f"SCHWAB_ADOPTION_ROWS={result['adoption_rows']}")
+    print(f"SCHWAB_ADOPTION_UPDATED_ROWS={result['updated_rows']}")
+    print(f"SCHWAB_ADOPTION_MISSING_KEYS={json.dumps(result['missing_catalog_keys'])}")
+    print(f"SCHWAB_ADOPTION_ADDED_COLUMNS={json.dumps(result['added_columns'])}")
+    print("DRY_RUN=false")
     return 0
 
 
@@ -4935,11 +4979,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     shadow_activation.add_argument("--delta-max", type=float, default=0.35)
     shadow_activation.add_argument("--max-bid-ask-spread-pct", type=float, default=0.08)
     shadow_activation.add_argument("--min-open-interest", type=int, default=100)
+    shadow_activation.add_argument("--allow-provider-unknown", action="store_true", help="Do not require provider/M6/Schwab adoption pass for shadow recommendations.")
     shadow_activation.add_argument("--include-experiments", action="store_true", help="Allow 0.65-0.75 MC robustness rows as explicit experiments when other gates pass.")
     shadow_activation.add_argument("--apply-active-strategy", action="store_true", help="Overwrite active_strategy with merged shadow rows. Omit for dry-run packet only.")
     shadow_activation.add_argument("--apply-operator-defaults", action="store_true", help="Patch Operator_Defaults_v1 option constraints. Omit for dry-run packet only.")
     shadow_activation.add_argument("--disable-non-recommended", action="store_true", help="When applying active_strategy, disable currently enabled rows that are not in the current shadow packet.")
     shadow_activation.set_defaults(func=cmd_shadow_activation_packet)
+
+    schwab_adoption = subparsers.add_parser(
+        "publish-schwab-adoption",
+        help="Publish a Schwab adoption-pass CSV into Mala_Evidence_v1 provider/adoption columns.",
+    )
+    _add_common_args(schwab_adoption)
+    schwab_adoption.add_argument("--sheet-id", default="", help="Spreadsheet URL or ID; defaults to --catalog-sheet-id / STRATEGY_CATALOG_SHEET_ID.")
+    schwab_adoption.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
+    schwab_adoption.add_argument("--active-strategy-sheet-name", default=DEFAULT_ACTIVE_STRATEGY_SHEET_NAME)
+    schwab_adoption.add_argument("--operator-defaults-sheet-name", default=DEFAULT_OPERATOR_DEFAULTS_SHEET_NAME)
+    schwab_adoption.add_argument("--adoption-csv", required=True, help="Path to schwab_adoption_by_row.csv.")
+    schwab_adoption.add_argument("--report-path", default="", help="Report path to write into adoption/provider report columns.")
+    schwab_adoption.add_argument("--apply", action="store_true", help="Actually update Mala_Evidence_v1. Omit for dry-run readback/match check.")
+    schwab_adoption.set_defaults(func=cmd_publish_schwab_adoption)
 
     shadow_daily = subparsers.add_parser(
         "shadow-daily-report",

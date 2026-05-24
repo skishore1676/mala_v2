@@ -33,6 +33,21 @@ ACTIVE_STRATEGY_HEADERS = [
     "notes",
 ]
 
+SCHWAB_ADOPTION_FIELDNAMES = [
+    "provider_validation_status",
+    "provider_feature_risk",
+    "provider_signal_overlap",
+    "provider_validation_report",
+    "schwab_adoption_status",
+    "schwab_adoption_reason",
+    "schwab_trade_count",
+    "schwab_win_rate",
+    "schwab_avg_signed_move_pct",
+    "schwab_median_minutes_held",
+    "schwab_adoption_report",
+    "schwab_adoption_updated_at",
+]
+
 OPERATOR_DEFAULT_PATCH = {
     "max_trade_premium_usd": "2000",
     "min_open_interest": "100",
@@ -57,6 +72,7 @@ class ShadowActivationConfig:
     delta_max: float = 0.35
     max_bid_ask_spread_pct: float = 0.08
     min_open_interest: int = 100
+    require_provider_validation_pass: bool = True
 
 
 @dataclass(slots=True, frozen=True)
@@ -167,6 +183,16 @@ def build_shadow_activation_packet(
                 "exit_reliability": _clean(evidence.get("exit_reliability")),
                 "exit_trade_count": _clean(evidence.get("exit_trade_count")),
                 "signal_window_et": _clean(evidence.get("signal_window_et")),
+                "provider_validation_status": _clean(evidence.get("provider_validation_status")),
+                "provider_feature_risk": _clean(evidence.get("provider_feature_risk")),
+                "provider_signal_overlap": _clean(evidence.get("provider_signal_overlap")),
+                "provider_validation_report": _clean(evidence.get("provider_validation_report")),
+                "schwab_adoption_status": _clean(evidence.get("schwab_adoption_status")),
+                "schwab_adoption_reason": _clean(evidence.get("schwab_adoption_reason")),
+                "schwab_trade_count": _clean(evidence.get("schwab_trade_count")),
+                "schwab_win_rate": _clean(evidence.get("schwab_win_rate")),
+                "schwab_avg_signed_move_pct": _clean(evidence.get("schwab_avg_signed_move_pct")),
+                "schwab_median_minutes_held": _clean(evidence.get("schwab_median_minutes_held")),
                 "option_trade_ready": _clean(evidence.get("option_trade_ready")),
                 "option_adjusted_expectancy_pct": _clean(evidence.get("option_adjusted_expectancy_pct")),
                 "option_exit_quality": _clean(evidence.get("option_exit_quality")),
@@ -183,7 +209,7 @@ def build_shadow_activation_packet(
             }
         )
 
-    rows = sorted(rows, key=_activation_sort_key)
+    rows = _demote_duplicate_shadow_rows(sorted(rows, key=_activation_sort_key))
     recommended = [row for row in rows if row["decision"] == "shadow"]
     active_rows = [active_strategy_row_from_recommendation(row) for row in recommended]
     defaults_patch = operator_defaults_patch_rows(cfg)
@@ -233,6 +259,12 @@ def classify_shadow_activation(
     if "recommended_dte_max" in row and _clean(row.get("recommended_dte_max")):
         if _int(row.get("recommended_dte_max")) > 14:
             reasons.append("option_dte_outside_short_packet")
+    provider_status = _provider_activation_status(row)
+    if config.require_provider_validation_pass:
+        if provider_status in {"provider_blocked", "provider_unknown"}:
+            reasons.append(provider_status)
+        elif provider_status == "provider_watch":
+            reasons.append("provider_watch")
     robustness = _float(row.get("execution_robustness"))
     if robustness < config.min_execution_robustness:
         if include_experiments and robustness >= config.experiment_min_execution_robustness:
@@ -249,15 +281,64 @@ def classify_shadow_activation(
         "option_trade_not_ready",
         "non_positive_option_adjusted_expectancy",
         "option_dte_outside_short_packet",
+        "provider_blocked",
+        "provider_unknown",
     }
     if any(reason in hard_blocks for reason in reasons):
         return "blocked", reasons
     if any(reason.startswith("tier_") for reason in reasons):
         return "observe_only", reasons
-    soft_blocks = {"execution_robustness_below_floor", "thin_signal_count"}
+    soft_blocks = {"execution_robustness_below_floor", "thin_signal_count", "provider_watch"}
     if any(reason in soft_blocks for reason in reasons):
         return "observe_only", reasons
     return "shadow", reasons or ["eligible"]
+
+
+def publish_schwab_adoption_columns(
+    adoption_rows: list[dict[str, Any]],
+    *,
+    spreadsheet_id: str,
+    credentials_path: str | Path,
+    evidence_sheet_name: str = DEFAULT_EVIDENCE_SHEET_NAME,
+    report_path: str | Path = "",
+    evidence_client: GoogleSheetTableClient | None = None,
+) -> dict[str, Any]:
+    """Publish Schwab adoption pass columns into existing Mala evidence rows."""
+    _require_exact_sheet_name(evidence_sheet_name, DEFAULT_EVIDENCE_SHEET_NAME, surface="Mala evidence")
+    evidence_client = evidence_client or GoogleSheetTableClient(
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=evidence_sheet_name,
+        credentials_path=Path(credentials_path),
+    )
+    evidence_client.require_sheet_exists()
+    added_columns = evidence_client.ensure_columns(SCHWAB_ADOPTION_FIELDNAMES)
+    existing_rows = evidence_client.read_rows(range_suffix="A1:ZZ5000")
+    if existing_rows and "catalog_key" not in existing_rows[0]:
+        raise RuntimeError(f"{evidence_sheet_name} must contain a catalog_key column for Schwab adoption publish")
+
+    report = _clean(report_path)
+    adoption_by_key = {
+        _clean(row.get("catalog_key")): _schwab_adoption_update_row(row, report_path=report)
+        for row in adoption_rows
+        if _clean(row.get("catalog_key"))
+    }
+    updates: list[dict[str, Any]] = []
+    matched_keys: set[str] = set()
+    for existing in existing_rows:
+        catalog_key = _clean(existing.get("catalog_key"))
+        adoption = adoption_by_key.get(catalog_key)
+        if adoption is None:
+            continue
+        matched_keys.add(catalog_key)
+        updates.append({"row_index": existing["row_index"], **adoption})
+
+    evidence_client.batch_update_rows(rows=updates, columns=SCHWAB_ADOPTION_FIELDNAMES)
+    return {
+        "adoption_rows": len(adoption_by_key),
+        "updated_rows": len(updates),
+        "missing_catalog_keys": sorted(set(adoption_by_key) - matched_keys),
+        "added_columns": added_columns,
+    }
 
 
 def active_strategy_row_from_recommendation(row: dict[str, Any]) -> dict[str, Any]:
@@ -728,14 +809,100 @@ def _runtime_issues(*, packet: dict[str, Any], session_issues: dict[str, Any]) -
     return {str(key): value for key, value in issues.items() if _int(value) > 0}
 
 
-def _activation_sort_key(row: dict[str, Any]) -> tuple[int, str, float, float]:
+def _activation_sort_key(row: dict[str, Any]) -> tuple[int, str, int, float, float]:
     decision_rank = {"shadow": 0, "observe_only": 1, "blocked": 2}.get(str(row.get("decision")), 9)
     return (
         decision_rank,
         str(row.get("strategy_key", "")),
+        0 if _truthy(row.get("already_active")) else 1,
         -_float(row.get("execution_robustness")),
         -_float(row.get("expectancy")),
     )
+
+
+def _demote_duplicate_shadow_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, ...]] = set()
+    output: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("decision") != "shadow":
+            output.append(row)
+            continue
+        signature = _shadow_signature(row)
+        if signature in seen:
+            duplicate = dict(row)
+            duplicate["decision"] = "observe_only"
+            duplicate["reason_codes"] = _append_reason(duplicate.get("reason_codes"), "duplicate_shadow_signature")
+            output.append(duplicate)
+            continue
+        seen.add(signature)
+        output.append(row)
+    return output
+
+
+def _shadow_signature(row: dict[str, Any]) -> tuple[str, ...]:
+    return (
+        _clean(row.get("symbol")).lower(),
+        _clean(row.get("direction")).lower(),
+        _clean(row.get("strategy_key")).lower(),
+        _clean(row.get("thesis_exit_policy")).lower(),
+        _clean(row.get("signal_window_et")).lower(),
+        _clean(row.get("option_dte_min")),
+        _clean(row.get("option_dte_max")),
+        _clean(row.get("median_minutes_held")),
+        _clean(row.get("option_adjusted_expectancy_pct")),
+    )
+
+
+def _append_reason(existing: Any, reason: str) -> str:
+    text = _clean(existing)
+    if not text:
+        return reason
+    parts = [part for part in text.split(",") if part]
+    if reason not in parts:
+        parts.append(reason)
+    return ",".join(parts)
+
+
+def _provider_activation_status(row: dict[str, Any]) -> str:
+    direct = _clean(row.get("provider_validation_status")).lower()
+    if direct:
+        return direct
+    adoption = _clean(row.get("schwab_adoption_status")).lower()
+    if adoption == "adoption_pass":
+        return "provider_pass"
+    if adoption == "adoption_watch":
+        return "provider_watch"
+    if adoption == "adoption_blocked":
+        return "provider_blocked"
+    return "provider_unknown"
+
+
+def _schwab_adoption_update_row(row: dict[str, Any], *, report_path: str) -> dict[str, Any]:
+    adoption_status = _clean(row.get("adoption_status") or row.get("schwab_adoption_status"))
+    provider_status = {
+        "adoption_pass": "provider_pass",
+        "adoption_watch": "provider_watch",
+        "adoption_blocked": "provider_blocked",
+    }.get(adoption_status, "provider_unknown")
+    provider_risk = {
+        "provider_pass": "green",
+        "provider_watch": "yellow",
+        "provider_blocked": "red",
+    }.get(provider_status, "yellow")
+    return {
+        "provider_validation_status": provider_status,
+        "provider_feature_risk": provider_risk,
+        "provider_signal_overlap": "",
+        "provider_validation_report": report_path,
+        "schwab_adoption_status": adoption_status,
+        "schwab_adoption_reason": _clean(row.get("adoption_reason") or row.get("schwab_adoption_reason")),
+        "schwab_trade_count": _clean(row.get("schwab_trade_count")),
+        "schwab_win_rate": _clean(row.get("schwab_win_rate")),
+        "schwab_avg_signed_move_pct": _clean(row.get("schwab_avg_signed_move_pct")),
+        "schwab_median_minutes_held": _clean(row.get("schwab_median_minutes_held")),
+        "schwab_adoption_report": report_path,
+        "schwab_adoption_updated_at": sheet_timestamp(),
+    }
 
 
 def _entry_start(signal_window_et: Any) -> str:
@@ -813,5 +980,6 @@ __all__ = [
     "build_shadow_activation_packet",
     "build_shadow_daily_report",
     "classify_shadow_activation",
+    "publish_schwab_adoption_columns",
     "read_sheet_rows",
 ]
