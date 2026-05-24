@@ -117,7 +117,6 @@ class GoogleSheetTableClient:
 
         start_index = len(headers) + 1
         end_index = start_index + len(missing) - 1
-        self._ensure_column_capacity(end_index)
         (
             self.service.spreadsheets()
             .values()
@@ -130,31 +129,6 @@ class GoogleSheetTableClient:
             .execute()
         )
         return missing
-
-    def _ensure_column_capacity(self, required_columns: int) -> None:
-        sheet_id, current_columns = self._sheet_grid_metadata()
-        if sheet_id is None or current_columns >= required_columns:
-            return
-        (
-            self.service.spreadsheets()
-            .batchUpdate(
-                spreadsheetId=self.spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "updateSheetProperties": {
-                                "properties": {
-                                    "sheetId": sheet_id,
-                                    "gridProperties": {"columnCount": required_columns},
-                                },
-                                "fields": "gridProperties.columnCount",
-                            }
-                        }
-                    ]
-                },
-            )
-            .execute()
-        )
 
     def sheet_titles(self) -> list[str]:
         metadata = (
@@ -248,20 +222,6 @@ class GoogleSheetTableClient:
         )
         values = result.get("values", [])
         return [str(header).strip() for header in values[0]] if values else []
-
-    def _sheet_grid_metadata(self) -> tuple[int | None, int]:
-        metadata = (
-            self.service.spreadsheets()
-            .get(spreadsheetId=self.spreadsheet_id)
-            .execute()
-        )
-        for sheet in metadata.get("sheets", []):
-            properties = sheet.get("properties", {})
-            if str(properties.get("title", "")).strip() != self.sheet_name:
-                continue
-            grid = properties.get("gridProperties", {})
-            return properties.get("sheetId"), int(grid.get("columnCount") or 0)
-        return None, 0
 
     def _build_service(self) -> Any:
         try:

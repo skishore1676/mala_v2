@@ -9,7 +9,7 @@ from src.research.google_sheets import GoogleSheetTableClient
 
 
 def test_google_sheet_client_appends_missing_headers(tmp_path: Path) -> None:
-    service = _FakeService(headers=["catalog_key", "operator_notes"], column_count=4)
+    service = _FakeService(headers=["catalog_key", "operator_notes"])
     client = GoogleSheetTableClient(
         spreadsheet_id="sheet-id",
         sheet_name="Strategy_Catalog",
@@ -22,35 +22,6 @@ def test_google_sheet_client_appends_missing_headers(tmp_path: Path) -> None:
     assert missing == ["steward_recommendation", "steward_notes"]
     assert service.updated_range == "Strategy_Catalog!C1:D1"
     assert service.updated_body == {"values": [["steward_recommendation", "steward_notes"]]}
-    assert service.resize_request == {}
-
-
-def test_google_sheet_client_expands_grid_before_appending_headers(tmp_path: Path) -> None:
-    service = _FakeService(headers=["a", "b", "c"], column_count=3)
-    client = GoogleSheetTableClient(
-        spreadsheet_id="sheet-id",
-        sheet_name="Strategy_Catalog",
-        credentials_path=tmp_path / "credentials.json",
-        service=service,
-    )
-
-    missing = client.ensure_columns(["d", "e"])
-
-    assert missing == ["d", "e"]
-    assert service.resize_request == {
-        "requests": [
-            {
-                "updateSheetProperties": {
-                    "properties": {
-                        "sheetId": 123,
-                        "gridProperties": {"columnCount": 5},
-                    },
-                    "fields": "gridProperties.columnCount",
-                }
-            }
-        ]
-    }
-    assert service.updated_range == "Strategy_Catalog!D1:E1"
 
 
 def test_google_sheet_client_clears_blank_batch_update_values(tmp_path: Path) -> None:
@@ -94,18 +65,11 @@ def test_google_sheet_client_requires_exact_existing_tab_before_mutation(tmp_pat
 
 
 class _FakeService:
-    def __init__(
-        self,
-        headers: list[str],
-        sheet_titles: list[str] | None = None,
-        column_count: int = 26,
-    ) -> None:
+    def __init__(self, headers: list[str], sheet_titles: list[str] | None = None) -> None:
         self.headers = headers
         self.sheet_titles = sheet_titles or ["Strategy_Catalog", "Research_Intake"]
-        self.column_count = column_count
         self.updated_range = ""
         self.updated_body: dict[str, Any] = {}
-        self.resize_request: dict[str, Any] = {}
         self.cleared_ranges: list[str] = []
         self.batch_updated_body: dict[str, Any] = {}
         self._last_action = ""
@@ -143,10 +107,7 @@ class _FakeService:
         spreadsheetId: str,
         body: dict[str, Any],
     ) -> "_FakeService":
-        if body.get("requests", [{}])[0].get("updateSheetProperties"):
-            self.resize_request = body
-        else:
-            self.batch_updated_body = body
+        self.batch_updated_body = body
         self._last_action = "batchUpdate"
         return self
 
@@ -159,17 +120,6 @@ class _FakeService:
             return {"updatedData": self.batch_updated_body}
         if self._last_action == "metadata":
             self._last_action = ""
-            return {
-                "sheets": [
-                    {
-                        "properties": {
-                            "title": title,
-                            "sheetId": 123 + index,
-                            "gridProperties": {"columnCount": self.column_count},
-                        }
-                    }
-                    for index, title in enumerate(self.sheet_titles)
-                ]
-            }
+            return {"sheets": [{"properties": {"title": title}} for title in self.sheet_titles]}
         self._last_action = ""
         return {"values": [self.headers]}

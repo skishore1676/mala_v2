@@ -9,7 +9,6 @@ from src.research.shadow_campaign import (
     build_shadow_daily_report,
     classify_shadow_activation,
     merge_active_strategy_rows,
-    publish_schwab_adoption_columns,
 )
 
 
@@ -22,7 +21,6 @@ def test_shadow_activation_classifies_supported_shadow_row() -> None:
             "expectancy": "0.25",
             "execution_robustness": "0.80",
             "signal_count": "25",
-            "provider_validation_status": "provider_pass",
         },
         config=ShadowActivationConfig(),
     )
@@ -40,7 +38,6 @@ def test_shadow_activation_blocks_unsupported_runtime() -> None:
             "expectancy": "0.5",
             "execution_robustness": "0.99",
             "signal_count": "100",
-            "provider_validation_status": "provider_pass",
         },
         config=ShadowActivationConfig(),
     )
@@ -61,7 +58,6 @@ def test_shadow_activation_blocks_non_ready_option_exit() -> None:
             "option_trade_ready": "false",
             "option_adjusted_expectancy_pct": "-0.01",
             "recommended_dte_max": "21",
-            "provider_validation_status": "provider_pass",
         },
         config=ShadowActivationConfig(),
     )
@@ -91,7 +87,6 @@ def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> Non
             "exit_reliability": "thin",
             "exit_trade_count": "25",
             "signal_window_et": "09:35-11:00",
-            "provider_validation_status": "provider_pass",
             "option_trade_ready": "true",
             "option_adjusted_expectancy_pct": "0.21",
             "option_exit_quality": "fast_intraday",
@@ -117,100 +112,6 @@ def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> Non
     assert overrides["dte_max"] == 7
     assert overrides["target_abs_delta_min"] == 0.15
     assert "Shadow Activation Packet" in artifacts.packet_md.read_text(encoding="utf-8")
-
-
-def test_shadow_activation_packet_demotes_duplicate_shadow_signature(tmp_path: Path) -> None:
-    base = {
-        "symbol": "AMD",
-        "direction": "short",
-        "strategy_key": "market_impulse",
-        "strategy_name": "Market Impulse (Cross & Reclaim)",
-        "recommendation_tier": "shadow",
-        "bhiksha_ready": "TRUE",
-        "bhiksha_capability_status": "supported",
-        "expectancy": "0.5",
-        "confidence": "0.55",
-        "signal_count": "100",
-        "execution_robustness": "0.99",
-        "thesis_exit_policy": "time_stop_underlying",
-        "exit_reliability": "thin",
-        "exit_trade_count": "25",
-        "signal_window_et": "09:35-11:00",
-        "provider_validation_status": "provider_pass",
-        "option_trade_ready": "true",
-        "option_adjusted_expectancy_pct": "0.21",
-        "option_exit_quality": "fast_intraday",
-        "recommended_dte_min": "3",
-        "recommended_dte_max": "7",
-        "median_minutes_held": "55",
-        "pnl_pct_per_minute": "0.004",
-    }
-
-    artifacts = build_shadow_activation_packet(
-        evidence_rows=[
-            {"catalog_key": "active__amd_short", **base},
-            {"catalog_key": "duplicate__amd_short", **base},
-        ],
-        active_strategy_rows=[{"strategy_id": "active__amd_short", "enabled": "TRUE"}],
-        out_dir=tmp_path,
-    )
-
-    assert [row["catalog_key"] for row in artifacts.recommended_rows] == ["active__amd_short"]
-    packet = artifacts.packet_md.read_text(encoding="utf-8")
-    assert "`observe_only` `duplicate__amd_short`: eligible,duplicate_shadow_signature" in packet
-
-
-def test_shadow_activation_blocks_provider_unknown_by_default() -> None:
-    decision, reasons = classify_shadow_activation(
-        {
-            "bhiksha_ready": "TRUE",
-            "bhiksha_capability_status": "supported",
-            "recommendation_tier": "shadow",
-            "expectancy": "0.25",
-            "execution_robustness": "0.80",
-            "signal_count": "25",
-        },
-        config=ShadowActivationConfig(),
-    )
-
-    assert decision == "blocked"
-    assert "provider_unknown" in reasons
-
-
-def test_shadow_activation_maps_schwab_adoption_pass_to_provider_pass() -> None:
-    decision, reasons = classify_shadow_activation(
-        {
-            "bhiksha_ready": "TRUE",
-            "bhiksha_capability_status": "supported",
-            "recommendation_tier": "shadow",
-            "expectancy": "0.25",
-            "execution_robustness": "0.80",
-            "signal_count": "25",
-            "schwab_adoption_status": "adoption_pass",
-        },
-        config=ShadowActivationConfig(),
-    )
-
-    assert decision == "shadow"
-    assert reasons == ["eligible"]
-
-
-def test_shadow_activation_keeps_provider_watch_out_of_shadow() -> None:
-    decision, reasons = classify_shadow_activation(
-        {
-            "bhiksha_ready": "TRUE",
-            "bhiksha_capability_status": "supported",
-            "recommendation_tier": "shadow",
-            "expectancy": "0.25",
-            "execution_robustness": "0.80",
-            "signal_count": "25",
-            "provider_validation_status": "provider_watch",
-        },
-        config=ShadowActivationConfig(),
-    )
-
-    assert decision == "observe_only"
-    assert "provider_watch" in reasons
 
 
 def test_merge_active_strategy_rows_preserves_existing_and_updates_matches() -> None:
@@ -272,56 +173,6 @@ def test_merge_active_strategy_rows_can_disable_non_recommended() -> None:
 
     assert merged[0]["enabled"] == "FALSE"
     assert "not in current shadow packet" in merged[0]["notes"]
-
-
-def test_publish_schwab_adoption_columns_updates_provider_gate() -> None:
-    client = _FakeEvidenceClient(
-        [
-            {
-                "row_index": 2,
-                "catalog_key": "idea__amd_short",
-                "provider_validation_status": "",
-            }
-        ]
-    )
-
-    result = publish_schwab_adoption_columns(
-        [
-            {
-                "catalog_key": "idea__amd_short",
-                "adoption_status": "adoption_pass",
-                "adoption_reason": "positive_schwab_replay",
-                "schwab_trade_count": "12",
-                "schwab_win_rate": "0.58",
-                "schwab_avg_signed_move_pct": "0.07",
-                "schwab_median_minutes_held": "21",
-            }
-        ],
-        spreadsheet_id="sheet",
-        credentials_path="creds.json",
-        report_path="data/results/research_ops/schwab_adoption/report.md",
-        evidence_client=client,  # type: ignore[arg-type]
-    )
-
-    assert result["updated_rows"] == 1
-    assert client.ensured_columns[0][0] == "provider_validation_status"
-    assert client.updated_rows[0]["provider_validation_status"] == "provider_pass"
-    assert client.updated_rows[0]["provider_feature_risk"] == "green"
-    assert client.updated_rows[0]["schwab_adoption_status"] == "adoption_pass"
-    assert client.updated_columns == [
-        "provider_validation_status",
-        "provider_feature_risk",
-        "provider_signal_overlap",
-        "provider_validation_report",
-        "schwab_adoption_status",
-        "schwab_adoption_reason",
-        "schwab_trade_count",
-        "schwab_win_rate",
-        "schwab_avg_signed_move_pct",
-        "schwab_median_minutes_held",
-        "schwab_adoption_report",
-        "schwab_adoption_updated_at",
-    ]
 
 
 def test_shadow_daily_report_reads_feedback_bundle(tmp_path: Path) -> None:
@@ -465,31 +316,3 @@ def test_shadow_daily_report_prefers_session_counts_when_replay_packet_failed(tm
     assert "insufficient_budget_for_single_contract" in report
     assert "mala_tier" in scorecard
     assert "shadow" in scorecard
-
-
-class _FakeEvidenceClient:
-    def __init__(self, rows: list[dict[str, str | int]]) -> None:
-        self.rows = rows
-        self.ensured_columns: list[list[str]] = []
-        self.updated_rows: list[dict[str, str | int]] = []
-        self.updated_columns: list[str] = []
-
-    def require_sheet_exists(self) -> None:
-        return None
-
-    def ensure_columns(self, columns: list[str]) -> list[str]:
-        self.ensured_columns.append(columns)
-        return columns
-
-    def read_rows(self, *, range_suffix: str = "A1:ZZ5000") -> list[dict[str, str | int]]:
-        return self.rows
-
-    def batch_update_rows(
-        self,
-        *,
-        rows: list[dict[str, str | int]],
-        columns: list[str],
-    ) -> dict[str, int]:
-        self.updated_rows = rows
-        self.updated_columns = columns
-        return {"updated": len(rows)}
