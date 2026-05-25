@@ -42,4 +42,4 @@ failed extension without waiting for a deeper second-touch pattern.
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/mi-desc-shallow-spring-semiconductors-m1/2026-05-17T072327`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/mi-desc-shallow-spring-semiconductors-m1/2026-05-17T072327`

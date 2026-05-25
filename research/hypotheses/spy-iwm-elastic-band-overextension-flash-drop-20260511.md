@@ -41,4 +41,4 @@ Test whether SPY/IWM intraday upside overextension relative to VPOC, confirmed b
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/spy-iwm-elastic-band-overextension-flash-drop-20260511/2026-05-17T072736`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/spy-iwm-elastic-band-overextension-flash-drop-20260511/2026-05-17T072736`

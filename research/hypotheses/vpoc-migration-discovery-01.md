@@ -38,4 +38,4 @@ surface passes the normal M1-M5 gates.
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/vpoc-migration-discovery-01/2026-05-17T072830`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/vpoc-migration-discovery-01/2026-05-17T072830`

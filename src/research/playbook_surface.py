@@ -1049,7 +1049,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     out_dir = args.out_dir or (
-        Path("data/results/playbooks/mean_reversion_at_extremes")
+        Path("research/results/playbooks/mean_reversion_at_extremes")
         / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     )
     result = run_playbook_surface(

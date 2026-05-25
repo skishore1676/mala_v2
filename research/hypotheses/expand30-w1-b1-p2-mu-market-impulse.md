@@ -43,4 +43,4 @@ MU may exhibit transferable opening impulse continuation when early VWMA regime 
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b1-p2-mu-market-impulse/2026-05-17T070658`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b1-p2-mu-market-impulse/2026-05-17T070658`

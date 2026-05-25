@@ -44,4 +44,4 @@ Low realized volatility periods can precede expansion moves when trend bias and 
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/compression-breakout-current-basket-discovery/2026-05-17T065843`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/compression-breakout-current-basket-discovery/2026-05-17T065843`

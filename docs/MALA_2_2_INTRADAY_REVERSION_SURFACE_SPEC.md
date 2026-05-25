@@ -60,7 +60,7 @@ python -m src.research.playbook_surface \
   --symbols IWM,QQQ \
   --start 2021-05-13 \
   --end 2026-05-13 \
-  --out-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
+  --out-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts>
 ```
 
 Initial flags:
@@ -85,7 +85,7 @@ Use existing Mala infrastructure:
 - minute bars from `src.chronos.storage.LocalStorage`
 - ET session helpers from `src.time_utils`
 - feature transforms from `src.newton.engine` where reusable
-- local output under `data/results/playbooks/`
+- local output under `research/results/playbooks/`
 
 The first version is underlying-only. No option overlay, no broker fills, no
 provider replay.
@@ -108,7 +108,7 @@ Reuse existing Mala/Newton surfaces where they fit the play:
 - `src.oracle.metrics` for MFE/MAE-style excursion evidence
 - `src.oracle.trade_simulator` and exit-policy classes where bar-by-bar
   simulation is needed
-- existing `data/results/` style local artifact output
+- existing `research/results/` style local artifact output
 
 New build required:
 
@@ -424,7 +424,7 @@ should not pretend the exit is solved.
 Each run writes:
 
 ```text
-data/results/playbooks/mean_reversion_at_extremes/<run_ts>/
+research/results/playbooks/mean_reversion_at_extremes/<run_ts>/
   RECEIPT.md
   conditional_surface_by_symbol.csv
   feature_bins_by_symbol.csv
@@ -613,7 +613,7 @@ Operator-query smoke after a surface exists:
 
 ```bash
 python -m src.research.playbook_surface_query \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts> \
   --symbol QQQ \
   --direction short \
   --timestamp "2026-05-11 09:45 America/New_York"

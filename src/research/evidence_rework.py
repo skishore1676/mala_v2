@@ -21,8 +21,8 @@ from src.research.google_sheets import GoogleSheetTableClient
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_HANDOFF_CSV = REPO_ROOT / "data" / "results" / "mala_handoff_rework_preview_20260517" / "MALA_HANDOFF_CANDIDATES.csv"
-DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "mala_evidence_rework"
+DEFAULT_HANDOFF_CSV = REPO_ROOT / "research" / "results" / "mala_handoff_rework_preview_20260517" / "MALA_HANDOFF_CANDIDATES.csv"
+DEFAULT_OUT_DIR = REPO_ROOT / "research" / "results" / "mala_evidence_rework"
 
 
 @dataclass(frozen=True, slots=True)

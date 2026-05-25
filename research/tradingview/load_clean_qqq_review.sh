@@ -6,7 +6,7 @@ set -euo pipefail
 # - entry/exit labels on
 # - VPOC, VWMA stack, risk boxes, and risk lines off by default
 
-PINE_FILE="${1:-/Users/suman/code/mala_v2/data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/tradingview_visual_review/qqq_2026-05-06_2026-05-12/mala_qqq_playbook_review.pine}"
+PINE_FILE="${1:-/Users/suman/code/mala_v2/research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/tradingview_visual_review/qqq_2026-05-06_2026-05-12/mala_qqq_playbook_review.pine}"
 TV_SYMBOL="${TV_SYMBOL:-BATS:QQQ}"
 TV_TIMEFRAME="${TV_TIMEFRAME:-1}"
 TV_SCROLL_TO="${TV_SCROLL_TO:-2026-05-11T10:34:00-04:00}"

@@ -43,4 +43,4 @@ Apply the existing Opening Drive Classifier to AMZN as a config-only transfer te
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p2-amzn-opening-drive/2026-05-17T070739`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b2-p2-amzn-opening-drive/2026-05-17T070739`

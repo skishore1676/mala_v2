@@ -266,7 +266,7 @@ TradingView overlay packet:
 
 ```bash
 python -m src.research.playbook_visual_review \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts> \
   --symbol QQQ \
   --start 2026-05-04 \
   --end 2026-05-08 \
@@ -296,7 +296,7 @@ without deleting existing TradingView drawings.
 - `src.oracle.metrics` for MFE/MAE-style excursion evidence
 - `src.oracle.trade_simulator` and exit-policy machinery where bar-by-bar
   trade simulation is needed
-- existing research artifact pattern under `data/results/`
+- existing research artifact pattern under `research/results/`
 
 ---
 
@@ -321,14 +321,14 @@ python -m src.research.playbook_surface \
   --symbols IWM,QQQ \
   --start 2021-05-13 \
   --end 2026-05-13 \
-  --out-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts>
+  --out-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts>
 ```
 
 Operator query:
 
 ```bash
 python -m src.research.playbook_surface_query \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts> \
   --symbol QQQ \
   --direction short \
   --timestamp "2026-05-11 09:45 America/New_York"
@@ -343,7 +343,7 @@ Recommended analyst-desk query:
 
 ```bash
 python -m src.research.playbook_surface_query \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run_ts> \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/<run_ts> \
   --symbol IWM \
   --direction short \
   --timestamp "2026-04-21 08:50 America/Chicago" \
@@ -382,7 +382,7 @@ For live/replay compression, create a deterministic policy card from the query:
 
 ```bash
 python -m src.research.playbook_policy_card \
-  --query-json data/results/playbooks/mean_reversion_at_extremes/<run_ts>/surface_queries/<query_id>/query_result.json \
+  --query-json research/results/playbooks/mean_reversion_at_extremes/<run_ts>/surface_queries/<query_id>/query_result.json \
   --update-log
 ```
 

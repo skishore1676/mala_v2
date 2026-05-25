@@ -7,7 +7,7 @@ SHEET_ID="${SHEET_ID:-1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0}"
 GOOGLE_CREDENTIALS="${GOOGLE_CREDENTIALS:-/Users/sunny/.openclaw/credentials/sheets_sa.json}"
 INTERVAL_SECONDS="${INTERVAL_SECONDS:-900}"
 PLIST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
-LOG_DIR="${REPO_DIR}/data/results/research_ops/orchestrator"
+LOG_DIR="${REPO_DIR}/research/results/research_ops/orchestrator"
 
 mkdir -p "${HOME}/Library/LaunchAgents" "${LOG_DIR}"
 

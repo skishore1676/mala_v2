@@ -15,7 +15,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ── Paths ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+RESEARCH_DIR = PROJECT_ROOT / "research"
+RESEARCH_RESULTS_DIR = RESEARCH_DIR / "results"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+RESEARCH_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_env_file() -> str | None:

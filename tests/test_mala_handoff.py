@@ -177,7 +177,7 @@ def test_mala_handoff_joins_m6_provider_fields_when_present(tmp_path: Path) -> N
                 "provider_signal_overlap": "0.91",
                 "provider_trade_count_ratio": "0.87",
                 "provider_expectancy_ratio": "0.8",
-                "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+                "provider_validation_report": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
             }
         ],
     )
@@ -260,7 +260,7 @@ def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> 
                 "provider_validation_status": "provider_watch",
                 "provider_feature_risk": "yellow",
                 "provider_signal_overlap": "0.91",
-                "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+                "provider_validation_report": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
             }
         ],
     )
@@ -306,7 +306,7 @@ def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> 
             "provider_validation_status": "provider_watch",
             "provider_feature_risk": "yellow",
             "provider_signal_overlap": "0.91",
-            "provider_validation_report": "data/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+            "provider_validation_report": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
         }
     ]
     assert "bhiksha_ready" not in client.updated_rows[0]

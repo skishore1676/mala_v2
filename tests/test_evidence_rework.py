@@ -23,7 +23,7 @@ def test_build_manifest_prioritizes_active_rows_and_flags_short_option_rework() 
                     "signal_count": "53",
                     "execution_robustness": "0.82",
                     "strategy_params_json": '{"entry_buffer_minutes": 3, "entry_window_minutes": 60}',
-                    "run_dir": "data/results/hypothesis_runs/mi/run",
+                    "run_dir": "research/results/hypothesis_runs/mi/run",
                 }
             ],
             live_rows=[{"catalog_key": "mi__qqq_short", "recommendation_tier": "shadow"}],

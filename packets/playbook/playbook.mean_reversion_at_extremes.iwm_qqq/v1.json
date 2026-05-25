@@ -88,27 +88,27 @@
       {
         "description": null,
         "label": "run_config",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
       },
       {
         "description": null,
         "label": "conditional_surface",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
       },
       {
         "description": null,
         "label": "sample_events",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
       },
       {
         "description": null,
         "label": "receipt",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
       },
       {
         "description": null,
         "label": "surface_review",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
       }
     ],
     "source_system": "mala_v2"
@@ -204,7 +204,7 @@
       ]
     },
     "generated_from": "src.research.playbook_packet_registry",
-    "source_run_dir": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64",
+    "source_run_dir": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64",
     "surface_rows": 256
   },
   "operator_approval": {

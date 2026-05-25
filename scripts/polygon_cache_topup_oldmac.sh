@@ -6,7 +6,7 @@ BHIKSHA_ROOT="${BHIKSHA_ROOT:-$HOME/Documents/bhiksha}"
 MALA_PYTHON="${MALA_PYTHON:-$MALA_ROOT/.venv/bin/python}"
 LOOKBACK_DAYS="${POLYGON_CACHE_TOPUP_LOOKBACK_DAYS:-7}"
 MODE="${POLYGON_CACHE_TOPUP_MODE:-all_cache}"
-LOG_DIR="$MALA_ROOT/data/results/cache_topup"
+LOG_DIR="$MALA_ROOT/research/results/cache_topup"
 LOCK_DIR="$LOG_DIR/polygon_cache_topup.lock"
 
 mkdir -p "$LOG_DIR"

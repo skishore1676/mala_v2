@@ -44,4 +44,4 @@ Jerk inflections near VPOC can identify moments where intraday momentum is re-ac
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-05-17T070931`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-05-17T070931`

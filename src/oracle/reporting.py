@@ -3,7 +3,7 @@ Oracle Experiment Reporter
 
 Saves comprehensive experiment results to timestamped directories:
 
-    data/results/
+    research/results/
     └── 2026-02-12_18-56_SPY_EMA-Momentum/
         ├── experiment.json   ← full config, metrics, and metadata
         ├── trade_log.csv     ← every signal with forward metrics
@@ -22,14 +22,14 @@ from typing import Any, Dict, List, Optional
 import polars as pl
 from loguru import logger
 
-from src.config import DATA_DIR
+from src.config import RESEARCH_RESULTS_DIR
 
 
 class ExperimentReporter:
     """Persist experiment results to a timestamped directory."""
 
     def __init__(self, results_dir: Optional[Path] = None) -> None:
-        self.results_dir = results_dir or DATA_DIR / "results"
+        self.results_dir = results_dir or RESEARCH_RESULTS_DIR
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     def save_experiment(

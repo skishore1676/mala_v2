@@ -43,4 +43,4 @@ Large intraday stretches away from 4-hour VPOC should mean-revert when short-ter
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/elastic-band-current-basket-discovery/2026-05-17T070215`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/elastic-band-current-basket-discovery/2026-05-17T070215`

@@ -1,7 +1,7 @@
 """Research operations ledger and hot-start tools.
 
 This module keeps Mala's research memory reconstructable from local evidence:
-hypothesis markdown files plus run artifacts under data/results/hypothesis_runs.
+hypothesis markdown files plus run artifacts under research/results/hypothesis_runs.
 Google Sheets can mirror summaries, but local artifacts remain canonical.
 """
 
@@ -45,14 +45,14 @@ from src.strategy.factory import available_strategy_names
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HYPOTHESES_DIR = REPO_ROOT / "research" / "hypotheses"
-DEFAULT_RUNS_DIR = REPO_ROOT / "data" / "results" / "hypothesis_runs"
-DEFAULT_OUT_DIR = REPO_ROOT / "data" / "results" / "research_ops"
+DEFAULT_RUNS_DIR = REPO_ROOT / "research" / "results" / "hypothesis_runs"
+DEFAULT_OUT_DIR = REPO_ROOT / "research" / "results" / "research_ops"
 DEFAULT_DISPOSITIONS_PATH = REPO_ROOT / "research" / "reports" / "research_ops" / "finding_dispositions.jsonl"
 DEFAULT_CONTROL_SHEET_NAME = "Research_Control"
 DEFAULT_INTAKE_SHEET_NAME = "Research_Intake"
 DEFAULT_OPTIONS_SHEET_NAME = "op_options"
-DEFAULT_SHADOW_CAMPAIGN_DIR = REPO_ROOT / "data" / "results" / "shadow_campaign"
-DEFAULT_LIVE_FEEDBACK_DIR = REPO_ROOT / "data" / "live_feedback"
+DEFAULT_SHADOW_CAMPAIGN_DIR = REPO_ROOT / "research" / "results" / "shadow_campaign"
+DEFAULT_LIVE_FEEDBACK_DIR = REPO_ROOT / "research" / "results" / "live_feedback"
 
 CONTROL_SHEET_HEADERS = [
     "rank",
@@ -2575,7 +2575,7 @@ def build_program_status(args: argparse.Namespace) -> dict[str, Any]:
     by_tag = {tag: [item for item in items if item.get("tag") == tag] for tag in sorted(PROGRAM_STATUS_TAGS)}
     warnings = control_warnings + intake_warnings
     if not latest_digest:
-        warnings.append("No digest artifact found under data/results/research_ops/digests/.")
+        warnings.append("No digest artifact found under research/results/research_ops/digests/.")
     if not next_actions_report.exists():
         warnings.append("No next_actions.md artifact found yet; program-status rebuilt next actions in memory.")
     return {
@@ -4729,7 +4729,7 @@ def cmd_provider_validate_m6(args: argparse.Namespace) -> int:
 def _latest_provider_artifact(out_dir: str | Path, filename: str) -> str:
     roots = [
         Path(out_dir) / "provider_volume_parity",
-        REPO_ROOT / "data" / "results" / "provider_volume_parity",
+        REPO_ROOT / "research" / "results" / "provider_volume_parity",
     ]
     paths = sorted(path for root in roots for path in root.glob(f"*/{filename}"))
     return str(paths[-1]) if paths else ""
@@ -5007,12 +5007,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     provider_validate.add_argument(
         "--provider-relative-volume-csv",
         default="",
-        help="provider_relative_volume_parity.csv. Defaults to latest data/results/research_ops/provider_volume_parity run.",
+        help="provider_relative_volume_parity.csv. Defaults to latest research/results/research_ops/provider_volume_parity run.",
     )
     provider_validate.add_argument(
         "--provider-feature-parity-csv",
         default="",
-        help="provider_feature_parity.csv. Defaults to latest data/results/research_ops/provider_volume_parity run.",
+        help="provider_feature_parity.csv. Defaults to latest research/results/research_ops/provider_volume_parity run.",
     )
     provider_validate.add_argument(
         "--provider-replay-csv",

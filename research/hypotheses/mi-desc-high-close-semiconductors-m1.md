@@ -42,4 +42,4 @@ separate real continuation from noisy first-hour whipsaw.
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/mi-desc-high-close-semiconductors-m1/2026-05-17T071804`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/mi-desc-high-close-semiconductors-m1/2026-05-17T071804`

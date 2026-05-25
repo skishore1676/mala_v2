@@ -12,9 +12,9 @@
   "extra_count": 0,
   "drift_categories": [],
   "artifacts": {
-    "signal_diff": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/signal_diff.csv",
-    "report_json": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json",
-    "report_md": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.md"
+    "signal_diff": "research/results/playbook_parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/signal_diff.csv",
+    "report_json": "research/results/playbook_parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json",
+    "report_md": "research/results/playbook_parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.md"
   },
   "notes": null
 }

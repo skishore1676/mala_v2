@@ -45,7 +45,7 @@ authorization. The trader still decides take or pass.
 Set the current run once:
 
 ```bash
-RUN_DIR=data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
+RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
 ```
 
 Run a chart-first query:

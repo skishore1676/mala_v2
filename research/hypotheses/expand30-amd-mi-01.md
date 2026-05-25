@@ -46,4 +46,4 @@ Run Expand30 single-ticker Market Impulse feasibility/M1 on AMD. This is a high-
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-amd-mi-01/2026-05-17T070638`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-amd-mi-01/2026-05-17T070638`

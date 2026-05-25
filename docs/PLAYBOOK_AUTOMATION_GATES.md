@@ -57,7 +57,7 @@ approved packet version with evidence attached at each gate.
 
 ```bash
 python -m src.research.playbook_automation_gates \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/<run> \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/<run> \
   --playbook-packet <packet.json> \
   --locked-validation <locked_validation.json> \
   --parity-report <PARITY_REPORT.json> \

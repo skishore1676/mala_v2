@@ -83,32 +83,32 @@
       {
         "description": null,
         "label": "parity_report",
-        "uri": "artifacts/parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json"
+        "uri": "research/results/playbook_parity/playbook.mean_reversion_at_extremes.iwm_qqq/20260516T205756Z/PARITY_REPORT.json"
       },
       {
         "description": null,
         "label": "run_config",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/config.json"
       },
       {
         "description": null,
         "label": "conditional_surface",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/conditional_surface_by_symbol.csv"
       },
       {
         "description": null,
         "label": "sample_events",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/sample_events.csv"
       },
       {
         "description": null,
         "label": "receipt",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/RECEIPT.md"
       },
       {
         "description": null,
         "label": "surface_review",
-        "uri": "data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
+        "uri": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64/surface_review/SURFACE_REVIEW.md"
       }
     ],
     "source_system": "mala_v2"

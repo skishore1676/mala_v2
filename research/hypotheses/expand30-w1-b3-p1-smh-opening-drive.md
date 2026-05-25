@@ -43,4 +43,4 @@ SMH may carry the same opening-drive continuation behavior already observed in s
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b3-p1-smh-opening-drive/2026-05-17T070825`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b3-p1-smh-opening-drive/2026-05-17T070825`

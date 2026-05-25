@@ -40,7 +40,7 @@ Create the deterministic policy card from a query:
 
 ```bash
 python -m src.research.playbook_policy_card \
-  --query-json data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN/surface_queries/iwm_short_20260421T104000_ET_state_management/query_result.json \
+  --query-json research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN/surface_queries/iwm_short_20260421T104000_ET_state_management/query_result.json \
   --update-log
 ```
 
@@ -69,7 +69,7 @@ List rows that still need outcome capture:
 
 ```bash
 python -m src.research.playbook_consultation_log list \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
   --open-only
 ```
 
@@ -78,7 +78,7 @@ only supplies the judgment (`taken`) and, if taken, the selected management row:
 
 ```bash
 python -m src.research.playbook_consultation_log replay-close \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
   --query-id iwm_short_20260421T104000_ET_state_management \
   --taken Y \
   --selected-exit scalp_0.25pct \
@@ -90,7 +90,7 @@ For a historical pass:
 
 ```bash
 python -m src.research.playbook_consultation_log replay-close \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
   --query-id iwm_short_20260421T104000_ET_state_management \
   --taken N \
   --historical \
@@ -106,7 +106,7 @@ For live/manual logging, close or update one row directly:
 
 ```bash
 python -m src.research.playbook_consultation_log close \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
   --query-id iwm_short_20260421T104000_ET_state_management \
   --selected-exit scalp_0.25pct \
   --reported-survived-pct 46.8% \
@@ -122,7 +122,7 @@ to the journal:
 
 ```bash
 python -m src.research.playbook_surface_query \
-  --run-dir data/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
+  --run-dir research/results/playbooks/mean_reversion_at_extremes/CURRENT_RUN \
   --symbol IWM \
   --direction short \
   --timestamp "2026-04-21 09:40 America/Chicago" \

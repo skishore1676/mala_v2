@@ -44,4 +44,4 @@ The opening range establishes the early auction imbalance. When price breaks awa
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/opening-drive-current-basket-discovery/2026-05-17T072420`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/opening-drive-current-basket-discovery/2026-05-17T072420`

@@ -244,7 +244,7 @@ When Phase 0 is approved, the builder agent should receive:
 Expected Phase 1 output:
 
 ```text
-data/results/playbooks/mean_reversion_at_extremes/<run_ts>/
+research/results/playbooks/mean_reversion_at_extremes/<run_ts>/
   RECEIPT.md
   conditional_surface_by_symbol.csv
   feature_bins_by_symbol.csv

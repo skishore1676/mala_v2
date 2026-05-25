@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-reoptimize_exits.py — Exit-Only Optimizer Against Existing M5 Artifacts
-========================================================================
+scripts/reoptimize_exits.py — Exit-Only Optimizer Against Existing M5 Artifacts
+==============================================================================
 Re-runs the exit optimizer on M5 catalog candidates from an existing run
 without touching M1-M5 discovery, hypothesis state files, or Google Sheets.
 
@@ -11,14 +11,14 @@ candidates, without forcing a full M1→M5 rediscovery.
 
 Usage:
     # Re-optimize the latest run for a hypothesis (dry run first):
-    python reoptimize_exits.py --hypothesis research/hypotheses/market-impulse-all-basket-discovery.md --dry-run
+    python scripts/reoptimize_exits.py --hypothesis research/hypotheses/market-impulse-all-basket-discovery.md --dry-run
 
     # Re-optimize and overwrite exit artifacts in-place:
-    python reoptimize_exits.py --hypothesis research/hypotheses/market-impulse-all-basket-discovery.md
+    python scripts/reoptimize_exits.py --hypothesis research/hypotheses/market-impulse-all-basket-discovery.md
 
     # Target a specific run directory:
-    python reoptimize_exits.py --hypothesis research/hypotheses/jerk-pivot-current-basket-discovery.md \\
-        --run-dir data/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-04-15T225844
+    python scripts/reoptimize_exits.py --hypothesis research/hypotheses/jerk-pivot-current-basket-discovery.md \\
+        --run-dir research/results/hypothesis_runs/jerk-pivot-current-basket-discovery/2026-04-15T225844
 
 What it does:
     1. Parses the hypothesis file to get strategy, tickers, guardrail settings.
@@ -276,7 +276,7 @@ def parse_args() -> argparse.Namespace:
                    help="Path to hypothesis .md file (relative to repo root or absolute)")
     p.add_argument("--run-dir", default=None,
                    help="Specific run directory to target. Default: latest run with M5_execution.csv")
-    p.add_argument("--out-dir", default="data/results/hypothesis_runs",
+    p.add_argument("--out-dir", default="research/results/hypothesis_runs",
                    help="Root for hypothesis run directories")
     p.add_argument("--start",          type=date.fromisoformat, default=DEFAULT_START)
     p.add_argument("--holdout-start",  type=date.fromisoformat, default=DEFAULT_HOLDOUT_START)

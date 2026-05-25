@@ -43,4 +43,4 @@ AVGO may carry the established opening-drive continuation behavior seen in the c
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b2-p3-avgo-opening-drive/2026-05-17T070754`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b2-p3-avgo-opening-drive/2026-05-17T070754`

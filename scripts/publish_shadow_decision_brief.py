@@ -37,12 +37,12 @@ def main() -> int:
 
     daily_report = _resolve_latest(
         args.daily_report,
-        mala_root / "data/results/research_ops/shadow_campaign/daily",
+        mala_root / "research/results/research_ops/shadow_campaign/daily",
         "shadow_daily_report_*.md",
     )
     signal_report = _resolve_latest(
         args.signal_ev_report,
-        mala_root / "data/results/research_ops/bhiksha_signal_ev",
+        mala_root / "research/results/research_ops/bhiksha_signal_ev",
         "BHIKSHA_SIGNAL_EV_REPORT.md",
     )
     signal_dir = signal_report.parent if signal_report else None

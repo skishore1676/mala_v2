@@ -42,7 +42,7 @@ MALA_HANDOFF_VERSION = 1
 GENERATOR_VERSION = 1
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RUNS_ROOT = REPO_ROOT / "data" / "results" / "hypothesis_runs"
+DEFAULT_RUNS_ROOT = REPO_ROOT / "research" / "results" / "hypothesis_runs"
 
 _M5_NON_PARAM_COLS = {
     "ticker",
@@ -886,7 +886,7 @@ def render_warnings_markdown(packets: list[MalaHandoffPacket]) -> str:
 
 def default_output_dir() -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return REPO_ROOT / "data" / "results" / "mala_handoff" / stamp
+    return REPO_ROOT / "research" / "results" / "mala_handoff" / stamp
 
 
 def _read_csv_dicts(path: Path) -> list[dict[str, str]]:
@@ -1085,7 +1085,7 @@ def _recommendation_thresholds() -> RecommendationThresholds:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate Mala-owned handoff evidence packets from M5 artifacts.")
-    parser.add_argument("--runs-root", default=str(DEFAULT_RUNS_ROOT), help="Root containing data/results/hypothesis_runs artifacts.")
+    parser.add_argument("--runs-root", default=str(DEFAULT_RUNS_ROOT), help="Root containing research/results/hypothesis_runs artifacts.")
     parser.add_argument("--out-dir", default="", help="Output directory for handoff preview artifacts.")
     parser.add_argument("--all-runs", action="store_true", help="Include older duplicate catalog_key rows instead of latest only.")
     parser.add_argument("--promote-shadow-only", action="store_true", help="Exclude watch_only candidates.")

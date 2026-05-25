@@ -42,4 +42,4 @@ AVGO may show repeatable intraday snap-back behavior after statistically large s
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b4-p2-avgo-elastic-band/2026-05-17T070840`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b4-p2-avgo-elastic-band/2026-05-17T070840`

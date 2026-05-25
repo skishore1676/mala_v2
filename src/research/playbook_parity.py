@@ -185,7 +185,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--out-root", type=Path, default=Path("artifacts/parity"))
+    parser.add_argument("--out-root", type=Path, default=Path("research/results/playbook_parity"))
     parser.add_argument("--research-events", type=Path)
     parser.add_argument("--runtime-events", type=Path)
     return parser.parse_args()

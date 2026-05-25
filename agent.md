@@ -11,7 +11,7 @@ Takes a trading hypothesis → validates it through M1-M5 gates → local CSV re
 ```
 Polygon.io (Parquet cache) → Newton (physics features) → Strategy → Oracle (MFE/MAE)
   → M1 walk-forward → M2 cost convergence → M3 OOS → M4 holdout → M5 exec stress
-  → data/results/hypothesis_runs/{id}/{timestamp}/
+  → research/results/hypothesis_runs/{id}/{timestamp}/
 ```
 
 ---
@@ -54,7 +54,14 @@ python -m pytest tests/ -v
 | `src/research/stages/` | M1-M5 gate logic — do not touch without reading first |
 | `src/newton/engine.py` | Physics features (velocity, accel, jerk, VPOC, EMAs) |
 | `research/hypotheses/` | Hypothesis state machine files |
-| `data/results/hypothesis_runs/` | All output artifacts per run |
+| `research/results/hypothesis_runs/` | All output artifacts per run |
+
+## Active layout
+
+- `src/`, `scripts/`, `config/`, `packets/`, and `tests/` are the active source and contract surface.
+- `research/hypotheses/`, `research/playbooks/`, `research/reports/`, and `research/tradingview/` are the human-readable research workspace.
+- `research/results/` is the only result/artifact root. It is ignored by default; force-add only curated artifacts that should stay reviewable in git.
+- `data/` is local-only market-data cache. Do not write result artifacts there.
 
 ---
 
@@ -129,7 +136,7 @@ python -m src.research.research_ops process-intake --apply
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
 python -m src.research.research_ops sync-board --dry-run
-python -m src.research.research_ops provider-validate-m6 --run-dir data/results/hypothesis_runs/<hypothesis>/<run_ts>
+python -m src.research.research_ops provider-validate-m6 --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
 python -m src.research.mala_handoff --publish-provider-validation-only
 python -m src.research.research_ops push-control \
   --control-sheet-id 1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0 \
@@ -171,9 +178,9 @@ python -m src.research.local_orchestrator daemon --mode apply-safe --interval-se
 scripts/install_oldmac_orchestrator_launchd.sh
 ```
 
-The workbook/CSV outputs under `data/results/research_ops/` are rebuildable
+The workbook/CSV outputs under `research/results/research_ops/` are rebuildable
 summaries, not canonical truth. Canonical research evidence remains:
-`research/hypotheses/` plus `data/results/hypothesis_runs/`.
+`research/hypotheses/` plus `research/results/hypothesis_runs/`.
 Finding dispositions are decision memory and live in
 `research/reports/research_ops/finding_dispositions.jsonl`.
 
@@ -205,7 +212,7 @@ Mental model:
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
 8. After M5: run `python -m src.research.research_ops provider-validate-m6 --run-dir <run_dir>` when provider parity artifacts are available. This is advisory and does not replace M1-M5.
 9. After M5/M6: publish reviewable evidence with `python -m src.research.mala_handoff`. `bhiksha_ready` is derived from tested thesis exits, recommendation tier, and the Bhiksha-owned capability manifest; provider validation fields are review metadata.
-10. After a research batch, run `python -m src.research.research_ops backfill` and read `data/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
+10. After a research batch, run `python -m src.research.research_ops backfill` and read `research/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
 
 **Reading regime slices post-run:**
 Look at `M4_holdout.csv` columns `vix_band`, `spy_trend_20d`, `session_type`, `market_regime_key` to answer:

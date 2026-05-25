@@ -109,8 +109,8 @@ lanes are now distinct:
   available as runtime authorization paths.
 - **Mala legacy source reachability is cut.** Legacy `Strategy_Catalog`
   publishers, catalog volume forensics, volume mismatch retune helpers, and
-  retired strategy implementations have been moved under
-  `research/reports/archive`. Active strategy factory reachability is limited
+  retired strategy implementations have been moved out of the active tree into
+  the external prune archive. Active strategy factory reachability is limited
   to current strategy families.
 - **M5.5 option-aware strategy evidence exists.** Mala now selects exits by
   option-adjusted expectancy, velocity, rapid target hit rate, lower hold time,
@@ -236,8 +236,8 @@ Closed or historical docs:
   implemented build contracts.
 - [`MALA_BHIKSHA_PARITY_AUDIT_2026-05-16.md`](MALA_BHIKSHA_PARITY_AUDIT_2026-05-16.md):
   completed audit snapshot.
-- `research/reports/archive/legacy_runtime_20260517/`: old runtime reports,
-  one-time audits, and pre-refactor campaign artifacts.
+- External prune archive: old runtime reports, one-time audits, and
+  pre-refactor campaign artifacts removed from the active source tree.
 
 ## Purpose
 
@@ -594,7 +594,7 @@ catastrophic at the threshold.
 Parity output should be an artifact, not just a unit-test pass:
 
 ```text
-artifacts/parity/<packet_id>/<timestamp>/
+research/results/playbook_parity/<packet_id>/<timestamp>/
   signal_diff.csv
   feature_diagnostics.csv
   exit_diff.csv

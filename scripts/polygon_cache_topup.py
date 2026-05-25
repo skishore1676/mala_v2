@@ -234,7 +234,7 @@ def _build_summary(results: list[DayResult], *, data_dir: Path, symbols: list[st
 
 def _default_summary_path() -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return Path("data/results/cache_topup") / f"polygon_cache_topup_{stamp}.json"
+    return Path("research/results/cache_topup") / f"polygon_cache_topup_{stamp}.json"
 
 
 def _parse_date(value: str) -> date:

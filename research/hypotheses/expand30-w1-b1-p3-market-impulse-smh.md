@@ -43,4 +43,4 @@ SMH may preserve part of the open cross-and-reclaim impulse edge seen in the bro
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/expand30-w1-b1-p3-market-impulse-smh/2026-05-17T070720`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/expand30-w1-b1-p3-market-impulse-smh/2026-05-17T070720`

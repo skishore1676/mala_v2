@@ -32,7 +32,7 @@ missing data. Manual chart review is for trader judgment, not bookkeeping.
 Set the run directory once per replay session:
 
 ```bash
-RUN_DIR=data/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
+RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
 ```
 
 For future playbooks, replace `RUN_DIR` with that playbook's current clean run.

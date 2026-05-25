@@ -11,7 +11,7 @@ from typing import Any
 import polars as pl
 
 from src.chronos.storage import LocalStorage
-from src.config import DATA_DIR
+from src.config import DATA_DIR, RESEARCH_RESULTS_DIR
 from src.research.structural_breaks import daily_ohlcv_from_minutes, latest_structural_break
 
 DEFAULT_UNIVERSE = ["SPY", "QQQ", "IWM", "NVDA", "TSLA", "AMD", "MU", "SMH", "PANW", "TLT", "XLE", "AAPL"]
@@ -108,7 +108,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Write the daily structural-break feed.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Trade date to write, YYYY-MM-DD.")
     parser.add_argument("--symbols", default=",".join(DEFAULT_UNIVERSE), help="Comma-separated symbols.")
-    parser.add_argument("--output-dir", default=str(DATA_DIR / "results" / "structural_breaks"))
+    parser.add_argument("--output-dir", default=str(RESEARCH_RESULTS_DIR / "structural_breaks"))
     parser.add_argument("--data-dir", default=str(DATA_DIR))
     parser.add_argument("--lookback-days", type=int, default=120)
     args = parser.parse_args()

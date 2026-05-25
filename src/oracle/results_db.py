@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import polars as pl
 
-from src.config import DATA_DIR
+from src.config import RESEARCH_RESULTS_DIR
 
 
 def _utc_now() -> str:
@@ -53,7 +53,7 @@ class ResultsDB:
     """Persist strategy artifacts into a queryable SQLite database."""
 
     def __init__(self, db_path: Path | None = None) -> None:
-        self.db_path = db_path or (DATA_DIR / "results" / "results.db")
+        self.db_path = db_path or (RESEARCH_RESULTS_DIR / "results.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
 

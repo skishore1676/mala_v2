@@ -78,7 +78,7 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
 
 def test_build_ledger_backfills_promoted_candidate_and_catalog_presence(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="completed", decision="promote")
     run_dir = runs / "idea" / "2026-04-24T083939"
@@ -130,7 +130,7 @@ def test_build_ledger_backfills_promoted_candidate_and_catalog_presence(tmp_path
 
 def test_hot_start_flags_missing_catalog_and_stale_board_state(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="expand30-amd-mi-01", state="completed", decision="promote")
     run_dir = runs / "expand30-amd-mi-01" / "2026-04-24T083939"
@@ -224,7 +224,7 @@ def test_digest_report_summarizes_queue_and_intake(tmp_path: Path) -> None:
 
 def test_next_actions_rank_publish_and_retune_work(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
     _write_hypothesis(hypotheses, hypothesis_id="retune-idea", state="retune", decision="retune")
@@ -262,7 +262,7 @@ def test_next_actions_rank_publish_and_retune_work(tmp_path: Path) -> None:
 
 def test_control_skip_disposition_suppresses_matching_next_action(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="retune-idea", state="retune", decision="retune")
     ledger = build_ledger(
@@ -286,7 +286,7 @@ def test_control_skip_disposition_suppresses_matching_next_action(tmp_path: Path
 
 def test_pending_run_m1_brief_recommends_approve_run_m1(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="pending-idea", state="pending", decision="")
     ledger = build_ledger(hypotheses_dir=hypotheses, runs_dir=runs)
@@ -299,7 +299,7 @@ def test_pending_run_m1_brief_recommends_approve_run_m1(tmp_path: Path) -> None:
 
 def test_running_m1_promote_brief_recommends_continue_m2(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="running-idea", state="running", decision="promote_to_m2")
     run_dir = runs / "running-idea" / "2026-05-08T080000"
@@ -384,7 +384,7 @@ def test_build_control_rows_preserves_invalid_operator_action_with_status() -> N
 
 def test_action_brief_recommends_retune_after_m2_exp_positive_instability(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="retune", decision="retune")
     run_dir = runs / "idea" / "2026-04-24T083939"
@@ -423,7 +423,7 @@ def test_action_brief_recommends_retune_after_m2_exp_positive_instability(tmp_pa
 
 def test_action_brief_recommends_skip_after_no_positive_m1_retune(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="dead-idea", state="retune", decision="retune")
     run_dir = runs / "dead-idea" / "2026-04-24T083939"
@@ -442,7 +442,7 @@ def test_action_brief_recommends_skip_after_no_positive_m1_retune(tmp_path: Path
 
 def test_control_rows_surface_operator_recommendation_for_failed_retune(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="dead-idea", state="retune", decision="retune")
     run_dir = runs / "dead-idea" / "2026-04-24T083939"
@@ -517,7 +517,7 @@ def test_update_control_row_with_brief_writes_brief_columns() -> None:
 
 def test_surface_expansion_plan_recommends_config_only_for_m1_sample_failure(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(
         hypotheses,
@@ -587,7 +587,7 @@ def test_control_rows_preserve_surface_plan_recommendation_on_refresh(tmp_path: 
     from src.research.research_ops import NextAction
 
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(
         hypotheses,
@@ -627,7 +627,7 @@ def test_control_rows_preserve_surface_plan_recommendation_on_refresh(tmp_path: 
                 "recommended_operator_action": "APPROVE_RETUNE",
                 "brief_recommendation": "CONFIG_ONLY_SURFACE_EXPANSION",
                 "brief_summary": "Plan says bounded retune next.",
-                "brief_path": "data/results/research_ops/surface_expansion/plan.md",
+                "brief_path": "research/results/research_ops/surface_expansion/plan.md",
             }
         ],
         ledger=ledger,
@@ -636,7 +636,7 @@ def test_control_rows_preserve_surface_plan_recommendation_on_refresh(tmp_path: 
     assert rows[0]["recommendation"] == "CONFIG_ONLY_SURFACE_EXPANSION"
     assert rows[0]["recommended_operator_action"] == ""
     assert rows[0]["evidence_summary"] == "Plan says bounded retune next."
-    assert rows[0]["artifact_path"] == "data/results/research_ops/surface_expansion/plan.md"
+    assert rows[0]["artifact_path"] == "research/results/research_ops/surface_expansion/plan.md"
 
 
 def test_evaluate_hypothesis_intake_classifies_config_only() -> None:
@@ -772,7 +772,7 @@ def test_process_intake_rows_evaluate_does_not_create_hypothesis(tmp_path: Path)
 
 def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="completed", decision="promote")
     run_dir = runs / "idea" / "2026-04-24T083939"
@@ -807,7 +807,7 @@ def test_catalog_publish_plan_uses_latest_missing_promoted_rows(tmp_path: Path) 
 
 def test_publish_catalog_rows_blocks_rows_without_exit_artifact(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="completed", decision="promote")
     run_dir = runs / "idea" / "2026-04-24T083939"
@@ -914,7 +914,7 @@ def test_board_sync_plan_maps_terminal_states_to_operator_columns(tmp_path: Path
 
 def test_stale_disposition_suppresses_matching_hot_start_finding(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="running", decision="")
     ledger = build_ledger(
@@ -936,7 +936,7 @@ def test_stale_disposition_suppresses_matching_hot_start_finding(tmp_path: Path)
 
 def test_disposition_clear_restores_matching_finding(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     _write_hypothesis(hypotheses, hypothesis_id="idea", state="running", decision="")
     dispositions = [
@@ -1115,12 +1115,12 @@ def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: 
                     "stage": "M1",
                     "decision": "retune",
                     "thesis": "SPY may continue after a clean opening drive.",
-                    "latest_artifact": "data/results/hypothesis_runs/idea-a/2026-05-01T000000",
+                    "latest_artifact": "research/results/hypothesis_runs/idea-a/2026-05-01T000000",
                     "metrics": ["M1 rows=4; best SPY combined exp_r=0.2232 pct_pos=1.00 signals=16"],
                     "suggested_operator_action": "APPROVE_RETUNE",
                     "recommendation_reason": "M1 still has positive candidates; run the bounded retune plan.",
                     "confidence": "medium",
-                    "sources": ["research/hypotheses/idea-a.md", "data/results/hypothesis_runs/idea-a/2026-05-01T000000"],
+                    "sources": ["research/hypotheses/idea-a.md", "research/results/hypothesis_runs/idea-a/2026-05-01T000000"],
                 },
             },
             {
@@ -1141,7 +1141,7 @@ def test_retune_batch_decision_card_includes_brief_story_and_evidence(tmp_path: 
                     "stage": "M1",
                     "decision": "retune",
                     "thesis": "Velocity and acceleration may identify continuation pockets.",
-                    "latest_artifact": "data/results/hypothesis_runs/idea-b/2026-05-01T000000",
+                    "latest_artifact": "research/results/hypothesis_runs/idea-b/2026-05-01T000000",
                     "metrics": ["M1 rows=2; best QQQ short exp_r=0.1568 pct_pos=0.50 signals=33"],
                     "suggested_operator_action": "APPROVE_RETUNE",
                     "recommendation_reason": "M1 still has positive candidates; run the bounded retune plan.",
@@ -1328,7 +1328,7 @@ def test_researcher_verdicts_split_high_value_retunes_and_summary_defer(tmp_path
                 "stage": "M1",
                 "decision": "retune",
                 "thesis": "A differentiated thesis exists.",
-                "latest_artifact": f"data/results/hypothesis_runs/{key}/2026-05-01T000000",
+                "latest_artifact": f"research/results/hypothesis_runs/{key}/2026-05-01T000000",
                 "metrics": ["M1 rows=4; best SPY combined exp_r=0.2232 pct_pos=1.00 signals=16"],
                 "researcher_verdict": {
                     "recommendation": recommendation,
@@ -1372,7 +1372,7 @@ def test_program_status_researcher_verdict_flags_fragile_smoke_and_one_window(tm
     from src.research.research_ops import build_program_status
 
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     hyp_path = _write_hypothesis(
         hypotheses,
@@ -1419,7 +1419,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
     from src.research.research_ops import build_program_status
 
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     hyp_path = _write_hypothesis(
         hypotheses,
@@ -1562,7 +1562,7 @@ def test_program_status_reads_kinematic_m1_schema_without_missing_artifact(tmp_p
 
 def test_control_rows_use_researcher_verdict_for_smoke_retune(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     hypotheses.mkdir(parents=True)
     hyp_path = _write_hypothesis(
         hypotheses,
@@ -1633,7 +1633,7 @@ def test_control_rows_use_researcher_verdict_for_smoke_retune(tmp_path: Path) ->
 
 def test_ingest_review_decisions_maps_checked_individual_card_to_control_action(tmp_path: Path) -> None:
     hypotheses = tmp_path / "research" / "hypotheses"
-    runs = tmp_path / "data" / "results" / "hypothesis_runs"
+    runs = tmp_path / "research" / "results" / "hypothesis_runs"
     vault = tmp_path / "vault"
     card_dir = vault / "Projects" / "Trading" / "Mala" / "Research" / "Decision Cards"
     hypotheses.mkdir(parents=True)

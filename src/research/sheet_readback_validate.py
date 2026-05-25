@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sheet-name", default="Mala_Evidence_v1")
     parser.add_argument("--credentials-path", default="", help="Google service-account JSON path.")
     parser.add_argument("--range-suffix", default=DEFAULT_RANGE_SUFFIX, help="Optional explicit A1 range suffix. Defaults to CSV-sized range.")
-    parser.add_argument("--out-dir", default="data/results/mala_sheet_readback_validation")
+    parser.add_argument("--out-dir", default="research/results/mala_sheet_readback_validation")
     args = parser.parse_args(argv)
 
     spreadsheet_id = args.sheet_id or settings.strategy_catalog_sheet_id

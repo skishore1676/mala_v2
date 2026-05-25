@@ -52,4 +52,4 @@ is most durable across cost frictions and out-of-sample windows.
 `promote`
 
 ### Artifacts
-`/Users/suman/code/mala_v2/data/results/hypothesis_runs/market-impulse-all-basket-discovery/2026-05-17T071434`
+`/Users/suman/code/mala_v2/research/results/hypothesis_runs/market-impulse-all-basket-discovery/2026-05-17T071434`
