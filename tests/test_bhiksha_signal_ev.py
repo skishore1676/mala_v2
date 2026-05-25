@@ -246,7 +246,34 @@ def test_same_bar_replay_compares_runtime_features_to_mala_bar(tmp_path: Path) -
     assert signals[0]["mala_same_bar_replay_status"] != "missing_bars"
     assert signals[0]["mala_same_bar_feature_compared"] == "2"
     assert signals[0]["mala_same_bar_feature_mismatch_count"] == "1"
+    assert signals[0]["mala_same_bar_feature_tolerated_diff_count"] == "0"
     assert signals[0]["mala_same_bar_feature_worst"] == "volume"
+
+
+def test_same_bar_feature_replay_applies_feature_tolerances() -> None:
+    replay = signal_ev._same_bar_feature_replay(
+        payload_features={"close": 100.005, "volume": 1040.0},
+        bar={"close": 100.0, "volume": 1000.0},
+        params={},
+    )
+
+    assert replay["mala_same_bar_feature_compared"] == "2"
+    assert replay["mala_same_bar_feature_mismatch_count"] == "0"
+    assert replay["mala_same_bar_feature_tolerated_diff_count"] == "2"
+
+
+def test_counterfactual_root_cause_marks_provider_gate_flip() -> None:
+    root_cause = signal_ev._counterfactual_root_cause(
+        {
+            "counterfactual_status": "extra_bhiksha_signal",
+            "mala_replay_status": "no_mala_signal",
+            "mala_feature_mismatch_count": "1",
+            "mala_feature_worst": "directional_mass",
+            "mala_feature_gate_flip_candidate": "yes",
+        }
+    )
+
+    assert root_cause == "provider_feature_gate_flip_kinematic"
 
 
 def test_counterfactual_replay_finds_matched_missed_and_extra_signals(tmp_path: Path, monkeypatch) -> None:

@@ -41,6 +41,23 @@ STRATEGY_NAME_BY_KEY = {
 }
 LEGACY_BHIKSHA_WARMUP_BUFFER_DAYS = 3
 DEFAULT_REPLAY_WARMUP_TRADING_DAYS = 7
+FEATURE_PARITY_DEFAULT_ABS_TOLERANCE = 1e-6
+FEATURE_PARITY_DEFAULT_REL_TOLERANCE = 1e-4
+FEATURE_PARITY_TOLERANCES = {
+    "open": (0.01, 1e-4),
+    "high": (0.01, 1e-4),
+    "low": (0.01, 1e-4),
+    "close": (0.01, 1e-4),
+    "relative_volume": (0.02, 0.05),
+    "volume_ma": (1.0, 0.05),
+    "volume": (1.0, 0.05),
+    "vpoc": (0.05, 5e-4),
+    "velocity": (0.01, 0.05),
+    "accel": (0.01, 0.05),
+    "acceleration": (0.01, 0.05),
+    "jerk": (0.01, 0.05),
+    "directional_mass": (1.0, 0.05),
+}
 
 
 @dataclass(slots=True, frozen=True)
@@ -590,9 +607,11 @@ def _counterfactual_rows(
             "mala_replay_status": signal.get("mala_same_bar_replay_status", ""),
             "mala_replay_error": signal.get("mala_same_bar_replay_error", ""),
             "mala_feature_mismatch_count": signal.get("mala_same_bar_feature_mismatch_count", ""),
+            "mala_feature_tolerated_diff_count": signal.get("mala_same_bar_feature_tolerated_diff_count", ""),
             "mala_feature_max_pct_diff": signal.get("mala_same_bar_feature_max_pct_diff", ""),
             "mala_feature_worst": signal.get("mala_same_bar_feature_worst", ""),
             "mala_feature_diffs": signal.get("mala_same_bar_feature_diffs", ""),
+            "mala_feature_gate_flip_candidate": signal.get("mala_same_bar_feature_gate_flip_candidate", ""),
         }
         row["root_cause"] = _counterfactual_root_cause(row)
         rows.append(row)
@@ -911,11 +930,13 @@ def _counterfactual_root_cause(row: dict[str, Any]) -> str:
         mismatch_count = int(_first_float(row.get("mala_feature_mismatch_count"), 0) or 0)
         if mismatch_count > 0:
             worst = str(row.get("mala_feature_worst", "")).lower()
+            gate_flip = str(row.get("mala_feature_gate_flip_candidate", "")).lower() == "yes"
+            prefix = "provider_feature_gate_flip" if gate_flip else "provider_feature_mismatch"
             if "volume" in worst:
-                return "provider_feature_mismatch_volume"
+                return f"{prefix}_volume"
             if any(token in worst for token in ("velocity", "accel", "jerk", "directional_mass", "vpoc")):
-                return "provider_feature_mismatch_kinematic"
-            return "provider_feature_mismatch"
+                return f"{prefix}_kinematic"
+            return prefix
         if replay_status == "no_mala_signal":
             return "same_bar_strategy_mismatch"
         return "extra_signal_unclassified"
@@ -1346,6 +1367,10 @@ def _same_bar_replay(
         status = "match" if signal and (not expected_direction or direction == expected_direction) else "no_mala_signal"
         if signal and expected_direction and direction and direction != expected_direction:
             status = "direction_mismatch"
+        feature_replay["mala_same_bar_feature_gate_flip_candidate"] = _yes_no(
+            status in {"no_mala_signal", "direction_mismatch"}
+            and int(_first_float(feature_replay.get("mala_same_bar_feature_mismatch_count"), 0) or 0) > 0
+        )
         return base | {
             "mala_same_bar_replay_status": status,
             "mala_same_bar_replay_signal": _yes_no(signal),
@@ -1380,6 +1405,8 @@ def _same_bar_feature_replay(
             continue
         diff = runtime_number - replay_number
         pct = _pct_diff(runtime_number, replay_number)
+        abs_tolerance, rel_tolerance = _feature_parity_tolerance(runtime_key)
+        exceeds_tolerance = abs(diff) > abs_tolerance and pct > rel_tolerance
         comparisons.append(
             {
                 "runtime_feature": runtime_key,
@@ -1388,17 +1415,30 @@ def _same_bar_feature_replay(
                 "mala": round(replay_number, 6),
                 "diff": round(diff, 6),
                 "pct": round(pct, 6),
+                "abs_tolerance": abs_tolerance,
+                "rel_tolerance": rel_tolerance,
+                "exceeds_tolerance": exceeds_tolerance,
             }
         )
-    mismatches = [item for item in comparisons if abs(float(item["diff"])) > 1e-9]
-    worst = max(comparisons, key=lambda item: float(item["pct"]), default=None)
+    mismatches = [item for item in comparisons if item["exceeds_tolerance"]]
+    tolerated = [item for item in comparisons if abs(float(item["diff"])) > 1e-9 and not item["exceeds_tolerance"]]
+    worst = max(mismatches or comparisons, key=lambda item: float(item["pct"]), default=None)
     return {
         "mala_same_bar_feature_compared": str(len(comparisons)),
         "mala_same_bar_feature_mismatch_count": str(len(mismatches)),
+        "mala_same_bar_feature_tolerated_diff_count": str(len(tolerated)),
         "mala_same_bar_feature_max_pct_diff": "" if worst is None else str(worst["pct"]),
         "mala_same_bar_feature_worst": "" if worst is None else str(worst["runtime_feature"]),
         "mala_same_bar_feature_diffs": _compact_json(comparisons),
     }
+
+
+def _feature_parity_tolerance(feature: str) -> tuple[float, float]:
+    lowered = feature.lower()
+    for token, tolerance in FEATURE_PARITY_TOLERANCES.items():
+        if token in lowered:
+            return tolerance
+    return FEATURE_PARITY_DEFAULT_ABS_TOLERANCE, FEATURE_PARITY_DEFAULT_REL_TOLERANCE
 
 
 def _replay_feature_key(runtime_key: str, bar: dict[str, Any], params: dict[str, Any]) -> str | None:
