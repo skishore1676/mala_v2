@@ -418,7 +418,7 @@ Selection:
 Historical option data source plan:
 
 - **First choice: Polygon/Massive options data**, because the system already uses Polygon for underlying research and their options APIs expose contract reference data and historical options market data. The first engineering task is an entitlement preflight, not a simulator.
-- **Fallback: ThetaData or another OPRA historical provider** if Polygon entitlement or data quality is insufficient for expired contracts and intraday option bars.
+- **Fallback: Public.com** Public.com api is already configured and we should be able to also fetch option data from it..
 - **Last-resort proxy:** Black-Scholes / IV-proxy approximation only for rough feasibility. Proxy results can guide thinking but cannot approve option shadow execution.
 
 Historical option choice cannot be perfect. The goal is not to know the exact contract the trader would have picked in 2024. The goal is to apply a deterministic option-selection policy that is close to how the system will choose contracts live, then measure whether the playbook's underlying edge survives that vehicle.

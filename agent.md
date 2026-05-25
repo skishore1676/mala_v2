@@ -94,6 +94,11 @@ from src.strategy.factory import available_strategy_names
 
 Use `skills/research-workbench/SKILL.md` when onboarding an agent into hypothesis work.
 
+Use `skills/playbook-builder/SKILL.md` when creating or extending a Mala 2.2
+playbook. That role starts from trader language, separates surface discovery
+from consultation and execution, and prevents new playbooks from falling back
+into the old autonomous strategy-promotion model.
+
 Use `skills/catalog-steward/SKILL.md` when reviewing `Mala_Evidence_v1`
 against `active_strategy`. That role is advisory: it can write local
 recommendation artifacts by default and must not change runtime authorization
