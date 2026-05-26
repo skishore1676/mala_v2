@@ -1,4 +1,8 @@
-"""M6 provider validation artifacts for post-M5 Mala candidates."""
+"""Provider translation artifacts for post-M5 Mala candidates.
+
+M7 is the current gate name for provider translation. The M6 names remain as
+backward-compatible loaders for existing handoff artifacts and sheet columns.
+"""
 
 from __future__ import annotations
 
@@ -6,18 +10,36 @@ import csv
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 import re
 from typing import Any, Iterable
 
+import yaml
+
+from src.config import PROJECT_ROOT
+from src.research.shared_kernel import ensure_kernel_on_path
 from src.research.strategy_keys import to_strategy_key
+
+ensure_kernel_on_path()
+from mala_bhiksha_kernel import (  # noqa: E402
+    ProviderFeatureFinding,
+    ProviderTranslationReport,
+    ProviderTranslationVerdict,
+)
 
 
 M6_PROVIDER_VALIDATION_CSV = "M6_provider_validation.csv"
 M6_FEATURE_PARITY_CSV = "M6_feature_parity.csv"
 M6_PROVIDER_REVIEW_MD = "M6_PROVIDER_REVIEW.md"
+M7_PROVIDER_VALIDATION_CSV = "M7_provider_translation.csv"
+M7_FEATURE_PARITY_CSV = "M7_feature_parity.csv"
+M7_PROVIDER_REVIEW_MD = "M7_PROVIDER_TRANSLATION_REVIEW.md"
+M7_PROVIDER_TRANSLATION_JSON = "M7_provider_translation_report.json"
+M7_PROVIDER_REPLAY_CSV = "M7_provider_replay.csv"
 
 RISK_ORDER = {"green": 0, "yellow": 1, "red": 2}
+DEFAULT_M7_GATE_POLICY_PATH = PROJECT_ROOT / "config" / "m7_provider_translation.yaml"
 
 
 @dataclass(slots=True, frozen=True)
@@ -36,6 +58,41 @@ class M6ProviderValidation:
     provider_validation_report: str = ""
 
 
+@dataclass(slots=True, frozen=True)
+class M7GatePolicy:
+    signal_overlap_block_below: float = 0.80
+    signal_overlap_activation_min: float = 0.90
+    red_feature_risk_blocks: bool = True
+
+
+@lru_cache(maxsize=8)
+def load_m7_gate_policy(config_path: str | Path | None = None) -> M7GatePolicy:
+    """Load the M7 provider gate policy from repo config.
+
+    A missing config keeps conservative code defaults so older checkouts and
+    isolated tests still classify rows deterministically.
+    """
+    path = Path(config_path).expanduser() if config_path else DEFAULT_M7_GATE_POLICY_PATH
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (FileNotFoundError, OSError, yaml.YAMLError):
+        return M7GatePolicy()
+
+    signal_overlap = payload.get("signal_overlap") or {}
+    feature_risk = payload.get("feature_risk") or {}
+    return M7GatePolicy(
+        signal_overlap_block_below=_float_or_default(
+            signal_overlap.get("block_below"),
+            M7GatePolicy.signal_overlap_block_below,
+        ),
+        signal_overlap_activation_min=_float_or_default(
+            signal_overlap.get("activation_min"),
+            M7GatePolicy.signal_overlap_activation_min,
+        ),
+        red_feature_risk_blocks=bool(feature_risk.get("red_blocks", True)),
+    )
+
+
 def build_m6_provider_validation(
     *,
     run_dirs: Iterable[str | Path],
@@ -43,14 +100,63 @@ def build_m6_provider_validation(
     provider_feature_parity_csv: str | Path | None = None,
     provider_replay_csv: str | Path | None = None,
 ) -> ProviderValidationArtifacts:
-    """Write M6 provider-validation artifacts into each supplied M5 run dir."""
+    """Write legacy M6 provider-validation artifacts into each supplied M5 run dir."""
+
+    return _build_provider_translation_validation(
+        run_dirs=run_dirs,
+        provider_relative_volume_csv=provider_relative_volume_csv,
+        provider_feature_parity_csv=provider_feature_parity_csv,
+        provider_replay_csv=provider_replay_csv,
+        validation_filename=M6_PROVIDER_VALIDATION_CSV,
+        feature_filename=M6_FEATURE_PARITY_CSV,
+        review_filename=M6_PROVIDER_REVIEW_MD,
+        review_title="M6 Provider Review",
+        gate_name="M6",
+    )
+
+
+def build_m7_provider_validation(
+    *,
+    run_dirs: Iterable[str | Path],
+    provider_relative_volume_csv: str | Path | None = None,
+    provider_feature_parity_csv: str | Path | None = None,
+    provider_replay_csv: str | Path | None = None,
+) -> ProviderValidationArtifacts:
+    """Write M7 provider-translation gate artifacts into each supplied M5 run dir."""
+
+    return _build_provider_translation_validation(
+        run_dirs=run_dirs,
+        provider_relative_volume_csv=provider_relative_volume_csv,
+        provider_feature_parity_csv=provider_feature_parity_csv,
+        provider_replay_csv=provider_replay_csv,
+        validation_filename=M7_PROVIDER_VALIDATION_CSV,
+        feature_filename=M7_FEATURE_PARITY_CSV,
+        review_filename=M7_PROVIDER_REVIEW_MD,
+        review_title="M7 Provider Translation Review",
+        gate_name="M7",
+    )
+
+
+def _build_provider_translation_validation(
+    *,
+    run_dirs: Iterable[str | Path],
+    provider_relative_volume_csv: str | Path | None,
+    provider_feature_parity_csv: str | Path | None,
+    provider_replay_csv: str | Path | None,
+    validation_filename: str,
+    feature_filename: str,
+    review_filename: str,
+    review_title: str,
+    gate_name: str,
+) -> ProviderValidationArtifacts:
+    """Write provider-translation artifacts into each supplied M5 run dir."""
 
     relative_rows = _read_optional_csv(provider_relative_volume_csv)
     feature_rows = _read_optional_csv(provider_feature_parity_csv)
     replay_rows = _read_optional_csv(provider_replay_csv)
     relative_by_symbol = _relative_rows_by_symbol(relative_rows)
     feature_by_symbol = _feature_rows_by_symbol(feature_rows)
-    replay_by_catalog = _provider_replay_by_catalog(replay_rows)
+    explicit_replay_by_catalog = _provider_replay_by_catalog(replay_rows)
 
     validation_paths: list[Path] = []
     feature_paths: list[Path] = []
@@ -63,9 +169,16 @@ def build_m6_provider_validation(
         if not selected_rows or not (run_dir / "M5_execution.csv").exists():
             continue
         m5_rows = _read_csv(run_dir / "M5_execution.csv")
+        run_provider_replay_csv = provider_replay_csv
+        replay_by_catalog = explicit_replay_by_catalog
+        if not provider_replay_csv and gate_name == "M7":
+            local_replay_csv = run_dir / M7_PROVIDER_REPLAY_CSV
+            if local_replay_csv.exists():
+                run_provider_replay_csv = local_replay_csv
+                replay_by_catalog = _provider_replay_by_catalog(_read_csv(local_replay_csv))
         validation_rows: list[dict[str, Any]] = []
         feature_output_rows: list[dict[str, Any]] = []
-        report_path = run_dir / M6_PROVIDER_REVIEW_MD
+        report_path = run_dir / review_filename
         for selected in selected_rows:
             catalog_key = str(selected.get("catalog_key") or "").strip()
             if not catalog_key:
@@ -98,21 +211,37 @@ def build_m6_provider_validation(
             validation_rows.append(validation_row)
             feature_output_rows.extend(feature_findings)
 
-        validation_csv = run_dir / M6_PROVIDER_VALIDATION_CSV
-        feature_csv = run_dir / M6_FEATURE_PARITY_CSV
+        validation_csv = run_dir / validation_filename
+        feature_csv = run_dir / feature_filename
         _write_csv(validation_csv, validation_rows)
         _write_csv(feature_csv, feature_output_rows)
         report_path.write_text(
-            render_m6_provider_review(
+            render_provider_translation_review(
                 run_dir=run_dir,
                 validation_rows=validation_rows,
                 feature_rows=feature_output_rows,
                 provider_relative_volume_csv=provider_relative_volume_csv,
                 provider_feature_parity_csv=provider_feature_parity_csv,
-                provider_replay_csv=provider_replay_csv,
+                provider_replay_csv=run_provider_replay_csv,
+                review_title=review_title,
+                gate_name=gate_name,
             ),
             encoding="utf-8",
         )
+        if gate_name == "M7":
+            _write_provider_translation_contract_report(
+                run_dir=run_dir,
+                validation_rows=validation_rows,
+                feature_rows=feature_output_rows,
+                artifacts={
+                    "validation_csv": _display_path(validation_csv),
+                    "feature_parity_csv": _display_path(feature_csv),
+                    "review_markdown": _display_path(report_path),
+                    "provider_relative_volume_csv": str(provider_relative_volume_csv or ""),
+                    "provider_feature_parity_csv": str(provider_feature_parity_csv or ""),
+                    "provider_replay_csv": str(run_provider_replay_csv or ""),
+                },
+            )
         processed.append(run_dir)
         validation_paths.append(validation_csv)
         feature_paths.append(feature_csv)
@@ -145,7 +274,23 @@ def discover_latest_m5_run_dirs(runs_dir: str | Path) -> list[Path]:
 
 
 def load_m6_provider_validation(run_dir: str | Path) -> dict[str, M6ProviderValidation]:
-    path = Path(run_dir) / M6_PROVIDER_VALIDATION_CSV
+    return _load_provider_validation(Path(run_dir) / M6_PROVIDER_VALIDATION_CSV)
+
+
+def load_m7_provider_validation(run_dir: str | Path) -> dict[str, M6ProviderValidation]:
+    return _load_provider_validation(Path(run_dir) / M7_PROVIDER_VALIDATION_CSV)
+
+
+def load_provider_validation(run_dir: str | Path) -> dict[str, M6ProviderValidation]:
+    """Load current M7 artifacts, falling back to legacy M6 artifacts."""
+
+    current = load_m7_provider_validation(run_dir)
+    if current:
+        return current
+    return load_m6_provider_validation(run_dir)
+
+
+def _load_provider_validation(path: Path) -> dict[str, M6ProviderValidation]:
     rows = _read_csv(path)
     output: dict[str, M6ProviderValidation] = {}
     for row in rows:
@@ -396,15 +541,17 @@ def classify_provider_validation_status(
     feature_risk: str,
     provider_signal_overlap: float | None,
     has_provider_evidence: bool,
+    gate_policy: M7GatePolicy | None = None,
 ) -> str:
-    if feature_risk == "red":
+    policy = gate_policy or load_m7_gate_policy()
+    if policy.red_feature_risk_blocks and feature_risk == "red":
         return "provider_blocked"
     if not has_provider_evidence:
         return "provider_unknown"
     if provider_signal_overlap is not None:
-        if provider_signal_overlap < 0.50:
+        if provider_signal_overlap < policy.signal_overlap_block_below:
             return "provider_blocked"
-        if provider_signal_overlap < 0.80:
+        if provider_signal_overlap < policy.signal_overlap_activation_min:
             return "provider_watch"
     if feature_risk == "yellow":
         return "provider_watch"
@@ -429,12 +576,35 @@ def render_m6_provider_review(
     provider_feature_parity_csv: str | Path | None,
     provider_replay_csv: str | Path | None,
 ) -> str:
+    return render_provider_translation_review(
+        run_dir=run_dir,
+        validation_rows=validation_rows,
+        feature_rows=feature_rows,
+        provider_relative_volume_csv=provider_relative_volume_csv,
+        provider_feature_parity_csv=provider_feature_parity_csv,
+        provider_replay_csv=provider_replay_csv,
+        review_title="M6 Provider Review",
+        gate_name="M6",
+    )
+
+
+def render_provider_translation_review(
+    *,
+    run_dir: Path,
+    validation_rows: list[dict[str, Any]],
+    feature_rows: list[dict[str, Any]],
+    provider_relative_volume_csv: str | Path | None,
+    provider_feature_parity_csv: str | Path | None,
+    provider_replay_csv: str | Path | None,
+    review_title: str,
+    gate_name: str,
+) -> str:
     counts: dict[str, int] = {}
     for row in validation_rows:
         status = str(row.get("provider_validation_status") or "provider_unknown")
         counts[status] = counts.get(status, 0) + 1
     lines = [
-        "# M6 Provider Review",
+        f"# {review_title}",
         "",
         f"- generated_at: `{datetime.now(UTC).isoformat()}`",
         f"- run_dir: `{run_dir}`",
@@ -444,7 +614,7 @@ def render_m6_provider_review(
         f"- provider_feature_parity_csv: `{provider_feature_parity_csv or ''}`",
         f"- provider_replay_csv: `{provider_replay_csv or ''}`",
         "",
-        "M6 is advisory. It validates provider/runtime similarity and does not replace M1-M5 alpha evidence.",
+        f"{gate_name} is a provider-translation gate. It replays exact post-M5 rows through provider-aware evidence and does not retune strategy parameters.",
         "",
         "## Candidates",
         "",
@@ -473,6 +643,98 @@ def render_m6_provider_review(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _write_provider_translation_contract_report(
+    *,
+    run_dir: Path,
+    validation_rows: list[dict[str, Any]],
+    feature_rows: list[dict[str, Any]],
+    artifacts: dict[str, str],
+) -> Path:
+    status_counts: dict[str, int] = {}
+    for row in validation_rows:
+        status = str(row.get("provider_validation_status") or "provider_unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    report = ProviderTranslationReport(
+        report_id=f"m7.provider_translation.{run_dir.parent.name}.{run_dir.name}",
+        status_counts=status_counts,
+        verdicts=[
+            ProviderTranslationVerdict(
+                catalog_key=str(row.get("catalog_key") or ""),
+                symbol=str(row.get("symbol") or ""),
+                direction=_direction_for_contract(row.get("direction")),
+                strategy_key=str(row.get("strategy_key") or "unknown"),
+                strategy_name=str(row.get("strategy_name") or ""),
+                status=str(row.get("provider_validation_status") or "provider_unknown"),
+                feature_risk=_contract_feature_risk(row.get("provider_feature_risk")),
+                driver=_provider_translation_driver(row),
+                signal_overlap=_float_or_none(row.get("provider_signal_overlap")),
+                trade_count_ratio=_float_or_none(row.get("provider_trade_count_ratio")),
+                expectancy_ratio=_float_or_none(row.get("provider_expectancy_ratio")),
+                evidence_source=str(row.get("provider_evidence_source") or ""),
+                notes=str(row.get("provider_feature_notes") or ""),
+            )
+            for row in validation_rows
+            if str(row.get("catalog_key") or "")
+        ],
+        feature_findings=[
+            ProviderFeatureFinding(
+                catalog_key=str(row.get("catalog_key") or ""),
+                symbol=str(row.get("symbol") or ""),
+                strategy_key=str(row.get("strategy_key") or "unknown"),
+                feature=str(row.get("feature") or "unknown"),
+                feature_risk=str(row.get("feature_risk") or "green"),
+                reason=str(row.get("reason") or ""),
+                provider_metric=str(row.get("provider_metric") or ""),
+                provider_value=row.get("provider_value") or None,
+                provider_evidence_status=_provider_evidence_status_for_contract(row.get("provider_evidence_status")),
+            )
+            for row in feature_rows
+            if str(row.get("catalog_key") or "")
+        ],
+        artifacts=artifacts,
+        notes="Mala-owned M7 provider translation contract. Bhiksha may consume this report but should not build Mala evidence columns.",
+    )
+    path = run_dir / M7_PROVIDER_TRANSLATION_JSON
+    path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def _provider_translation_driver(row: dict[str, Any]) -> str:
+    policy = load_m7_gate_policy()
+    evidence_source = str(row.get("provider_evidence_source") or "")
+    notes = str(row.get("provider_feature_notes") or "").lower()
+    status = str(row.get("provider_validation_status") or "")
+    overlap = _float_or_none(row.get("provider_signal_overlap"))
+    if not evidence_source:
+        return "missing_provider_evidence"
+    if overlap is not None and (status == "provider_blocked" or overlap < policy.signal_overlap_activation_min):
+        return "signal_mismatch"
+    if "vpoc" in notes:
+        return "vpoc_sensitive"
+    if "directional-mass" in notes or "directional mass" in notes:
+        return "directional_mass_sensitive"
+    if any(token in notes for token in ("volume", "vwma", "relative")):
+        return "volume_sensitive"
+    if status == "provider_pass":
+        return "price_stable"
+    return "unknown"
+
+
+def _contract_feature_risk(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _direction_for_contract(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"long", "short"} else ""
+
+
+def _provider_evidence_status_for_contract(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"present", "missing"} else ""
 
 
 def _feature_row(
@@ -546,13 +808,21 @@ def _relative_provider_risk(
 
 
 def _feature_provider_metric(feature_pct_column: str, rows: list[dict[str, str]]) -> dict[str, Any]:
-    for row in rows:
-        if str(row.get("feature_pct_column") or "") == feature_pct_column:
-            return {
-                "provider_metric": f"{feature_pct_column}:p90_pct_diff",
-                "provider_value": row.get("p90_pct_diff", ""),
-                "provider_evidence_status": "present",
-            }
+    candidates = [
+        row for row in rows
+        if str(row.get("feature_pct_column") or "") == feature_pct_column
+    ]
+    if candidates:
+        row = max(candidates, key=lambda item: _float_or_none(item.get("p90_pct_diff")) or -1.0)
+        provider_pair = str(row.get("provider_pair") or "")
+        metric = f"{feature_pct_column}:p90_pct_diff"
+        if provider_pair:
+            metric = f"{provider_pair}:{metric}"
+        return {
+            "provider_metric": metric,
+            "provider_value": row.get("p90_pct_diff", ""),
+            "provider_evidence_status": "present",
+        }
     return {"provider_metric": "", "provider_value": "", "provider_evidence_status": "missing"}
 
 
@@ -562,8 +832,18 @@ def _best_relative_row(rows: list[dict[str, str]], *, aggregate_minutes: int) ->
         if _int_or_none(row.get("aggregate_minutes")) == aggregate_minutes
     ]
     if exact:
-        return exact[0]
-    return rows[0] if rows else None
+        return max(exact, key=_relative_row_risk_value)
+    return max(rows, key=_relative_row_risk_value) if rows else None
+
+
+def _relative_row_risk_value(row: dict[str, str]) -> float:
+    values = [
+        _float_or_none(value)
+        for key, value in row.items()
+        if key.startswith("gate_flip_rate_ge_")
+    ]
+    finite = [value for value in values if value is not None]
+    return max(finite) if finite else -1.0
 
 
 def _threshold_column(threshold: float) -> str:
@@ -655,9 +935,23 @@ def _provider_replay_by_catalog(rows: list[dict[str, str]]) -> dict[str, dict[st
             continue
         scenario = str(row.get("scenario") or "").strip()
         previous = output.get(catalog_key)
-        if previous is None or _replay_scenario_rank(scenario) < _replay_scenario_rank(str(previous.get("scenario") or "")):
+        if previous is None or _replay_row_preferred(row, previous):
             output[catalog_key] = row
     return output
+
+
+def _replay_row_preferred(candidate: dict[str, str], previous: dict[str, str]) -> bool:
+    candidate_rank = _replay_scenario_rank(str(candidate.get("scenario") or ""))
+    previous_rank = _replay_scenario_rank(str(previous.get("scenario") or ""))
+    if candidate_rank != previous_rank:
+        return candidate_rank < previous_rank
+    candidate_overlap = _provider_signal_overlap(candidate)
+    previous_overlap = _provider_signal_overlap(previous)
+    if candidate_overlap is None:
+        return False
+    if previous_overlap is None:
+        return True
+    return candidate_overlap < previous_overlap
 
 
 def _replay_scenario_rank(scenario: str) -> int:
@@ -708,7 +1002,12 @@ def _provider_evidence_source(replay_row: dict[str, str], feature_findings: list
 
 def _is_provider_replay_evidence(replay_row: dict[str, str]) -> bool:
     scenario = str(replay_row.get("scenario") or "")
-    return _replay_scenario_rank(scenario) < _replay_scenario_rank("baseline")
+    if _replay_scenario_rank(scenario) >= _replay_scenario_rank("baseline"):
+        return False
+    baseline_count = _int_or_none(replay_row.get("baseline_signal_count"))
+    if baseline_count == 0:
+        return False
+    return _provider_signal_overlap(replay_row) is not None
 
 
 def _has_directional_mass_magnitude_threshold(params: dict[str, Any]) -> bool:
@@ -855,12 +1154,21 @@ __all__ = [
     "M6_FEATURE_PARITY_CSV",
     "M6_PROVIDER_REVIEW_MD",
     "M6_PROVIDER_VALIDATION_CSV",
+    "M7_FEATURE_PARITY_CSV",
+    "M7_PROVIDER_REVIEW_MD",
+    "M7_PROVIDER_TRANSLATION_JSON",
+    "M7_PROVIDER_VALIDATION_CSV",
+    "M7GatePolicy",
     "M6ProviderValidation",
     "ProviderValidationArtifacts",
     "build_m6_provider_validation",
+    "build_m7_provider_validation",
     "classify_feature_parity",
     "classify_provider_validation_status",
     "discover_latest_m5_run_dirs",
+    "load_m7_gate_policy",
+    "load_m7_provider_validation",
     "load_m6_provider_validation",
+    "load_provider_validation",
     "max_feature_risk",
 ]

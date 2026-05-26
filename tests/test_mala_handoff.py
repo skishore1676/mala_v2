@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.research.mala_handoff import (
+    MALA_EVIDENCE_ACTIVATION_FIELDNAMES,
     build_handoff_packets,
     derive_signal_window,
     handoff_csv_fieldnames,
@@ -189,6 +190,12 @@ def test_mala_handoff_joins_m6_provider_fields_when_present(tmp_path: Path) -> N
     assert row["provider_feature_risk"] == "yellow"
     assert row["provider_signal_overlap"] == "0.91"
     assert row["provider_validation_report"].endswith("M6_PROVIDER_REVIEW.md")
+    assert row["m7_status"] == "provider_watch"
+    assert row["m7_feature_risk"] == "yellow"
+    assert row["m7_signal_overlap"] == "0.91"
+    assert row["activation_candidate"] == "true"
+    assert row["triage_verdict"] == "CLEAN"
+    assert row["triage_blocking_checks"] == "none"
     assert "provider_trade_count_ratio" not in handoff_csv_fieldnames()
     assert "provider_expectancy_ratio" not in handoff_csv_fieldnames()
 
@@ -202,6 +209,9 @@ def test_mala_handoff_missing_m6_file_is_advisory_unknown(tmp_path: Path) -> Non
     assert row["provider_feature_risk"] == ""
     assert row["provider_signal_overlap"] == ""
     assert row["provider_validation_report"] == ""
+    assert row["m7_status"] == "provider_unknown"
+    assert row["activation_candidate"] == "false"
+    assert row["triage_verdict"] == "REPAIR"
     assert row["bhiksha_ready"] in {"true", "false"}
 
 
@@ -216,6 +226,35 @@ def test_mala_handoff_exports_option_exit_fields(tmp_path: Path) -> None:
     assert row["recommended_dte_min"] == "0"
     assert row["recommended_dte_max"] == "3"
     assert row["pnl_pct_per_minute"] == "0.018"
+    assert "bhiksha_runtime_supported" in handoff_csv_fieldnames()
+    assert "activation_candidate" in handoff_csv_fieldnames()
+    assert row["bhiksha_runtime_supported"] == "true"
+    assert row["mala_evidence_ready"] == "true"
+
+
+def test_mala_handoff_marks_clean_activation_when_all_gates_pass(tmp_path: Path) -> None:
+    run_dir = _write_market_impulse_run(tmp_path)
+    _write_csv(
+        run_dir / "M7_provider_translation.csv",
+        [
+            {
+                "catalog_key": "market-impulse-test__iwm_long",
+                "provider_validation_status": "provider_pass",
+                "provider_feature_risk": "green",
+                "provider_signal_overlap": "0.98",
+                "provider_validation_report": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M7_PROVIDER_TRANSLATION_REVIEW.md",
+            }
+        ],
+    )
+    manifest_path = _write_capability_manifest(tmp_path)
+
+    row = packet_to_csv_row(build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)[0])
+
+    assert row["bhiksha_runtime_supported"] == "true"
+    assert row["mala_evidence_ready"] == "true"
+    assert row["activation_candidate"] == "true"
+    assert row["triage_verdict"] == "CLEAN"
+    assert row["triage_blocking_checks"] == "none"
 
 
 
@@ -299,6 +338,7 @@ def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> 
         "provider_feature_risk",
         "provider_signal_overlap",
         "provider_validation_report",
+        *MALA_EVIDENCE_ACTIVATION_FIELDNAMES,
     ]
     assert client.updated_rows == [
         {
@@ -307,6 +347,23 @@ def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> 
             "provider_feature_risk": "yellow",
             "provider_signal_overlap": "0.91",
             "provider_validation_report": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
+            "bhiksha_runtime_supported": "true",
+            "bhiksha_runtime_reason": "runtime_verified",
+            "mala_evidence_ready": "true",
+            "mala_evidence_blocking_checks": "none",
+            "activation_candidate": "true",
+            "activation_blocking_checks": "none",
+            "m7_status": "provider_watch",
+            "m7_feature_risk": "yellow",
+            "m7_signal_overlap": "0.91",
+            "triage_verdict": "CLEAN",
+            "triage_verdict_reason": "runtime_supported_mala_ready_option_ready_m7_overlap_clean",
+            "triage_blocking_checks": "none",
+            "triage_advisory_notes": (
+                "holdout_trades=49; promote_requires>=80; exit_trade_count=24; promote_requires>=40; "
+                "m7_feature_risk=yellow; provider-sensitive features present, monitor even if overlap is acceptable"
+            ),
+            "triage_artifact": "research/results/hypothesis_runs/market-impulse-test/2026-04-15T000000/M6_PROVIDER_REVIEW.md",
         }
     ]
     assert "bhiksha_ready" not in client.updated_rows[0]

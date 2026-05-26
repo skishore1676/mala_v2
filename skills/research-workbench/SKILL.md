@@ -15,7 +15,7 @@ Do:
 - prefer existing strategies and their declared `search_spec` / `parameter_space`
 - run bounded evidence through `hypothesis_agent.py`
 - write or update one hypothesis markdown file
-- interpret artifacts under `data/results/hypothesis_runs/`
+- interpret artifacts under `research/results/hypothesis_runs/`
 - use market-regime tags as observational evidence, not as gates
 - use `CATALOG_SELECTED.csv` as the local selected-candidate readout
 - use `Mala_Evidence_v1` as the human-reviewable handoff evidence sheet
@@ -100,8 +100,16 @@ its view from local Mala evidence:
 ./.venv/bin/python -m src.research.research_ops push-control \
   --control-sheet-id 1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0 \
   --control-sheet-name Research_Control
-./.venv/bin/python -m src.research.research_ops provider-validate-m6 \
-  --run-dir data/results/hypothesis_runs/<hypothesis>/<run_ts>
+./.venv/bin/python -m src.research.research_ops provider-inputs \
+  --wide-provider-csv research/results/provider_inputs/amd_three_way.csv
+./.venv/bin/python -m src.research.research_ops provider-panel \
+  --provider-bars polygon=research/results/provider_inputs/polygon.csv \
+  --provider-bars schwab=research/results/provider_inputs/schwab.csv \
+  --provider-bars public=research/results/provider_inputs/public.csv
+./.venv/bin/python -m src.research.research_ops provider-replay-m7 \
+  --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
+./.venv/bin/python -m src.research.research_ops provider-validate-m7 \
+  --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
 ./.venv/bin/python -m src.research.research_ops publish-pending --dry-run
 ./.venv/bin/python -m src.research.research_ops sync-board --dry-run
 ./.venv/bin/python -m src.research.research_ops mark-stale \
@@ -111,9 +119,9 @@ its view from local Mala evidence:
 ```
 
 Outputs:
-- `data/results/research_ops/research_ledger.xlsx`
-- `data/results/research_ops/hot_start.md`
-- `data/results/research_ops/csv/*.csv`
+- `research/results/research_ops/research_ledger.xlsx`
+- `research/results/research_ops/hot_start.md`
+- `research/results/research_ops/csv/*.csv`
 
 Interpretation:
 - `catalog_publish_pending` is legacy research-ops wording; for current handoff work, verify whether the candidate appears in `Mala_Evidence_v1` and dedupe before publishing.
@@ -130,7 +138,8 @@ Interpretation:
 - Valid `Research_Control.operator_action` values are blank, `APPROVE_RETUNE`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`.
 - `publish-pending` and `sync-board` are dry-run by default; use `--apply` only after explicit review.
 - `mark-stale` appends a non-destructive decision to `research/reports/research_ops/finding_dispositions.jsonl`; it suppresses that reviewed finding without deleting or moving artifacts.
-- `provider-validate-m6` writes advisory post-M5 provider/runtime validation artifacts into the run dir. Use `mala_handoff --publish-provider-validation-only` when publishing M6 into Sheets; that path updates only the four provider fields and preserves existing readiness, thesis-exit, recommendation, and strategy evidence.
+- M6 is option translation from Mala exit optimization: rows need realistic short-dated option expectancy and `option_trade_ready` before Bhiksha shadow.
+- M7 is provider translation: `provider-inputs` normalizes wide provider OHLCV exports, `provider-panel` builds provider OHLCV/Newton parity artifacts from Mala-owned inputs, `provider-replay-m7` writes exact-row signal-overlap artifacts, and `provider-validate-m7` writes row-level provider gate artifacts plus the kernel-valid `M7_provider_translation_report.json` into the run dir. Gate thresholds live in `config/m7_provider_translation.yaml`. Use `mala_handoff --publish-provider-validation-only` when publishing compact provider fields into Sheets; that path updates the provider fields plus derived activation/triage fields, and preserves thesis-exit, recommendation, and strategy evidence.
 
 ## Research Runner Layer
 

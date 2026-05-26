@@ -107,10 +107,7 @@ def test_shadow_activation_packet_writes_review_artifacts(tmp_path: Path) -> Non
     assert artifacts.packet_csv.exists()
     assert artifacts.active_strategy_rows[0]["strategy_id"] == "idea__amd_short"
     assert artifacts.active_strategy_rows[0]["entry_window_start_et"] == "09:35"
-    overrides = json.loads(artifacts.active_strategy_rows[0]["execution_overrides"])
-    assert overrides["dte_min"] == 3
-    assert overrides["dte_max"] == 7
-    assert overrides["target_abs_delta_min"] == 0.15
+    assert artifacts.active_strategy_rows[0]["execution_overrides"] == "{}"
     assert "Shadow Activation Packet" in artifacts.packet_md.read_text(encoding="utf-8")
 
 

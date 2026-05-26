@@ -9,7 +9,7 @@ Usage:
 Creates a clean oldmac Monday shadow runtime surface without deleting the old
 state. The script snapshots current oldmac Mala/Bhiksha state, rsyncs the local
 curated source surface, rotates Bhiksha's runtime DB/log window, regenerates the
-active plan, validates the 11 strategy + 1 manual shadow book, and runs a
+active plan, validates the current 5 strategy + 0 manual shadow book, and runs a
 zero-bar Bhiksha startup check.
 
 Options:
@@ -24,8 +24,8 @@ Options:
 
 Environment:
   BHIKSHA_LOCAL_ROOT      Local Bhiksha repo. Default: ../bhiksha.
-  EXPECTED_STRATEGY_DEPLOYMENTS  Default: 11.
-  EXPECTED_MANUAL_DEPLOYMENTS    Default: 1.
+  EXPECTED_STRATEGY_DEPLOYMENTS  Default: 5.
+  EXPECTED_MANUAL_DEPLOYMENTS    Default: 0.
 EOF
 }
 
@@ -45,8 +45,8 @@ skip_rsync=0
 skip_uv_sync=0
 skip_db_rotate=0
 skip_dry_start=0
-expected_strategy="${EXPECTED_STRATEGY_DEPLOYMENTS:-11}"
-expected_manual="${EXPECTED_MANUAL_DEPLOYMENTS:-1}"
+expected_strategy="${EXPECTED_STRATEGY_DEPLOYMENTS:-5}"
+expected_manual="${EXPECTED_MANUAL_DEPLOYMENTS:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

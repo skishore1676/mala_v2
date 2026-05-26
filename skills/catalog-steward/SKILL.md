@@ -14,8 +14,9 @@ controller.
 Do:
 - read `Mala_Evidence_v1`, `Operator_Defaults_v1`, `active_strategy`, and Bhiksha active-plan output
 - treat Mala M1-M5 as the strict research gate
+- use `activation_candidate`, `triage_verdict`, `triage_blocking_checks`, and `triage_advisory_notes` as the current compressed operator fields when they are present
 - recommend `live`, `shadow`, `hold`, or `pause`
-- prefer inclusive shadowing for evidence-backed `recommendation_tier=shadow` rows unless there is a clear execution or portfolio reason to hold
+- prefer shadowing only for rows with `activation_candidate=TRUE`; rows with `activation_candidate=FALSE` need repair, even if legacy `bhiksha_ready=TRUE`
 - treat `recommendation_tier=promote` as eligible for human live review, not automatic live authorization
 - keep `watch_only` rows out of `active_strategy`
 - write local markdown/CSV recommendation artifacts by default
@@ -39,6 +40,7 @@ Do not:
    ssh oldmac 'cd ~/Documents/bhiksha && ./.venv/bin/python -m bhiksha.tools.compile_active_plan --google-sheet-id <sheet_id> --out /tmp/bhiksha_active_plan_review.json'
    ```
 4. Compare evidence tier, active authorization, and compiled `execution.shadow_only`.
+5. For M7 provider-gate decisions, read `config/m7_provider_translation.yaml` before treating signal-overlap thresholds as fixed.
 
 ## Codex CLI on oldmac
 
@@ -57,4 +59,6 @@ ssh oldmac 'zsh -lc "cd ~/Documents/mala_v2 && codex exec \"Use the catalog-stew
 - `pause`: disable or remove from `active_strategy`
 
 `active_strategy.enabled` and `active_strategy.authorization_mode` remain the
-execution authority. Mala evidence and steward notes are advisory.
+execution authority, but Bhiksha fails closed on `activation_candidate=FALSE`
+when that field is present in `Mala_Evidence_v1`. Mala evidence and steward
+notes are advisory unless the user explicitly asks to mutate the control plane.

@@ -58,9 +58,10 @@ The trader brings: the bias, the conviction, final approval, and the decision to
 The current architecture has two live lanes:
 
 1. **Strategy lane:** Mala can still run automated M1-M5 research. Survivors
-   must re-earn publication through M5.5 option-aware exit evidence, publish to
-   `Mala_Evidence_v1`, receive explicit `active_strategy` authorization, and
-   shadow aggressively before any promote/retune/kill decision.
+   must re-earn publication through M6 option-aware exit evidence and M7
+   provider translation, publish to `Mala_Evidence_v1`, receive explicit
+   `active_strategy` authorization, and shadow aggressively before any
+   promote/retune/kill decision.
 2. **Playbook lane:** Mala 2.2 builds trader-defined playbooks as consultation
    surfaces first. A playbook becomes automated only through a locked packet,
    parity evidence, shadow evidence, and operator approval.
@@ -125,7 +126,7 @@ Change from Mala v2:
   `Mala_Evidence_v1` plus `active_strategy` and Bhiksha fail-closed compile
 - no confusion between Mala's optimized underlying thesis exits and Bhiksha's option-premium catastrophe defaults; runtime must consume the published `thesis_exit_policy` and use option-premium stops only as backstops
 - no legacy broad shadow campaign carried by inertia; the current strategy
-  shadow lane is a smaller M5.5-selected packet whose job is to learn quickly
+  shadow lane is a smaller M6/M7-selected packet whose job is to learn quickly
   and then promote, retune, or kill
 
 ---

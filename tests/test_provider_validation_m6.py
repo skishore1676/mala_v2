@@ -7,7 +7,13 @@ from src.research.provider_validation_m6 import (
     M6_FEATURE_PARITY_CSV,
     M6_PROVIDER_REVIEW_MD,
     M6_PROVIDER_VALIDATION_CSV,
+    M7_PROVIDER_REPLAY_CSV,
+    M7_PROVIDER_REVIEW_MD,
+    M7_PROVIDER_TRANSLATION_JSON,
+    M7_PROVIDER_VALIDATION_CSV,
+    M7GatePolicy,
     build_m6_provider_validation,
+    build_m7_provider_validation,
     classify_feature_parity,
     classify_provider_validation_status,
     discover_latest_m5_run_dirs,
@@ -50,6 +56,11 @@ def test_provider_validation_status_assignments() -> None:
         has_provider_evidence=True,
     ) == "provider_pass"
     assert classify_provider_validation_status(
+        feature_risk="green",
+        provider_signal_overlap=0.96,
+        has_provider_evidence=True,
+    ) == "provider_pass"
+    assert classify_provider_validation_status(
         feature_risk="yellow",
         provider_signal_overlap=0.92,
         has_provider_evidence=True,
@@ -69,6 +80,17 @@ def test_provider_validation_status_assignments() -> None:
         provider_signal_overlap=None,
         has_provider_evidence=False,
     ) == "provider_unknown"
+
+
+def test_provider_validation_status_accepts_explicit_gate_policy() -> None:
+    strict = M7GatePolicy(signal_overlap_block_below=0.80, signal_overlap_activation_min=0.95)
+
+    assert classify_provider_validation_status(
+        feature_risk="green",
+        provider_signal_overlap=0.92,
+        has_provider_evidence=True,
+        gate_policy=strict,
+    ) == "provider_watch"
 
 
 def test_build_m6_provider_validation_writes_artifacts(tmp_path: Path) -> None:
@@ -148,6 +170,96 @@ def test_build_m6_provider_validation_writes_artifacts(tmp_path: Path) -> None:
     feature_rows = list(csv.DictReader((run_dir / M6_FEATURE_PARITY_CSV).open()))
     assert any(row["feature"] == "raw_1m_volume_gate" for row in feature_rows)
     assert (run_dir / M6_PROVIDER_REVIEW_MD).read_text(encoding="utf-8").startswith("# M6 Provider Review")
+
+
+def test_build_m7_provider_validation_writes_gate_artifacts(tmp_path: Path) -> None:
+    run_dir = _write_minimal_run(tmp_path, "idea", "2026-05-05T120000", "idea__amd_long")
+    replay_csv = tmp_path / "provider_replay.csv"
+    _write_csv(
+        replay_csv,
+        [
+            {
+                "catalog_key": "idea__amd_long",
+                "scenario": "provider_like",
+                "entry_overlap_rate_vs_baseline": "0.96",
+            }
+        ],
+    )
+
+    artifacts = build_m7_provider_validation(
+        run_dirs=[run_dir],
+        provider_replay_csv=replay_csv,
+    )
+
+    assert artifacts.provider_validation_csvs == [run_dir / M7_PROVIDER_VALIDATION_CSV]
+    rows = list(csv.DictReader((run_dir / M7_PROVIDER_VALIDATION_CSV).open()))
+    assert rows[0]["provider_validation_status"] == "provider_pass"
+    assert rows[0]["provider_signal_overlap"] == "0.96"
+    assert (run_dir / M7_PROVIDER_REVIEW_MD).read_text(encoding="utf-8").startswith(
+        "# M7 Provider Translation Review"
+    )
+    assert (run_dir / M7_PROVIDER_TRANSLATION_JSON).exists()
+    assert "provider_pass" in (run_dir / M7_PROVIDER_TRANSLATION_JSON).read_text(encoding="utf-8")
+
+
+def test_m7_provider_validation_treats_zero_baseline_replay_as_unknown(tmp_path: Path) -> None:
+    run_dir = _write_minimal_run(tmp_path, "idea", "2026-05-06T120000", "idea__amd_long")
+    replay_csv = tmp_path / "provider_replay.csv"
+    _write_csv(
+        replay_csv,
+        [
+            {
+                "catalog_key": "idea__amd_long",
+                "scenario": "provider_like",
+                "baseline_signal_count": "0",
+                "candidate_signal_count": "0",
+                "signal_evidence_status": "no_baseline_signals",
+                "entry_overlap_rate_vs_baseline": "",
+            }
+        ],
+    )
+
+    build_m7_provider_validation(run_dirs=[run_dir], provider_replay_csv=replay_csv)
+
+    rows = list(csv.DictReader((run_dir / M7_PROVIDER_VALIDATION_CSV).open()))
+    assert rows[0]["provider_validation_status"] == "provider_unknown"
+    assert rows[0]["provider_signal_overlap"] == ""
+
+
+def test_m7_provider_validation_uses_each_run_local_replay_csv(tmp_path: Path) -> None:
+    first = _write_minimal_run(tmp_path, "first", "2026-05-07T120000", "first__amd_long")
+    second = _write_minimal_run(tmp_path, "second", "2026-05-07T120000", "second__amd_long")
+    _write_csv(
+        first / M7_PROVIDER_REPLAY_CSV,
+        [
+            {
+                "catalog_key": "first__amd_long",
+                "scenario": "provider_like",
+                "baseline_signal_count": "10",
+                "entry_overlap_rate_vs_baseline": "0.96",
+            }
+        ],
+    )
+    _write_csv(
+        second / M7_PROVIDER_REPLAY_CSV,
+        [
+            {
+                "catalog_key": "second__amd_long",
+                "scenario": "provider_like",
+                "baseline_signal_count": "10",
+                "entry_overlap_rate_vs_baseline": "0.72",
+            }
+        ],
+    )
+
+    build_m7_provider_validation(run_dirs=[first, second])
+
+    first_rows = list(csv.DictReader((first / M7_PROVIDER_VALIDATION_CSV).open()))
+    second_rows = list(csv.DictReader((second / M7_PROVIDER_VALIDATION_CSV).open()))
+    assert first_rows[0]["provider_signal_overlap"] == "0.96"
+    assert first_rows[0]["provider_validation_status"] == "provider_pass"
+    assert second_rows[0]["provider_signal_overlap"] == "0.72"
+    assert second_rows[0]["provider_validation_status"] == "provider_blocked"
 
 
 def test_discover_latest_m5_run_dirs_uses_latest_catalog_key(tmp_path: Path) -> None:

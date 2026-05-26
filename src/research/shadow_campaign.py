@@ -261,14 +261,6 @@ def classify_shadow_activation(
 
 
 def active_strategy_row_from_recommendation(row: dict[str, Any]) -> dict[str, Any]:
-    execution_overrides = {
-        "dte_min": _int(row.get("option_dte_min")),
-        "dte_max": _int(row.get("option_dte_max")),
-        "target_abs_delta_min": _float(row.get("option_delta_min")),
-        "target_abs_delta_max": _float(row.get("option_delta_max")),
-        "max_bid_ask_spread_pct": _float(row.get("max_bid_ask_spread_pct")),
-        "min_open_interest": _int(row.get("min_open_interest")),
-    }
     notes = (
         "Shadow campaign candidate; "
         f"tier={row['recommendation_tier']} mc={row['execution_robustness']} "
@@ -283,7 +275,7 @@ def active_strategy_row_from_recommendation(row: dict[str, Any]) -> dict[str, An
         "strategy_id": row["catalog_key"],
         "entry_window_start_et": _entry_start(row.get("signal_window_et")),
         "max_trade_premium_usd": str(_format_number(row["max_trade_premium_usd"])),
-        "execution_overrides": json.dumps(execution_overrides, sort_keys=True, separators=(",", ":")),
+        "execution_overrides": "{}",
         "notes": notes,
     }
 

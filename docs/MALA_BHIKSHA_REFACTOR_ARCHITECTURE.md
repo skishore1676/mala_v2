@@ -7,7 +7,8 @@ evidence.
 
 ## Immediate Action Status - 2026-05-17
 
-1. **Trader Evidence Audit: action taken.** M5.5 evidence was audited, the
+1. **Trader Evidence Audit: action taken.** The option-translation evidence now
+   called M6 was audited, the
    duplicate active exposure flagged by the audit was removed from
    `active_strategy`, and oldmac now verifies `11` strategy shadow rows plus
    `1` manual row with `0` suppressed rows and all deployments
@@ -68,10 +69,10 @@ the current mean-reversion packet.
 - 2026-05-16: Added packet-declared management-policy specs; Mala now writes stop/target/hard-flat management contracts and Bhiksha option preview/live lifecycle consume those specs instead of relying on hidden defaults.
 - 2026-05-16: Generated approved reversion execution packet v2 as `live_approval_gated` for the Monday small-account pilot; live automation is still forbidden and every order requires an explicit live ticket.
 - 2026-05-16: Added Bhiksha live underlying-anchor management; an open playbook lifecycle can now monitor the packet-declared stop anchor and hard-flat time, then submit an emergency close only when run with `--execute`.
-- 2026-05-17: Added the M5.5 option-exit layer for the strategy lane: minute-based hold-time metrics, DTE-aware theta penalty, option-adjusted expectancy, option tradeability gates, dynamic Sheet readback validation, and active-strategy execution overrides.
+- 2026-05-17: Added the option-exit layer, now called M6, for the strategy lane: minute-based hold-time metrics, DTE-aware theta penalty, option-adjusted expectancy, option tradeability gates, dynamic Sheet readback validation, and active-strategy execution overrides.
 - 2026-05-17: Rebuilt and published `Mala_Evidence_v1` from the current M5 candidate set: `36` evidence rows, `53` columns, `0` readback mismatches.
 - 2026-05-17: Cleaned `active_strategy` down to the `11` rows intended for aggressive shadow, each with a one-week learning note; Bhiksha active-plan compile and zero-bar dry startup passed with all strategy deployments `shadow_only=true`.
-- 2026-05-17: Archived the old evidence book and pre-M5.5 option-exit book so the live review surface is the current `Mala_Evidence_v1` plus current `active_strategy`, not two competing books.
+- 2026-05-17: Archived the old evidence book and pre-M6 option-exit book so the live review surface is the current `Mala_Evidence_v1` plus current `active_strategy`, not two competing books.
 - 2026-05-17: Completed the next Mala deletion pass: legacy `Strategy_Catalog` publishers and forensic scripts moved to archive, dead strategy modules removed from active `src`, and factory reachability cut for `Kinematic Ladder`, `Regime Router (Kinematic + Compression)`, `Opening Drive v2 (Short Continue)`, and `EMA Momentum`.
 - 2026-05-17: Verified the deletion pass with Mala full suite `332 passed`; canonical handoff still generates `36` rows.
 - 2026-05-17: Added active-plan preflight to the oldmac daily shadow wrapper: expected `11` strategy deployments, `1` manual deployment, `0` suppressed rows, all enabled, all `shadow_only=true`.
@@ -86,8 +87,8 @@ lanes are now distinct:
 1. **Kernel/playbook lane:** the IWM/QQQ mean-reversion playbook is the first
    clean shared-contract target.
 2. **Strategy-shadow lane:** legacy M1-M5 families are not grandfathered, but
-   a small set has re-earned short-term shadow through M5.5 option-aware
-   evidence and current `active_strategy` approval.
+   a small set has re-earned short-term shadow through M6 option-aware
+   evidence, M7 provider translation, and current `active_strategy` approval.
 
 ### Done
 
@@ -112,10 +113,14 @@ lanes are now distinct:
   retired strategy implementations have been moved out of the active tree into
   the external prune archive. Active strategy factory reachability is limited
   to current strategy families.
-- **M5.5 option-aware strategy evidence exists.** Mala now selects exits by
+- **M6 option-aware strategy evidence exists.** Mala now selects exits by
   option-adjusted expectancy, velocity, rapid target hit rate, lower hold time,
   profit factor, and win rate. The theta model uses wall-clock minutes instead
   of bar-count denominators.
+- **M7 provider translation is Mala-owned.** Provider parity and exact-row
+  signal translation are research gates before Bhiksha shadow, not execution
+  surprises discovered by Bhiksha. Bhiksha can later reconcile shadow/live
+  execution, but it does not build Mala evidence columns.
 - **`Mala_Evidence_v1` is current and read back.** The current evidence publish
   is `36` rows by `53` columns with zero readback mismatches.
 - **`active_strategy` is cleaned for aggressive shadow.** The active strategy
@@ -262,7 +267,7 @@ over the last month. There is no runtime behavior to preserve by default.
 Re-evaluating those hypotheses against the new contracts is an unavoidable
 cost and is treated here as a feature, not a regression. The kernel/playbook
 lane carries over the IWM/QQQ mean-reversion playbook. The strategy-shadow
-lane carries only the rows that re-earned current M5.5 option-aware evidence
+lane carries only the rows that re-earned current M6 option-aware evidence
 and explicit active authorization.
 
 Legacy code paths are deleted as families migrate. Dead strategies are retired
@@ -326,8 +331,8 @@ The refactor assumes a clean baseline, not a careful preservation:
 - **Carrying over into the kernel/playbook lane:** the IWM/QQQ mean-reversion
   playbook. It is the first shared-contract parity target and the only current
   approval-gated live pilot candidate.
-- **Allowed into strategy shadow:** the current 11 active rows that re-earned
-  their place through M5.5 option-aware evidence and explicit
+- **Allowed into strategy shadow:** only rows that re-earned their place through
+  M6 option-aware evidence, M7 provider translation, and explicit
   `active_strategy` cleanup. They are shadow candidates, not live candidates.
 - **Not carrying over:** any old M1-M5-promoted strategy that did not re-earn
   current evidence and active authorization.

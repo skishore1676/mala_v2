@@ -236,7 +236,7 @@ def render_manifest_markdown(rows: list[dict[str, Any]]) -> str:
             "",
             "1. Rerun P0 active rows under current transforms.",
             "2. Re-optimize all exits with the short-option grid.",
-            "3. Refresh M6 provider validation and same-bars Mala/Bhiksha parity.",
+            "3. Refresh M7 provider translation and same-bars Mala/Bhiksha parity.",
             "4. Publish regenerated `Mala_Evidence_v1` only from artifacts.",
             "5. Rebuild `active_strategy` from the fresh shadow packet; disable anything not re-earned.",
             "",

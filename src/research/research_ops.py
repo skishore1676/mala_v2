@@ -22,8 +22,18 @@ from src.research.bhiksha_plumbing_triage import build_bhiksha_plumbing_triage
 from src.research.bhiksha_signal_ev import build_bhiksha_signal_ev_report
 from src.research.google_sheets import GoogleSheetTableClient
 from src.research.provider_validation_m6 import (
+    M7_PROVIDER_TRANSLATION_JSON,
     build_m6_provider_validation,
+    build_m7_provider_validation,
     discover_latest_m5_run_dirs,
+)
+from src.research.provider_panel import build_provider_panel_report, parse_provider_bar_spec
+from src.research.provider_inputs import build_provider_input_csvs
+from src.research.provider_m7_workbook import build_m7_review_workbook
+from src.research.provider_replay_m7 import (
+    M7_PROVIDER_REPLAY_CSV,
+    build_m7_provider_replay,
+    runtime_provider_from_bhiksha_config,
 )
 from src.research.provider_volume_parity import build_provider_volume_parity_report
 from src.research.research_runner import create_hypothesis_file
@@ -4697,6 +4707,71 @@ def cmd_provider_volume_parity(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_provider_inputs(args: argparse.Namespace) -> int:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "provider_inputs" / stamp
+    artifacts = build_provider_input_csvs(
+        wide_csvs=[Path(path) for path in args.wide_provider_csv],
+        out_dir=out_dir,
+    )
+    print(f"PROVIDER_INPUT_DIR={out_dir}")
+    for provider, path in sorted(artifacts.provider_csvs.items()):
+        print(f"PROVIDER_BARS_{provider.upper()}={path}")
+    return 0
+
+
+def cmd_provider_panel(args: argparse.Namespace) -> int:
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else Path(args.out_dir) / "provider_panel" / stamp
+    provider_specs = dict(parse_provider_bar_spec(spec) for spec in args.provider_bars)
+    artifacts = build_provider_panel_report(
+        provider_bar_csvs=provider_specs,
+        out_dir=out_dir,
+        baseline_provider=args.baseline_provider,
+        session=args.session,
+        relative_volume_window=args.relative_volume_window,
+    )
+    print(f"M7_PROVIDER_PANEL_REPORT={artifacts.report_md}")
+    print(f"PROVIDER_BAR_PANEL_CSV={artifacts.panel_csv}")
+    print(f"PROVIDER_PAIR_BAR_PARITY_CSV={artifacts.bar_parity_csv}")
+    print(f"PROVIDER_RELATIVE_VOLUME_CSV={artifacts.relative_volume_csv}")
+    print(f"PROVIDER_FEATURE_PARITY_CSV={artifacts.feature_parity_csv}")
+    return 0
+
+
+def cmd_provider_replay_m7(args: argparse.Namespace) -> int:
+    run_dirs = [Path(args.run_dir)] if args.run_dir else discover_latest_m5_run_dirs(args.runs_dir)
+    provider_panel_csv = args.provider_panel_csv or _latest_provider_artifact(
+        args.out_dir,
+        "provider_bar_panel.csv",
+    )
+    if not provider_panel_csv:
+        raise SystemExit("--provider-panel-csv is required when no provider panel artifact exists")
+    runtime_provider = str(args.runtime_provider or "").strip().lower()
+    runtime_provider_source = "explicit" if runtime_provider else ""
+    if not runtime_provider and args.bhiksha_providers_config:
+        runtime_provider, runtime_provider_source = runtime_provider_from_bhiksha_config(
+            args.bhiksha_providers_config
+        )
+    artifacts = build_m7_provider_replay(
+        run_dirs=run_dirs,
+        provider_panel_csv=provider_panel_csv,
+        baseline_provider=args.baseline_provider,
+        runtime_provider=runtime_provider,
+        runtime_provider_source=runtime_provider_source,
+    )
+    print(f"M7_REPLAY_RUN_DIRS={len(artifacts.run_dirs)}")
+    for path in artifacts.replay_csvs:
+        print(f"M7_PROVIDER_REPLAY_CSV={path}")
+    for path in artifacts.replay_by_pair_csvs:
+        print(f"M7_PROVIDER_REPLAY_BY_PAIR_CSV={path}")
+    print(f"PROVIDER_PANEL_CSV={provider_panel_csv}")
+    print(f"RESEARCH_PROVIDER={args.baseline_provider}")
+    print(f"RUNTIME_PROVIDER={runtime_provider}")
+    print(f"RUNTIME_PROVIDER_SOURCE={runtime_provider_source}")
+    return 0
+
+
 def cmd_provider_validate_m6(args: argparse.Namespace) -> int:
     run_dirs = [Path(args.run_dir)] if args.run_dir else discover_latest_m5_run_dirs(args.runs_dir)
     provider_relative_volume_csv = args.provider_relative_volume_csv or _latest_provider_artifact(
@@ -4726,9 +4801,63 @@ def cmd_provider_validate_m6(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_provider_validate_m7(args: argparse.Namespace) -> int:
+    run_dirs = [Path(args.run_dir)] if args.run_dir else discover_latest_m5_run_dirs(args.runs_dir)
+    provider_relative_volume_csv = args.provider_relative_volume_csv or _latest_provider_artifact(
+        args.out_dir,
+        "provider_relative_volume_parity.csv",
+    )
+    provider_feature_parity_csv = args.provider_feature_parity_csv or _latest_provider_artifact(
+        args.out_dir,
+        "provider_feature_parity.csv",
+    )
+    artifacts = build_m7_provider_validation(
+        run_dirs=run_dirs,
+        provider_relative_volume_csv=provider_relative_volume_csv,
+        provider_feature_parity_csv=provider_feature_parity_csv,
+        provider_replay_csv=args.provider_replay_csv or _default_m7_replay_csv(run_dirs),
+    )
+    print(f"M7_RUN_DIRS={len(artifacts.run_dirs)}")
+    for path in artifacts.provider_validation_csvs:
+        print(f"M7_PROVIDER_TRANSLATION_CSV={path}")
+    for path in artifacts.feature_parity_csvs:
+        print(f"M7_FEATURE_PARITY_CSV={path}")
+    for path in artifacts.review_markdowns:
+        print(f"M7_PROVIDER_REVIEW={path}")
+    for run_dir in artifacts.run_dirs:
+        contract_path = run_dir / M7_PROVIDER_TRANSLATION_JSON
+        if contract_path.exists():
+            print(f"M7_PROVIDER_TRANSLATION_JSON={contract_path}")
+    print(f"PROVIDER_RELATIVE_VOLUME_CSV={provider_relative_volume_csv or ''}")
+    print(f"PROVIDER_FEATURE_PARITY_CSV={provider_feature_parity_csv or ''}")
+    print(f"PROVIDER_REPLAY_CSV={args.provider_replay_csv or _default_m7_replay_csv(run_dirs) or ''}")
+    return 0
+
+
+def cmd_provider_review_m7(args: argparse.Namespace) -> int:
+    artifact_root = Path(args.artifact_root)
+    if not artifact_root.exists():
+        raise SystemExit(f"--artifact-root does not exist: {artifact_root}")
+    artifacts = build_m7_review_workbook(
+        artifact_root=artifact_root,
+        output_path=Path(args.output) if args.output else None,
+    )
+    print(f"M7_REVIEW_WORKBOOK={artifacts.workbook_path}")
+    return 0
+
+
+def _default_m7_replay_csv(run_dirs: list[Path]) -> str:
+    if len(run_dirs) != 1:
+        return ""
+    path = run_dirs[0] / M7_PROVIDER_REPLAY_CSV
+    return str(path) if path.exists() else ""
+
+
 def _latest_provider_artifact(out_dir: str | Path, filename: str) -> str:
     roots = [
+        Path(out_dir) / "provider_panel",
         Path(out_dir) / "provider_volume_parity",
+        REPO_ROOT / "research" / "results" / "provider_panel",
         REPO_ROOT / "research" / "results" / "provider_volume_parity",
     ]
     paths = sorted(path for root in roots for path in root.glob(f"*/{filename}"))
@@ -4998,9 +5127,64 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     volume_parity.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
     volume_parity.set_defaults(func=cmd_provider_volume_parity)
 
+    provider_inputs = subparsers.add_parser(
+        "provider-inputs",
+        help="Normalize wide provider OHLCV parity CSVs into per-provider bar CSVs for M7.",
+    )
+    _add_common_args(provider_inputs)
+    provider_inputs.add_argument(
+        "--wide-provider-csv",
+        action="append",
+        required=True,
+        help="Wide CSV with columns like polygon_open, schwab_close, public_volume. Repeat for symbols/days.",
+    )
+    provider_inputs.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    provider_inputs.set_defaults(func=cmd_provider_inputs)
+
+    provider_panel = subparsers.add_parser(
+        "provider-panel",
+        help="Build a Mala-owned M7 provider parity panel from provider OHLCV CSVs.",
+    )
+    _add_common_args(provider_panel)
+    provider_panel.add_argument(
+        "--provider-bars",
+        action="append",
+        required=True,
+        help="Provider OHLCV CSV spec as provider=/path/to/bars.csv. Repeat for polygon/schwab/public.",
+    )
+    provider_panel.add_argument("--baseline-provider", default="polygon")
+    provider_panel.add_argument("--session", choices=["all", "regular", "extended"], default="regular")
+    provider_panel.add_argument("--relative-volume-window", type=int, default=20)
+    provider_panel.add_argument("--output-dir", default="", help="Explicit artifact output directory.")
+    provider_panel.set_defaults(func=cmd_provider_panel)
+
+    provider_replay_m7 = subparsers.add_parser(
+        "provider-replay-m7",
+        help="Replay exact M5/M6 rows across an M7 provider panel and write signal-overlap artifacts.",
+    )
+    _add_common_args(provider_replay_m7)
+    provider_replay_m7.add_argument("--run-dir", default="", help="One M5 run dir. Omit to process latest M5 run dirs.")
+    provider_replay_m7.add_argument(
+        "--provider-panel-csv",
+        default="",
+        help="provider_bar_panel.csv. Defaults to latest research/results/research_ops/provider_panel run.",
+    )
+    provider_replay_m7.add_argument("--baseline-provider", "--research-provider", dest="baseline_provider", default="polygon")
+    provider_replay_m7.add_argument(
+        "--runtime-provider",
+        default="",
+        help="Provider Bhiksha will use for signal construction. Overrides --bhiksha-providers-config.",
+    )
+    provider_replay_m7.add_argument(
+        "--bhiksha-providers-config",
+        default="../bhiksha/config/providers.yaml",
+        help="Bhiksha providers.yaml used to infer underlying_live_primary when --runtime-provider is omitted.",
+    )
+    provider_replay_m7.set_defaults(func=cmd_provider_replay_m7)
+
     provider_validate = subparsers.add_parser(
         "provider-validate-m6",
-        help="Write advisory M6 provider-validation artifacts into M5 run dirs.",
+        help="Write legacy M6 provider-validation artifacts into M5 run dirs.",
     )
     _add_common_args(provider_validate)
     provider_validate.add_argument("--run-dir", default="", help="One M5 run dir. Omit to process latest M5 run dirs.")
@@ -5020,6 +5204,46 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional volume_mismatch_replay_by_row.csv or catalog_volume_sensitivity_by_row.csv for signal overlap.",
     )
     provider_validate.set_defaults(func=cmd_provider_validate_m6)
+
+    provider_validate_m7 = subparsers.add_parser(
+        "provider-validate-m7",
+        help="Write M7 provider-translation gate artifacts into M5 run dirs.",
+    )
+    _add_common_args(provider_validate_m7)
+    provider_validate_m7.add_argument("--run-dir", default="", help="One M5 run dir. Omit to process latest M5 run dirs.")
+    provider_validate_m7.add_argument(
+        "--provider-relative-volume-csv",
+        default="",
+        help="provider_relative_volume_parity.csv. Defaults to latest research/results/research_ops/provider_panel or provider_volume_parity run.",
+    )
+    provider_validate_m7.add_argument(
+        "--provider-feature-parity-csv",
+        default="",
+        help="provider_feature_parity.csv. Defaults to latest research/results/research_ops/provider_panel or provider_volume_parity run.",
+    )
+    provider_validate_m7.add_argument(
+        "--provider-replay-csv",
+        default="",
+        help="Optional exact-row provider signal replay CSV for signal overlap.",
+    )
+    provider_validate_m7.set_defaults(func=cmd_provider_validate_m7)
+
+    provider_review_m7 = subparsers.add_parser(
+        "provider-review-m7",
+        help="Build an operator-readable Excel workbook over M7 provider artifacts.",
+    )
+    _add_common_args(provider_review_m7)
+    provider_review_m7.add_argument(
+        "--artifact-root",
+        required=True,
+        help="Root containing provider_panel/ and M7 run artifacts to roll into one workbook.",
+    )
+    provider_review_m7.add_argument(
+        "--output",
+        default="",
+        help="Optional .xlsx output path. Defaults to <artifact-root>/M7_PIPELINE_REVIEW.xlsx.",
+    )
+    provider_review_m7.set_defaults(func=cmd_provider_review_m7)
 
     return parser.parse_args(argv)
 

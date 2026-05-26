@@ -136,8 +136,16 @@ python -m src.research.research_ops process-intake --apply
 # External mutations are dry-run by default; add --apply only after review
 python -m src.research.research_ops publish-pending --dry-run
 python -m src.research.research_ops sync-board --dry-run
-python -m src.research.research_ops provider-validate-m6 --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
+python -m src.research.research_ops provider-inputs \
+  --wide-provider-csv research/results/provider_inputs/amd_three_way.csv
+python -m src.research.research_ops provider-panel \
+  --provider-bars polygon=research/results/provider_inputs/polygon.csv \
+  --provider-bars schwab=research/results/provider_inputs/schwab.csv \
+  --provider-bars public=research/results/provider_inputs/public.csv
+python -m src.research.research_ops provider-replay-m7 --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
+python -m src.research.research_ops provider-validate-m7 --run-dir research/results/hypothesis_runs/<hypothesis>/<run_ts>
 python -m src.research.mala_handoff --publish-provider-validation-only
+# M7 gate thresholds live in config/m7_provider_translation.yaml.
 python -m src.research.research_ops push-control \
   --control-sheet-id 1qzXNn8ezagqeDR9EI9hoUTzhANKARk4jG4pdy8-32T0 \
   --control-sheet-name Research_Control
@@ -195,9 +203,11 @@ Mental model:
 - Local Orchestrator consumes the next-action queue and stops at reasoning/approval checkpoints.
 - Research_Control Google Sheet is the operator UI; approved rows drive the local orchestrator when `--with-control-sheet` is set. Valid actions are blank, `APPROVE_RETUNE`, `APPROVE_KILL`, `APPROVE_PUBLISH`, `APPROVE_BOARD_SYNC`, `APPROVE_SURFACE_EXPANSION`, `MARK_STALE`, and `SKIP`. Invalid nonblank actions are preserved and marked `invalid_operator_action:<value>` rather than silently cleared.
 - `Mala_Evidence_v1` is Mala-owned, read-only evidence: tested strategy params, signal window, recommendation tier, thesis exit evidence, and Bhiksha capability labels.
-- M6 provider validation is advisory post-M5 evidence: it writes `M6_provider_validation.csv`, `M6_feature_parity.csv`, and `M6_PROVIDER_REVIEW.md`; use `mala_handoff --publish-provider-validation-only` to add only provider status/risk/overlap/report columns to existing `Mala_Evidence_v1` rows.
+- M6 is option translation: Mala exit optimization proves whether the exact post-M5 row has realistic short-dated option expectancy and tradeability.
+- M7 is provider translation: Mala owns provider parity panels and exact-row provider validation before Bhiksha shadow. `provider-inputs` normalizes wide provider OHLCV exports, `provider-panel` writes normalized provider OHLCV/feature parity artifacts, `provider-replay-m7` replays exact rows across providers, and `provider-validate-m7` writes `M7_provider_translation.csv`, `M7_feature_parity.csv`, `M7_PROVIDER_TRANSLATION_REVIEW.md`, and the kernel-valid `M7_provider_translation_report.json`. Legacy M6 provider artifacts remain readable for older runs.
 - Bhiksha owns runtime capability in `config/capabilities/bhiksha_capabilities_v1.yaml`; Mala consumes that manifest and marks unsupported variants as not `bhiksha_ready`.
-- `active_strategy` is the operator authorization layer. A row is only executable when the operator authorizes it and Bhiksha confirms the strategy variant is supported.
+- The Mala Evidence to Bhiksha column contract lives in `docs/MALA_EVIDENCE_BHIKSHA_COLUMN_CONTRACT.md`. `active_strategy.execution_overrides` is deprecated for normal strategy rows; Bhiksha should consume DTE, exit, provider, and activation facts from `Mala_Evidence_v1` plus generic execution guardrails from `Operator_Defaults_v1`.
+- `active_strategy` is the operator authorization layer. A row is only executable when the operator authorizes it and Bhiksha confirms the row is supported and, when present, `activation_candidate=TRUE` in `Mala_Evidence_v1`.
 - Legacy `Strategy_Catalog` publishers are archived; handoff review starts from `Mala_Evidence_v1`.
 - Catalog Steward ranks current evidence candidates for live/shadow/hold/pause.
 - OpenClaw/Codex agents may orchestrate later, but they should call Mala tools rather than hold private research truth.
@@ -210,9 +220,10 @@ Mental model:
 5. Continue gate-by-gate. M1→M2 proves cost-stability. M3 proves OOS walk-forward. M4 proves holdout. M5 proves execution robustness.
 6. After M5: exit optimizer runs automatically for every selected evidence row, including `watch_only` rows — evaluates fixed-RR and VMA policy grid, writes `m5_exit_optimizations.json` plus per-candidate artifacts to the run dir
 7. Market regime is tagged on M1_detail.csv and M4_holdout.csv (observational — not a gate). Use regime slices to check if signal quality was regime-dependent.
-8. After M5: run `python -m src.research.research_ops provider-validate-m6 --run-dir <run_dir>` when provider parity artifacts are available. This is advisory and does not replace M1-M5.
-9. After M5/M6: publish reviewable evidence with `python -m src.research.mala_handoff`. `bhiksha_ready` is derived from tested thesis exits, recommendation tier, and the Bhiksha-owned capability manifest; provider validation fields are review metadata.
-10. After a research batch, run `python -m src.research.research_ops backfill` and read `research/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
+8. After M5: treat exit optimization as M6 option translation. Rows that are not `option_trade_ready` or have non-positive option-adjusted expectancy should not be promoted for Bhiksha shadow.
+9. After M6: run `python -m src.research.research_ops provider-panel ...` for the available provider window, then `python -m src.research.research_ops provider-validate-m7 --run-dir <run_dir>`. M7 is a provider-translation gate; it does not retune the row.
+10. After M6/M7: publish reviewable evidence with `python -m src.research.mala_handoff`. Treat legacy `bhiksha_ready` as compatibility; use `bhiksha_runtime_supported`, `mala_evidence_ready`, `option_trade_ready`, `activation_candidate`, and `triage_verdict` for the current operator/readiness view. Provider validation fields are compact M7 review metadata.
+11. After a research batch, run `python -m src.research.research_ops backfill` and read `research/results/research_ops/hot_start.md` before deciding the next cleanup/publish step.
 
 **Reading regime slices post-run:**
 Look at `M4_holdout.csv` columns `vix_band`, `spy_trend_20d`, `session_type`, `market_regime_key` to answer:

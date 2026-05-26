@@ -1,0 +1,17 @@
+# M7 provider-translation gate policy.
+# M7 asks whether a Mala/Polygon research row survives translation into the
+# runtime provider path used by Bhiksha.
+
+schema_version: 1
+
+signal_overlap:
+  # Below this, the row is treated as provider-blocked.
+  block_below: 0.80
+
+  # At or above this, the row can be an activation candidate if the other
+  # Mala, option, runtime, and feature-risk gates are also clean.
+  activation_min: 0.90
+
+feature_risk:
+  # Red feature risk always blocks provider translation.
+  red_blocks: true
