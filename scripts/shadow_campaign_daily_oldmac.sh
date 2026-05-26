@@ -115,6 +115,7 @@ shadow_daily_args=(
   shadow-daily-report
   --with-evidence
   --active-plan-id "$ACTIVE_PLAN_ID"
+  --feedback-root "$MALA_ROOT/data/live_feedback"
 )
 "$MALA_PYTHON" "${shadow_daily_args[@]}"
 
