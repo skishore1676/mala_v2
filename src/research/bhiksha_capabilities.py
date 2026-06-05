@@ -145,7 +145,10 @@ def evaluate_bhiksha_capability(
             status = "unsupported"
             reason = f"unsupported_thesis_exit_policy:{thesis_exit_policy}"
 
-    bhiksha_ready = bool(thesis_exit_tested and recommendation_tier != "watch_only" and status == "supported")
+    # Runtime readiness is intentionally narrower than Mala promotion quality.
+    # Evidence quality, watch-only state, and activation decisions are published
+    # as separate Mala_Evidence_v1 gates.
+    bhiksha_ready = status == "supported"
     return BhikshaCapabilityResult(
         strategy_variant=variant,
         status=status,

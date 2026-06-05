@@ -60,18 +60,38 @@ def _write_shadow_outcomes(path: Path, option_rs: list[float], *, defect: bool =
     return path
 
 
+def _write_execution_packet(
+    path: Path,
+    *,
+    runtime_mode: str = "shadow",
+    shadow_only: bool = True,
+    live_ticket_required: bool = False,
+) -> Path:
+    return _write_json(
+        path,
+        {
+            "status": "approved",
+            "runtime_mode": runtime_mode,
+            "runtime_controls": {
+                "shadow_only": shadow_only,
+                "live_automated_allowed": False,
+                "live_ticket_required": live_ticket_required,
+            },
+        },
+    )
+
+
 def test_playbook_automation_blocks_without_surface_candidates(tmp_path: Path) -> None:
     report = evaluate_playbook_automation_gates(run_dir=tmp_path)
 
     assert report["overall_status"] == "blocked"
-    assert report["next_gate"] == "surface_gate"
+    assert report["next_gate"] == "p1_surface_gate"
     assert report["gates"][0]["status"] == "block"
 
 
-def test_playbook_automation_passes_parity_then_waits_for_shadow(tmp_path: Path) -> None:
+def test_playbook_automation_opens_shadow_without_locked_validation(tmp_path: Path) -> None:
     _write_candidate_regions(tmp_path)
     playbook_packet = _write_json(tmp_path / "playbook.json", {"status": "review"})
-    validation = _write_json(tmp_path / "locked_validation.json", {"status": "passed"})
     parity = _write_json(
         tmp_path / "parity.json",
         {
@@ -81,73 +101,72 @@ def test_playbook_automation_passes_parity_then_waits_for_shadow(tmp_path: Path)
             "extra_event_count": 0,
         },
     )
+    shadow_packet = _write_execution_packet(tmp_path / "shadow_execution.json")
 
     report = evaluate_playbook_automation_gates(
         run_dir=tmp_path,
         playbook_packet=playbook_packet,
-        locked_validation=validation,
         parity_report=parity,
+        shadow_execution_packet=shadow_packet,
     )
 
     statuses = {gate["gate"]: gate["status"] for gate in report["gates"]}
-    assert statuses["surface_gate"] == "pass"
-    assert statuses["locked_validation_gate"] == "pass"
-    assert statuses["parity_gate"] == "pass"
-    assert statuses["shadow_execution_gate"] == "review"
-    assert report["next_gate"] == "shadow_execution_gate"
+    assert statuses["p1_surface_gate"] == "pass"
+    assert statuses["p2_packet_freeze_gate"] == "pass"
+    assert statuses["p3_parity_gate"] == "pass"
+    assert statuses["p4_shadow_authorization_gate"] == "pass"
+    assert statuses["p5_shadow_feedback_gate"] == "review"
+    assert report["overall_status"] == "shadow_ready"
+    assert report["next_gate"] == "p5_shadow_feedback_gate"
 
 
 def test_playbook_automation_blocks_live_on_negative_shadow_option_r(tmp_path: Path) -> None:
     _write_candidate_regions(tmp_path)
     playbook_packet = _write_json(tmp_path / "playbook.json", {"status": "review"})
-    validation = _write_json(tmp_path / "locked_validation.json", {"status": "passed"})
     parity = _write_json(
         tmp_path / "parity.json",
         {"status": "passed", "missing_event_count": 0, "extra_event_count": 0},
     )
+    shadow_packet = _write_execution_packet(tmp_path / "shadow_execution.json")
     shadow = _write_shadow_outcomes(tmp_path / "shadow.csv", [-0.1] * 12)
 
     report = evaluate_playbook_automation_gates(
         run_dir=tmp_path,
         playbook_packet=playbook_packet,
-        locked_validation=validation,
         parity_report=parity,
+        shadow_execution_packet=shadow_packet,
         shadow_outcomes=shadow,
     )
 
     statuses = {gate["gate"]: gate["status"] for gate in report["gates"]}
-    assert statuses["shadow_execution_gate"] == "block"
-    assert statuses["live_approval_gate"] == "block"
-    assert report["next_gate"] == "shadow_execution_gate"
+    assert statuses["p5_shadow_feedback_gate"] == "block"
+    assert statuses["p6_live_approval_gate"] == "block"
+    assert report["next_gate"] == "p5_shadow_feedback_gate"
 
 
 def test_playbook_automation_allows_live_approval_but_blocks_full_auto(tmp_path: Path) -> None:
     _write_candidate_regions(tmp_path)
     playbook_packet = _write_json(tmp_path / "playbook.json", {"status": "review"})
-    validation = _write_json(tmp_path / "locked_validation.json", {"status": "passed"})
     parity = _write_json(
         tmp_path / "parity.json",
         {"status": "passed", "missing_event_count": 0, "extra_event_count": 0},
     )
+    shadow_packet = _write_execution_packet(tmp_path / "shadow_execution.json")
     shadow = _write_shadow_outcomes(tmp_path / "shadow.csv", [0.2] * 12)
-    execution = _write_json(
-        tmp_path / "execution.json",
-        {
-            "status": "approved",
-            "runtime_controls": {
-                "live_ticket_required": True,
-                "live_automated_allowed": False,
-            },
-        },
+    live_execution = _write_execution_packet(
+        tmp_path / "live_execution.json",
+        runtime_mode="live_approval_gated",
+        shadow_only=False,
+        live_ticket_required=True,
     )
 
     report = evaluate_playbook_automation_gates(
         run_dir=tmp_path,
         playbook_packet=playbook_packet,
-        locked_validation=validation,
         parity_report=parity,
+        shadow_execution_packet=shadow_packet,
         shadow_outcomes=shadow,
-        execution_packet=execution,
+        live_execution_packet=live_execution,
     )
     json_path, md_path = write_playbook_automation_gate_artifacts(
         report,
@@ -155,9 +174,10 @@ def test_playbook_automation_allows_live_approval_but_blocks_full_auto(tmp_path:
     )
 
     statuses = {gate["gate"]: gate["status"] for gate in report["gates"]}
-    assert statuses["shadow_execution_gate"] == "pass"
-    assert statuses["live_approval_gate"] == "pass"
-    assert statuses["automation_gate"] == "block"
-    assert report["next_gate"] == "automation_gate"
+    assert statuses["p5_shadow_feedback_gate"] == "pass"
+    assert statuses["p6_live_approval_gate"] == "pass"
+    assert statuses["p7_automation_gate"] == "block"
+    assert report["overall_status"] == "automation_blocked"
+    assert report["next_gate"] == "p7_automation_gate"
     assert json_path.exists()
     assert "Playbook Automation Gates" in md_path.read_text(encoding="utf-8")

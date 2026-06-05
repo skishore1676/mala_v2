@@ -115,9 +115,11 @@
   },
   "metadata": {
     "consultation_required_before_live": true,
+    "exploration_universe": "iwm_qqq",
     "generated_from": "src.research.playbook_packet_registry",
     "parity_compared_event_count": 21127,
     "parity_report_status": "passed",
+    "playbook_scope": "mean-reversion-at-extremes-intraday",
     "source_playbook_packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
     "source_playbook_packet_version": 1
   },
@@ -208,6 +210,6 @@
     "IWM",
     "QQQ"
   ],
-  "title": "IWM/QQQ Mean Reversion Shadow Execution",
+  "title": "Mean Reversion At Extremes Shadow Execution - IWM/QQQ Exploration",
   "version": 1
 }

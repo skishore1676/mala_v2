@@ -32,10 +32,13 @@ missing data. Manual chart review is for trader judgment, not bookkeeping.
 Set the run directory once per replay session:
 
 ```bash
-RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
+RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/current
 ```
 
 For future playbooks, replace `RUN_DIR` with that playbook's current clean run.
+Generated playbook artifacts belong under
+`research/results/playbooks/<playbook_id>/<run_id>/`; `data/results/` is only a
+historical cache/archive location and should not be used for active references.
 
 ## Step 1: Pick A Real Timestamp
 
@@ -227,7 +230,9 @@ The note should answer: did the consultation help the trader's decision?
 
 ## Replay Batch Target
 
-For a serious review batch, complete 8-12 rows:
+For a serious consultation review batch, complete 8-12 rows. This review target
+does not block no-capital Bhiksha shadow once the P1-P4 playbook promotion
+gates pass.
 
 - Include both IWM and QQQ if both were real candidates.
 - Include both take and pass decisions.

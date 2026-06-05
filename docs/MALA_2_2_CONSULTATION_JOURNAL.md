@@ -131,9 +131,10 @@ python -m src.research.playbook_surface_query \
 
 ## Gate
 
-The next evidence gate is not another backtest tweak. It is 8-12 filled journal
-rows from real or serious replay consultations where `taken`, selected
-management, and outcome fields are populated.
+The next consultation evidence gate is 8-12 filled journal rows from real or
+serious replay consultations where `taken`, selected management, and outcome
+fields are populated. This is a product-quality gate for the consultation
+surface, not a prerequisite for no-capital Bhiksha shadow after P1-P4 pass.
 
 Only then can Mala answer whether the consultation loop improved discretionary
 entry selection, management, or pass decisions.

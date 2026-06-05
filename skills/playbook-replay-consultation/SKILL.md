@@ -168,7 +168,8 @@ is missing data.
 
 ## Batch Hygiene
 
-A useful batch is 8-12 closed rows.
+A useful consultation batch is 8-12 closed rows. This is not a blocker for
+no-capital Bhiksha shadow when P1-P4 playbook promotion gates pass.
 
 Aim to include:
 

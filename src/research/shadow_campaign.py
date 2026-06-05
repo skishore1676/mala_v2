@@ -41,6 +41,8 @@ OPERATOR_DEFAULT_PATCH = {
     "dte_max": "21",
     "delta_min": "0.15",
     "delta_max": "0.35",
+    "target_approach_offset_pct": "0.10",
+    "target_pullback_restore_progress_pct": "0.75",
 }
 
 

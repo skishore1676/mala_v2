@@ -161,6 +161,7 @@
       "end": "2026-05-12",
       "start": "2021-05-13"
     },
+    "exploration_universe": "iwm_qqq",
     "feature_families_tested": {
       "exit": [
         "fixed_1_5r",
@@ -204,6 +205,7 @@
       ]
     },
     "generated_from": "src.research.playbook_packet_registry",
+    "playbook_scope": "mean-reversion-at-extremes-intraday",
     "source_run_dir": "research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64",
     "surface_rows": 256
   },
@@ -220,6 +222,6 @@
     "IWM",
     "QQQ"
   ],
-  "title": "IWM/QQQ Mean Reversion At Extremes",
+  "title": "Mean Reversion At Extremes Intraday - IWM/QQQ Exploration",
   "version": 1
 }

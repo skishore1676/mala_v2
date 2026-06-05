@@ -11,8 +11,9 @@ lives in `MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md` and
 **Family source:** `research/playbooks/mean_reversion_at_extremes_v0.md`
 **Playbook source:** `research/playbooks/mean_reversion_at_extremes_intraday_v1.md`
 **Implementation state:** surface spine, consultation path, packet path, parity,
-and automation gate evaluator implemented; current blocker is locked-packet
-validation/stress evidence.
+and `P1-P7` promotion gate evaluator implemented. Current blocker for learning
+is not locked validation; the next step is Bhiksha shadow feedback and Mala
+feedback ingestion.
 
 This is the first build target for Mala 2.2.
 

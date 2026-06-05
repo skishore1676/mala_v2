@@ -4,12 +4,18 @@
 to compile an authorized `active_strategy` row, but `active_strategy` remains
 the operator authorization surface.
 
+Playbook packet evidence is intentionally separate. Use
+`MALA_PLAYBOOK_EVIDENCE_V2.md` for the proposed `Mala_Playbook_Evidence_v2`
+contract that carries playbook packet discovery, P1-P7 gate status, Bhiksha
+shadow feedback, and promotion verdicts.
+
 Default ownership:
 
 - Mala Evidence owns exact-row research facts, strategy params, thesis exits,
   M6 option translation, M7 provider translation, and activation verdicts.
 - Operator Defaults owns generic execution guardrails such as delta, minimum
-  open interest, spread, option stop, profit target, and default trade premium.
+  open interest, spread, option stop, profit target, target handoff behavior,
+  stop-restore behavior, and default trade premium.
 - active_strategy owns only authorization plus explicit capital or emergency
   operator exceptions.
 
@@ -87,6 +93,16 @@ only for named exceptions.
 | `triage_advisory_notes` | Metadata. Stored for review. |
 | `triage_artifact` | Metadata. Stored for review. |
 
+Gate separation:
+
+- `bhiksha_ready` means the row is technically loadable by Bhiksha for its
+  strategy variant, params, and thesis-exit policy.
+- `mala_evidence_ready` means Mala evidence quality is above the shadow floor.
+- `activation_candidate` means runtime support, Mala evidence, option exit
+  tradeability, and M7 provider translation are all clean enough for
+  `active_strategy` authorization.
+- `active_strategy` remains the only operator authorization surface.
+
 Current compiler precedence for strategy rows:
 
 1. Load exact strategy/exits from `Mala_Evidence_v1`.
@@ -97,6 +113,8 @@ Current compiler precedence for strategy rows:
    Defaults.
 4. Apply signal-window start from `signal_window_et` unless vehicle mapping or
    active_strategy already provides an execution window.
-5. Apply `active_strategy.execution_overrides` only as a final explicit escape
+5. Apply target approach and pullback-restore defaults from
+   `Operator_Defaults_v1` unless row-level catastrophe exit params explicitly
+   override them.
+6. Apply `active_strategy.execution_overrides` only as a final explicit escape
    hatch.
-

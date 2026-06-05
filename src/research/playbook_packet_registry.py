@@ -39,6 +39,8 @@ DEFAULT_PACKET_VERSION = 1
 DEFAULT_EXECUTION_PACKET_ID = "execution.mean_reversion_at_extremes.iwm_qqq"
 DEFAULT_LIVE_EXECUTION_PACKET_VERSION = 2
 DEFAULT_CAPABILITY_MANIFEST_ID = "bhiksha.packet_capabilities.v1"
+DEFAULT_EXPLORATION_UNIVERSE = "iwm_qqq"
+DEFAULT_EXPLORATION_LABEL = "IWM/QQQ Exploration"
 
 
 def write_mean_reversion_playbook_packet(
@@ -66,7 +68,7 @@ def write_mean_reversion_playbook_packet(
         packet_id=packet_id,
         version=version,
         status=status,
-        title="IWM/QQQ Mean Reversion At Extremes",
+        title=f"Mean Reversion At Extremes Intraday - {DEFAULT_EXPLORATION_LABEL}",
         symbol_scope=symbols,
         intended_horizon="intraday-short-horizon",
         feature_contract=_feature_contract(run_config),
@@ -90,6 +92,8 @@ def write_mean_reversion_playbook_packet(
                 "end": run_config.get("end"),
             },
             "generated_from": "src.research.playbook_packet_registry",
+            "playbook_scope": PLAYBOOK_ID,
+            "exploration_universe": DEFAULT_EXPLORATION_UNIVERSE,
         },
     )
     packet_path = write_packet(packet_root, packet)
@@ -136,7 +140,7 @@ def write_mean_reversion_shadow_execution_packet(
         packet_id=packet_id,
         version=version,
         status=status,
-        title="IWM/QQQ Mean Reversion Shadow Execution",
+        title=f"Mean Reversion At Extremes Shadow Execution - {DEFAULT_EXPLORATION_LABEL}",
         symbol_scope=playbook_packet.symbol_scope,
         intended_horizon=playbook_packet.intended_horizon,
         feature_contract=playbook_packet.feature_contract,
@@ -163,6 +167,8 @@ def write_mean_reversion_shadow_execution_packet(
         ),
         metadata={
             "generated_from": "src.research.playbook_packet_registry",
+            "playbook_scope": PLAYBOOK_ID,
+            "exploration_universe": DEFAULT_EXPLORATION_UNIVERSE,
             "source_playbook_packet_id": playbook_packet.packet_id,
             "source_playbook_packet_version": playbook_packet.version,
             "parity_compared_event_count": parity_report.get("compared_event_count"),
@@ -229,7 +235,10 @@ def write_mean_reversion_live_execution_packet(
         packet_id=packet_id,
         version=version,
         status=status,
-        title="IWM/QQQ Mean Reversion Live Approval-Gated Execution",
+        title=(
+            "Mean Reversion At Extremes Live Approval-Gated Execution - "
+            f"{DEFAULT_EXPLORATION_LABEL}"
+        ),
         symbol_scope=playbook_packet.symbol_scope,
         intended_horizon=playbook_packet.intended_horizon,
         feature_contract=playbook_packet.feature_contract,
@@ -250,6 +259,8 @@ def write_mean_reversion_live_execution_packet(
         ),
         metadata={
             "generated_from": "src.research.playbook_packet_registry",
+            "playbook_scope": PLAYBOOK_ID,
+            "exploration_universe": DEFAULT_EXPLORATION_UNIVERSE,
             "source_playbook_packet_id": playbook_packet.packet_id,
             "source_playbook_packet_version": playbook_packet.version,
             "parity_compared_event_count": parity_report.get("compared_event_count"),

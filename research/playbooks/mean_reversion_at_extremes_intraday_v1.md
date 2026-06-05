@@ -43,13 +43,15 @@ insufficient.
 ## Scope
 
 - **Playbook id:** `mean-reversion-at-extremes-intraday`
-- **Symbols:** `IWM`, `QQQ`
+- **Initial exploration universe:** `IWM`, `QQQ`
 - **Directions:** upside fade / short reversion and downside fade / long
   reversion
 - **Primary horizon:** same-session move after the opening drive
 - **Data:** underlying minute bars only
 - **Options overlay:** deferred
-- **Bhiksha/runtime:** deferred
+- **Bhiksha/runtime:** IWM/QQQ symbol-scoped packet exists; broader symbols
+  require fresh surface evidence, packet scope, capability support, and parity
+  before runtime adoption
 - **Visual review:** TradingView/thinkorswim after the parameter surface
   produces candidates worth inspecting. In-repo static chart renderers should
   not become a parallel charting surface.
@@ -278,6 +280,33 @@ human chart inspection. The packet writes `event_review.csv`,
 `event_groups.csv`, a Pine overlay, and optional MCP apply/drawing scripts.
 The Pine overlay is preferred because it preserves the real chart context
 without deleting existing TradingView drawings.
+
+## Naming And Artifact Layout
+
+The playbook is `mean-reversion-at-extremes-intraday`. `IWM/QQQ` is the first
+symbol universe explored for that playbook, not the playbook identity.
+
+Generated surfaces live under:
+
+```text
+research/results/playbooks/mean_reversion_at_extremes/<run_id>/
+```
+
+The current restored run is:
+
+```text
+research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
+```
+
+For commands and replay sessions, use:
+
+```text
+research/results/playbooks/mean_reversion_at_extremes/current
+```
+
+That symlink points at the current IWM/QQQ exploration run. Future symbol sets
+should create new run IDs and symbol-scoped packet suffixes while keeping the
+same playbook ID.
 
 ---
 

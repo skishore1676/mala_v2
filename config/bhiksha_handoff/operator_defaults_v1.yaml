@@ -14,6 +14,8 @@ max_trade_premium_usd: 500
 option_stop_pct: 0.35
 option_profit_target_enabled: true
 option_profit_target_pct: 0.35
+target_approach_offset_pct: 0.10
+target_pullback_restore_progress_pct: 0.75
 conflict_policy: one_open_position_per_symbol
 min_open_interest: 25
 max_bid_ask_spread_pct: 0.10

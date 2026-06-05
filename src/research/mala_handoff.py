@@ -47,6 +47,7 @@ GENERATOR_VERSION = 1
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUNS_ROOT = REPO_ROOT / "research" / "results" / "hypothesis_runs"
+DEFAULT_M7_EVIDENCE_ROOT = REPO_ROOT / "research" / "results" / "m7_mala_evidence_full"
 
 _M5_NON_PARAM_COLS = {
     "ticker",
@@ -106,6 +107,12 @@ M6_PROVIDER_FIELDNAMES = [
     "provider_feature_risk",
     "provider_signal_overlap",
     "provider_validation_report",
+]
+
+MALA_EVIDENCE_RUNTIME_FIELDNAMES = [
+    "bhiksha_capability_status",
+    "bhiksha_capability_reason",
+    "bhiksha_ready",
 ]
 
 MALA_EVIDENCE_ACTIVATION_FIELDNAMES = [
@@ -714,6 +721,103 @@ def publish_provider_validation_columns(
     }
 
 
+def publish_provider_validation_columns_from_snapshot(
+    *,
+    evidence_snapshot_csv: str | Path,
+    provider_backfill_csv: str | Path | None,
+    spreadsheet_id: str,
+    credentials_path: str | Path,
+    evidence_sheet_name: str = DEFAULT_EVIDENCE_SHEET_NAME,
+    evidence_client: GoogleSheetTableClient | None = None,
+) -> dict[str, Any]:
+    """Publish provider/activation fields from a curated M7 evidence bundle.
+
+    This is the recovery path for the post-cleanup layout where old
+    ``hypothesis_runs`` artifacts may be pruned but the curated M7 evidence
+    packet remains under ``research/results/m7_mala_evidence_full``.
+    """
+    _require_canonical_evidence_sheet(evidence_sheet_name)
+    evidence_client = evidence_client or GoogleSheetTableClient(
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=evidence_sheet_name,
+        credentials_path=Path(credentials_path),
+    )
+    evidence_client.require_sheet_exists()
+    publish_columns = (
+        MALA_EVIDENCE_RUNTIME_FIELDNAMES
+        + M6_PROVIDER_FIELDNAMES
+        + MALA_EVIDENCE_ACTIVATION_FIELDNAMES
+    )
+    added_columns = evidence_client.ensure_columns(publish_columns)
+    existing_rows = evidence_client.read_rows(range_suffix="A1:ZZ5000")
+    if existing_rows and "catalog_key" not in existing_rows[0]:
+        raise RuntimeError(f"{evidence_sheet_name} must contain a catalog_key column for provider-only publish")
+
+    provider_rows_by_key = build_provider_validation_rows_from_snapshot(
+        evidence_snapshot_csv=evidence_snapshot_csv,
+        provider_backfill_csv=provider_backfill_csv,
+    )
+    updates: list[dict[str, Any]] = []
+    matched_keys: set[str] = set()
+    for existing in existing_rows:
+        catalog_key = str(existing.get("catalog_key") or "")
+        provider_row = provider_rows_by_key.get(catalog_key)
+        if provider_row is None:
+            continue
+        matched_keys.add(catalog_key)
+        updates.append({"row_index": existing["row_index"], **provider_row})
+
+    evidence_client.batch_update_rows(rows=updates, columns=publish_columns)
+    missing_keys = sorted(set(provider_rows_by_key) - matched_keys)
+    return {
+        "provider_rows": len(provider_rows_by_key),
+        "updated_rows": len(updates),
+        "missing_catalog_keys": missing_keys,
+        "added_columns": added_columns,
+        "source": str(evidence_snapshot_csv),
+        "provider_backfill": str(provider_backfill_csv) if provider_backfill_csv else "",
+    }
+
+
+def build_provider_validation_rows_from_snapshot(
+    *,
+    evidence_snapshot_csv: str | Path,
+    provider_backfill_csv: str | Path | None = None,
+) -> dict[str, dict[str, str]]:
+    snapshot_rows = _read_csv_dicts(Path(evidence_snapshot_csv))
+    provider_rows = _read_csv_dicts(Path(provider_backfill_csv)) if provider_backfill_csv else []
+    provider_by_key = {
+        str(row.get("catalog_key") or ""): row
+        for row in provider_rows
+        if str(row.get("catalog_key") or "")
+    }
+    rows_by_key: dict[str, dict[str, str]] = {}
+    for snapshot in snapshot_rows:
+        catalog_key = str(snapshot.get("catalog_key") or "")
+        if not catalog_key:
+            continue
+        row = dict(snapshot)
+        provider = provider_by_key.get(catalog_key)
+        if provider:
+            for key in M6_PROVIDER_FIELDNAMES:
+                value = provider.get(key)
+                if value not in (None, ""):
+                    row[key] = value
+        rows_by_key[catalog_key] = {
+            "bhiksha_capability_status": str(row.get("bhiksha_capability_status") or ""),
+            "bhiksha_capability_reason": str(row.get("bhiksha_capability_reason") or ""),
+            "bhiksha_ready": _format_bool_metric(
+                str(row.get("bhiksha_capability_status") or "").strip().lower() == "supported"
+            ),
+            "provider_validation_status": str(row.get("provider_validation_status") or "provider_unknown"),
+            "provider_feature_risk": str(row.get("provider_feature_risk") or ""),
+            "provider_signal_overlap": str(row.get("provider_signal_overlap") or ""),
+            "provider_validation_report": str(row.get("provider_validation_report") or ""),
+            **activation_triage_fields_from_evidence_row(row),
+        }
+    return rows_by_key
+
+
 def _provider_validation_update_row(packet: MalaHandoffPacket) -> dict[str, Any]:
     return {
         "provider_validation_status": packet.provider_validation.status,
@@ -829,6 +933,115 @@ def activation_triage_fields(packet: MalaHandoffPacket) -> dict[str, str]:
         "triage_blocking_checks": triage_blocks,
         "triage_advisory_notes": "; ".join(advisory) if advisory else "none",
         "triage_artifact": report,
+    }
+
+
+def activation_triage_fields_from_evidence_row(row: dict[str, Any]) -> dict[str, str]:
+    checks = _parse_json_object(row.get("recommendation_checks_json"))
+    if not checks:
+        checks = {
+            "mc_prob_positive_exp": row.get("execution_robustness"),
+            "holdout_trades": row.get("signal_count"),
+            "base_exp_r": row.get("expectancy"),
+            "exit_trade_count": row.get("exit_trade_count"),
+        }
+    runtime_supported = str(row.get("bhiksha_capability_status") or "").strip().lower() == "supported"
+    runtime_blocks: list[str] = []
+    if not runtime_supported:
+        runtime_blocks.append(
+            "bhiksha_capability_status="
+            f"{row.get('bhiksha_capability_status') or 'missing'}; "
+            f"reason={row.get('bhiksha_capability_reason') or 'missing'}; required=supported"
+        )
+
+    mala_blocks = _mala_evidence_blocking_checks_from_row(row, checks)
+    mala_ready = not mala_blocks
+
+    option_ready = _metric_bool(row.get("option_trade_ready"))
+    option_ev = _float_or_none(row.get("option_adjusted_expectancy_pct"))
+    option_blocks: list[str] = []
+    if not option_ready:
+        option_blocks.append(
+            "option_trade_ready=false; "
+            f"option_adjusted_expectancy_pct={_format_check_number(option_ev)}; "
+            "required option_trade_ready=true"
+        )
+    elif option_ev is None:
+        option_blocks.append("option_adjusted_expectancy_pct=missing; required>0")
+    elif option_ev <= 0:
+        option_blocks.append(f"option_adjusted_expectancy_pct={_format_check_number(option_ev)}; required>0")
+
+    provider_status = str(row.get("provider_validation_status") or "provider_unknown")
+    provider_risk = str(row.get("provider_feature_risk") or "unknown")
+    provider_overlap = _float_or_none(row.get("provider_signal_overlap"))
+    m7_policy = load_m7_gate_policy()
+    activation_overlap_min = m7_policy.signal_overlap_activation_min
+    block_overlap_below = m7_policy.signal_overlap_block_below
+    overlap_requirement = f"required>={_format_check_number(activation_overlap_min)}_for_activation"
+    provider_blocks: list[str] = []
+    if provider_status not in {"provider_pass", "provider_watch"}:
+        provider_blocks.append(f"m7_status={provider_status}; required=provider_pass_or_provider_watch")
+    if provider_overlap is None:
+        provider_blocks.append(f"m7_signal_overlap=missing; {overlap_requirement}")
+    elif provider_overlap < activation_overlap_min:
+        provider_blocks.append(
+            f"m7_signal_overlap={_format_check_number(provider_overlap)}; {overlap_requirement}"
+        )
+    if m7_policy.red_feature_risk_blocks and provider_risk == "red":
+        provider_blocks.append("m7_feature_risk=red; required!=red")
+
+    activation_blocks = runtime_blocks + mala_blocks + option_blocks + provider_blocks
+    activation_candidate = not activation_blocks
+
+    kill_reasons: list[str] = []
+    if option_blocks:
+        kill_reasons.append("option_not_tradeable")
+    if m7_policy.red_feature_risk_blocks and provider_risk == "red":
+        kill_reasons.append("provider_feature_red")
+    if provider_status == "provider_blocked" and (provider_overlap is None or provider_overlap < block_overlap_below):
+        kill_reasons.append("provider_translation_blocked_low_overlap")
+    if not runtime_supported and provider_status == "provider_blocked":
+        kill_reasons.append("runtime_unsupported_and_provider_blocked")
+
+    if activation_candidate:
+        triage_verdict = "CLEAN"
+        triage_reason = "runtime_supported_mala_ready_option_ready_m7_overlap_clean"
+        triage_blocks = "none"
+    elif kill_reasons:
+        triage_verdict = "KILL"
+        triage_reason = "; ".join(kill_reasons)
+        triage_blocks = "; ".join(activation_blocks) if activation_blocks else "none"
+    else:
+        triage_verdict = "REPAIR"
+        repair_reasons: list[str] = []
+        if runtime_blocks:
+            repair_reasons.append("runtime_adapter_missing")
+        if mala_blocks:
+            repair_reasons.append("mala_evidence_below_shadow_gate")
+        if option_blocks:
+            repair_reasons.append("option_handoff_not_ready")
+        if provider_blocks:
+            repair_reasons.append("provider_translation_not_clean")
+        triage_reason = "; ".join(repair_reasons) if repair_reasons else "needs_review"
+        triage_blocks = "; ".join(activation_blocks) if activation_blocks else "none"
+
+    advisory = _triage_advisory_notes_from_row(row, checks, provider_risk)
+    report = row.get("provider_validation_report") or row.get("run_dir") or ""
+    return {
+        "bhiksha_runtime_supported": _format_bool_metric(runtime_supported),
+        "bhiksha_runtime_reason": str(row.get("bhiksha_capability_reason") or ""),
+        "mala_evidence_ready": _format_bool_metric(mala_ready),
+        "mala_evidence_blocking_checks": "none" if mala_ready else "; ".join(mala_blocks),
+        "activation_candidate": _format_bool_metric(activation_candidate),
+        "activation_blocking_checks": "none" if activation_candidate else "; ".join(activation_blocks),
+        "m7_status": provider_status,
+        "m7_feature_risk": provider_risk,
+        "m7_signal_overlap": _format_optional(provider_overlap),
+        "triage_verdict": triage_verdict,
+        "triage_verdict_reason": triage_reason,
+        "triage_blocking_checks": triage_blocks,
+        "triage_advisory_notes": "; ".join(advisory) if advisory else "none",
+        "triage_artifact": str(report),
     }
 
 
@@ -1027,6 +1240,16 @@ def render_warnings_markdown(packets: list[MalaHandoffPacket]) -> str:
 def default_output_dir() -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return REPO_ROOT / "research" / "results" / "mala_handoff" / stamp
+
+
+def latest_m7_evidence_snapshot(root: str | Path = DEFAULT_M7_EVIDENCE_ROOT) -> tuple[Path, Path | None] | None:
+    root_path = Path(root)
+    candidates = sorted(root_path.glob("*/MALA_EVIDENCE_SNAPSHOT.csv"))
+    if not candidates:
+        return None
+    snapshot = candidates[-1]
+    backfill = snapshot.with_name("M7_MALA_EVIDENCE_SHEET_BACKFILL.csv")
+    return snapshot, backfill if backfill.exists() else None
 
 
 def _read_csv_dicts(path: Path) -> list[dict[str, str]]:
@@ -1231,6 +1454,44 @@ def _mala_evidence_blocking_checks(packet: MalaHandoffPacket) -> list[str]:
     return blocks
 
 
+def _mala_evidence_blocking_checks_from_row(row: dict[str, Any], checks: dict[str, Any]) -> list[str]:
+    blocks: list[str] = []
+    tier = str(row.get("recommendation_tier") or "").strip().lower()
+    if tier not in {"shadow", "promote"}:
+        blocks.append(f"recommendation_tier={tier or 'missing'}; required=shadow_or_promote_for_activation")
+    if not _metric_bool(row.get("thesis_exit_tested")):
+        blocks.append("thesis_exit_tested=false; required=true")
+
+    mc_prob = _float_or_none(checks.get("mc_prob_positive_exp"))
+    min_mc = _float_or_none(checks.get("min_mc_prob_for_catalog"))
+    if min_mc is None:
+        min_mc = 0.70
+    if mc_prob is None:
+        blocks.append(f"mc_prob_positive_exp=missing; required>={_format_check_number(min_mc)}_for_shadow")
+    elif mc_prob < min_mc:
+        blocks.append(
+            f"mc_prob_positive_exp={_format_check_number(mc_prob)}; "
+            f"required>={_format_check_number(min_mc)}_for_shadow"
+        )
+
+    holdout_trades = _float_or_none(checks.get("holdout_trades"))
+    min_holdout = _float_or_none(checks.get("min_holdout_trades_for_shadow"))
+    if min_holdout is None:
+        min_holdout = 15
+    if holdout_trades is None:
+        blocks.append(f"holdout_trades=missing; required>={_format_check_number(min_holdout)}_for_shadow")
+    elif holdout_trades < min_holdout:
+        blocks.append(
+            f"holdout_trades={_format_check_number(holdout_trades)}; "
+            f"required>={_format_check_number(min_holdout)}_for_shadow"
+        )
+
+    base_exp = _float_or_none(checks.get("base_exp_r"))
+    if base_exp is not None and base_exp <= 0:
+        blocks.append(f"base_exp_r={_format_check_number(base_exp)}; required>0")
+    return blocks
+
+
 def _triage_advisory_notes(
     packet: MalaHandoffPacket,
     checks: dict[str, Any],
@@ -1274,11 +1535,66 @@ def _triage_advisory_notes(
     return notes
 
 
+def _triage_advisory_notes_from_row(
+    row: dict[str, Any],
+    checks: dict[str, Any],
+    provider_risk: str,
+) -> list[str]:
+    notes: list[str] = []
+    mc_prob = _float_or_none(checks.get("mc_prob_positive_exp"))
+    min_mc_promote = _float_or_none(checks.get("min_mc_prob_for_promote"))
+    if min_mc_promote is None:
+        min_mc_promote = 0.95
+    if mc_prob is not None and mc_prob < min_mc_promote:
+        notes.append(
+            f"mc_prob_positive_exp={_format_check_number(mc_prob)}; "
+            f"promote_requires>={_format_check_number(min_mc_promote)}"
+        )
+
+    holdout_trades = _float_or_none(checks.get("holdout_trades"))
+    min_holdout_promote = _float_or_none(checks.get("min_holdout_trades_for_promote"))
+    if min_holdout_promote is None:
+        min_holdout_promote = 80
+    if holdout_trades is not None and holdout_trades < min_holdout_promote:
+        notes.append(
+            f"holdout_trades={_format_check_number(holdout_trades)}; "
+            f"promote_requires>={_format_check_number(min_holdout_promote)}"
+        )
+
+    exit_trades = _float_or_none(checks.get("exit_trade_count"))
+    if exit_trades is None:
+        exit_trades = _float_or_none(row.get("exit_trade_count"))
+    min_exit_promote = _float_or_none(checks.get("min_exit_trades_for_promote"))
+    if min_exit_promote is None:
+        min_exit_promote = 40
+    if exit_trades is not None and exit_trades < min_exit_promote:
+        notes.append(
+            f"exit_trade_count={_format_check_number(exit_trades)}; "
+            f"promote_requires>={_format_check_number(min_exit_promote)}"
+        )
+
+    if provider_risk == "yellow":
+        notes.append("m7_feature_risk=yellow; provider-sensitive features present, monitor even if overlap is acceptable")
+    return notes
+
+
 def _metric_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     text = str(value or "").strip().lower()
     return text in {"true", "1", "yes", "y"}
+
+
+def _parse_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -1344,6 +1660,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--google-credentials", default="", help="Google service-account JSON path. Defaults to GOOGLE_API_CREDENTIALS_PATH.")
     parser.add_argument("--evidence-sheet-name", default=DEFAULT_EVIDENCE_SHEET_NAME)
     parser.add_argument(
+        "--evidence-snapshot-csv",
+        default="",
+        help=(
+            "Curated Mala evidence snapshot CSV used for provider-only publishes "
+            "when old hypothesis_runs artifacts have been pruned."
+        ),
+    )
+    parser.add_argument(
+        "--provider-backfill-csv",
+        default="",
+        help="Optional M7 provider/activation backfill CSV to overlay onto --evidence-snapshot-csv.",
+    )
+    parser.add_argument(
         "--bhiksha-capabilities",
         default="",
         help="Path to Bhiksha-owned capability manifest. Defaults to BHIKSHA_CAPABILITIES_PATH or sibling/oldmac checkout.",
@@ -1390,12 +1719,28 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--sheet-id or STRATEGY_CATALOG_SHEET_ID (compat env for Mala evidence spreadsheet) is required for --publish-provider-validation-only")
         if not credentials:
             raise SystemExit("--google-credentials or GOOGLE_API_CREDENTIALS_PATH is required for --publish-provider-validation-only")
-        publish_result = publish_provider_validation_columns(
-            packets,
-            spreadsheet_id=sheet_id,
-            credentials_path=credentials,
-            evidence_sheet_name=args.evidence_sheet_name,
-        )
+        snapshot_csv = Path(args.evidence_snapshot_csv) if args.evidence_snapshot_csv else None
+        provider_backfill_csv = Path(args.provider_backfill_csv) if args.provider_backfill_csv else None
+        if not packets and snapshot_csv is None:
+            latest = latest_m7_evidence_snapshot()
+            if latest is not None:
+                snapshot_csv, provider_backfill_csv = latest
+                print(f"PROVIDER_VALIDATION_SOURCE=fallback_m7_evidence_snapshot:{snapshot_csv}")
+        if snapshot_csv is not None:
+            publish_result = publish_provider_validation_columns_from_snapshot(
+                evidence_snapshot_csv=snapshot_csv,
+                provider_backfill_csv=provider_backfill_csv,
+                spreadsheet_id=sheet_id,
+                credentials_path=credentials,
+                evidence_sheet_name=args.evidence_sheet_name,
+            )
+        else:
+            publish_result = publish_provider_validation_columns(
+                packets,
+                spreadsheet_id=sheet_id,
+                credentials_path=credentials,
+                evidence_sheet_name=args.evidence_sheet_name,
+            )
         print(f"EVIDENCE_SHEET={args.evidence_sheet_name}")
         print(f"PROVIDER_VALIDATION_PUBLISH={json.dumps(publish_result, sort_keys=True)}")
     return 0

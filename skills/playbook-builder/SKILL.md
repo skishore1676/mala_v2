@@ -183,8 +183,9 @@ WATCH:   horizon decay or caveat
 
 ### 8. Journal Before Automation
 
-Require 8-12 closed replay/live consultation rows before locking a packet unless
-the user explicitly accepts a smaller sample as a scout.
+Prefer 8-12 closed replay/live consultation rows before live promotion. Do not
+use this as a blocker for no-capital Bhiksha shadow when the surface, packet,
+parity, and shadow-only authorization gates pass.
 
 Closed rows should include:
 
@@ -215,16 +216,18 @@ Use `docs/PLAYBOOK_AUTOMATION_GATES.md`.
 The playbook lane is:
 
 ```text
-surface gate
--> locked validation gate
--> parity gate
--> shadow execution gate
--> live approval gate
--> automation gate
+P1 surface gate
+-> P2 packet freeze gate
+-> P3 parity gate
+-> P4 shadow authorization gate
+-> P5 shadow feedback gate
+-> P6 live approval gate
+-> P7 automation gate
 ```
 
-The automation gate remains blocked until feedback ingestion and a separate
-autonomous-control approval exist.
+Locked stress evidence is useful for later promotion, but it is not a
+prerequisite for no-capital Bhiksha shadow. The automation gate remains blocked
+until feedback ingestion and a separate autonomous-control approval exist.
 
 ## Common Pitfalls
 
@@ -254,4 +257,3 @@ Do not interrupt for:
 - artifact wiring that follows existing patterns
 - generic test/documentation updates
 - routine reruns and receipt regeneration
-

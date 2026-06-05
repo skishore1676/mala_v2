@@ -8,11 +8,14 @@ import pytest
 
 from src.research.mala_handoff import (
     MALA_EVIDENCE_ACTIVATION_FIELDNAMES,
+    MALA_EVIDENCE_RUNTIME_FIELDNAMES,
+    build_provider_validation_rows_from_snapshot,
     build_handoff_packets,
     derive_signal_window,
     handoff_csv_fieldnames,
     packet_to_csv_row,
     publish_provider_validation_columns,
+    publish_provider_validation_columns_from_snapshot,
     publish_review_tabs,
     review_thesis_exit_metrics,
     write_handoff_outputs,
@@ -164,6 +167,20 @@ def test_mala_handoff_accepts_verified_runtime_capability_manifest(tmp_path: Pat
     assert row["bhiksha_capability_status"] == "supported"
     assert row["bhiksha_capability_reason"] == "runtime_verified"
     assert row["bhiksha_ready"] == "true"
+
+
+def test_mala_handoff_bhiksha_ready_is_runtime_only_for_watch_only_rows(tmp_path: Path) -> None:
+    _write_market_impulse_run(tmp_path, extra_params={"mc_prob_positive_exp": "0.20"})
+    manifest_path = _write_capability_manifest(tmp_path)
+
+    packet = build_handoff_packets(runs_root=tmp_path, bhiksha_capabilities_path=manifest_path)[0]
+    row = packet_to_csv_row(packet)
+
+    assert row["bhiksha_capability_status"] == "supported"
+    assert row["bhiksha_ready"] == "true"
+    assert row["mala_evidence_ready"] == "false"
+    assert row["activation_candidate"] == "false"
+    assert "recommendation_tier=watch_only" in row["activation_blocking_checks"]
 
 
 def test_mala_handoff_joins_m6_provider_fields_when_present(tmp_path: Path) -> None:
@@ -369,6 +386,146 @@ def test_provider_validation_publish_updates_only_m6_columns(tmp_path: Path) -> 
     assert "bhiksha_ready" not in client.updated_rows[0]
     assert "thesis_exit_tested" not in client.updated_rows[0]
     assert "thesis_exit_policy" not in client.updated_rows[0]
+
+
+def test_provider_validation_publish_from_snapshot_uses_current_m7_policy(tmp_path: Path) -> None:
+    snapshot = tmp_path / "MALA_EVIDENCE_SNAPSHOT.csv"
+    backfill = tmp_path / "M7_MALA_EVIDENCE_SHEET_BACKFILL.csv"
+    _write_csv(
+        snapshot,
+        [
+            {
+                "catalog_key": "opening-drive-current-basket-discovery__nvda_short",
+                "bhiksha_capability_status": "supported",
+                "bhiksha_capability_reason": "runtime_verified",
+                "recommendation_tier": "shadow",
+                "recommendation_checks_json": json.dumps(
+                    {
+                        "mc_prob_positive_exp": 0.706,
+                        "min_mc_prob_for_catalog": 0.70,
+                        "holdout_trades": 17,
+                        "min_holdout_trades_for_shadow": 15,
+                        "base_exp_r": 0.3318,
+                        "exit_trade_count": 17,
+                    }
+                ),
+                "thesis_exit_tested": "true",
+                "option_trade_ready": "true",
+                "option_adjusted_expectancy_pct": "0.291345",
+                "exit_trade_count": "17",
+                "provider_validation_status": "provider_unknown",
+                "provider_feature_risk": "",
+                "provider_signal_overlap": "",
+                "provider_validation_report": "",
+            },
+            {
+                "catalog_key": "opening-drive-current-basket-discovery__amd_short",
+                "bhiksha_capability_status": "supported",
+                "bhiksha_capability_reason": "runtime_verified",
+                "recommendation_tier": "shadow",
+                "recommendation_checks_json": json.dumps(
+                    {
+                        "mc_prob_positive_exp": 0.9055,
+                        "min_mc_prob_for_catalog": 0.70,
+                        "holdout_trades": 22,
+                        "min_holdout_trades_for_shadow": 15,
+                        "base_exp_r": 0.5564,
+                    }
+                ),
+                "thesis_exit_tested": "true",
+                "option_trade_ready": "true",
+                "option_adjusted_expectancy_pct": "0.433102",
+                "exit_trade_count": "22",
+                "provider_validation_status": "provider_unknown",
+                "provider_feature_risk": "",
+                "provider_signal_overlap": "",
+                "provider_validation_report": "",
+            },
+        ],
+    )
+    _write_csv(
+        backfill,
+        [
+            {
+                "catalog_key": "opening-drive-current-basket-discovery__nvda_short",
+                "provider_validation_status": "provider_watch",
+                "provider_feature_risk": "yellow",
+                "provider_signal_overlap": "0.9",
+                "provider_validation_report": "m7/nvda.md",
+            },
+            {
+                "catalog_key": "opening-drive-current-basket-discovery__amd_short",
+                "provider_validation_status": "provider_watch",
+                "provider_feature_risk": "yellow",
+                "provider_signal_overlap": "0.875",
+                "provider_validation_report": "m7/amd.md",
+            },
+        ],
+    )
+
+    rows = build_provider_validation_rows_from_snapshot(
+        evidence_snapshot_csv=snapshot,
+        provider_backfill_csv=backfill,
+    )
+
+    assert rows["opening-drive-current-basket-discovery__nvda_short"]["activation_candidate"] == "true"
+    assert rows["opening-drive-current-basket-discovery__nvda_short"]["bhiksha_ready"] == "true"
+    assert rows["opening-drive-current-basket-discovery__nvda_short"]["activation_blocking_checks"] == "none"
+    assert rows["opening-drive-current-basket-discovery__amd_short"]["activation_candidate"] == "false"
+    assert rows["opening-drive-current-basket-discovery__amd_short"]["bhiksha_ready"] == "true"
+    assert "required>=0.9_for_activation" in rows["opening-drive-current-basket-discovery__amd_short"]["activation_blocking_checks"]
+
+
+def test_provider_validation_publish_from_snapshot_updates_sheet_rows(tmp_path: Path) -> None:
+    snapshot = tmp_path / "MALA_EVIDENCE_SNAPSHOT.csv"
+    _write_csv(
+        snapshot,
+        [
+            {
+                "catalog_key": "row-a",
+                "bhiksha_capability_status": "supported",
+                "bhiksha_capability_reason": "runtime_verified",
+                "recommendation_tier": "shadow",
+                "recommendation_checks_json": json.dumps(
+                    {
+                        "mc_prob_positive_exp": 0.8,
+                        "holdout_trades": 20,
+                        "base_exp_r": 0.2,
+                    }
+                ),
+                "thesis_exit_tested": "true",
+                "option_trade_ready": "true",
+                "option_adjusted_expectancy_pct": "0.1",
+                "provider_validation_status": "provider_pass",
+                "provider_feature_risk": "green",
+                "provider_signal_overlap": "1.0",
+                "provider_validation_report": "m7/row-a.md",
+            }
+        ],
+    )
+    client = _FakeEvidenceClient([{"row_index": 2, "catalog_key": "row-a"}])
+
+    result = publish_provider_validation_columns_from_snapshot(
+        evidence_snapshot_csv=snapshot,
+        provider_backfill_csv=None,
+        spreadsheet_id="sheet",
+        credentials_path=tmp_path / "creds.json",
+        evidence_client=client,
+    )
+
+    assert result["provider_rows"] == 1
+    assert result["updated_rows"] == 1
+    assert client.updated_columns == [
+        *MALA_EVIDENCE_RUNTIME_FIELDNAMES,
+        "provider_validation_status",
+        "provider_feature_risk",
+        "provider_signal_overlap",
+        "provider_validation_report",
+        *MALA_EVIDENCE_ACTIVATION_FIELDNAMES,
+    ]
+    assert client.updated_rows[0]["row_index"] == 2
+    assert client.updated_rows[0]["bhiksha_ready"] == "true"
+    assert client.updated_rows[0]["activation_candidate"] == "true"
 
 
 def test_handoff_outputs_do_not_publish_vehicle_mapping_as_truth(tmp_path: Path) -> None:

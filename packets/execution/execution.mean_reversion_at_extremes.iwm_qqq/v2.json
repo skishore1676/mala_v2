@@ -114,12 +114,14 @@
     "source_system": "mala_v2"
   },
   "metadata": {
+    "exploration_universe": "iwm_qqq",
     "generated_from": "src.research.playbook_packet_registry",
     "live_pilot": true,
     "live_pilot_boundary": "operator_approval_gated_small_account",
     "live_pilot_date": "2026-05-18",
     "parity_compared_event_count": 21127,
     "parity_report_status": "passed",
+    "playbook_scope": "mean-reversion-at-extremes-intraday",
     "source_playbook_packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
     "source_playbook_packet_version": 1
   },
@@ -214,6 +216,6 @@
     "IWM",
     "QQQ"
   ],
-  "title": "IWM/QQQ Mean Reversion Live Approval-Gated Execution",
+  "title": "Mean Reversion At Extremes Live Approval-Gated Execution - IWM/QQQ Exploration",
   "version": 2
 }

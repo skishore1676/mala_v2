@@ -12,12 +12,13 @@ from typing import Any
 
 
 GATE_ORDER = (
-    "surface_gate",
-    "locked_validation_gate",
-    "parity_gate",
-    "shadow_execution_gate",
-    "live_approval_gate",
-    "automation_gate",
+    "p1_surface_gate",
+    "p2_packet_freeze_gate",
+    "p3_parity_gate",
+    "p4_shadow_authorization_gate",
+    "p5_shadow_feedback_gate",
+    "p6_live_approval_gate",
+    "p7_automation_gate",
 )
 
 
@@ -45,31 +46,51 @@ def evaluate_playbook_automation_gates(
     playbook_packet: Path | None = None,
     locked_validation: Path | None = None,
     parity_report: Path | None = None,
+    shadow_execution_packet: Path | None = None,
     shadow_outcomes: Path | None = None,
+    live_execution_packet: Path | None = None,
     execution_packet: Path | None = None,
     min_shadow_closed_trades: int = 10,
 ) -> dict[str, Any]:
     """Return the current promotion-gate state for a playbook automation lane."""
     run_dir = run_dir.expanduser()
+    shadow_execution_packet = shadow_execution_packet or execution_packet
+    live_execution_packet = live_execution_packet or execution_packet
     candidate_rows = _read_candidate_regions(run_dir)
     surface_gate = _surface_gate(candidate_rows)
-    locked_gate = _locked_validation_gate(
+    packet_gate = _packet_freeze_gate(
         playbook_packet=playbook_packet,
         locked_validation=locked_validation,
         surface_passed=surface_gate.status == "pass",
     )
-    parity_gate = _parity_gate(parity_report, locked_gate.status == "pass")
-    shadow_gate = _shadow_execution_gate(
-        shadow_outcomes=shadow_outcomes,
+    parity_gate = _parity_gate(parity_report, packet_gate.status == "pass")
+    shadow_authorization_gate = _shadow_authorization_gate(
+        shadow_execution_packet=shadow_execution_packet,
         parity_passed=parity_gate.status == "pass",
+    )
+    shadow_feedback_gate = _shadow_feedback_gate(
+        shadow_outcomes=shadow_outcomes,
+        shadow_authorized=shadow_authorization_gate.status == "pass",
         min_shadow_closed_trades=min_shadow_closed_trades,
     )
     live_gate = _live_approval_gate(
-        execution_packet=execution_packet,
-        shadow_passed=shadow_gate.status == "pass",
+        live_execution_packet=live_execution_packet,
+        shadow_feedback_passed=shadow_feedback_gate.status == "pass",
     )
-    automation_gate = _automation_gate(live_gate)
-    gates = [surface_gate, locked_gate, parity_gate, shadow_gate, live_gate, automation_gate]
+    automation_gate = _automation_gate(
+        live_gate=live_gate,
+        locked_validation=locked_validation,
+        shadow_outcomes=shadow_outcomes,
+    )
+    gates = [
+        surface_gate,
+        packet_gate,
+        parity_gate,
+        shadow_authorization_gate,
+        shadow_feedback_gate,
+        live_gate,
+        automation_gate,
+    ]
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "run_dir": str(run_dir),
@@ -110,22 +131,22 @@ def _surface_gate(rows: list[dict[str, str]]) -> GateResult:
     }
     if favorable:
         return GateResult(
-            gate="surface_gate",
+            gate="p1_surface_gate",
             status="pass",
             reason="At least one candidate region passed strict surface gates.",
             evidence=evidence,
-            next_action="Lock one candidate packet and run locked validation.",
+            next_action="Freeze one candidate into a packet for parity and shadow authorization.",
         )
     if near:
         return GateResult(
-            gate="surface_gate",
+            gate="p1_surface_gate",
             status="review",
             reason="Near-favorable regions exist, but no strict favorable region passed.",
             evidence=evidence,
             next_action="Use chart review or bounded retune before locking a packet.",
         )
     return GateResult(
-        gate="surface_gate",
+        gate="p1_surface_gate",
         status="block",
         reason="No favorable surface region is available for automation.",
         evidence=evidence,
@@ -133,7 +154,7 @@ def _surface_gate(rows: list[dict[str, str]]) -> GateResult:
     )
 
 
-def _locked_validation_gate(
+def _packet_freeze_gate(
     *,
     playbook_packet: Path | None,
     locked_validation: Path | None,
@@ -147,7 +168,7 @@ def _locked_validation_gate(
     }
     if not surface_passed:
         return GateResult(
-            gate="locked_validation_gate",
+            gate="p2_packet_freeze_gate",
             status="block",
             reason="Surface gate has not passed.",
             evidence=evidence,
@@ -155,56 +176,56 @@ def _locked_validation_gate(
         )
     if not evidence["playbook_packet_exists"]:
         return GateResult(
-            gate="locked_validation_gate",
+            gate="p2_packet_freeze_gate",
             status="block",
             reason="No locked playbook packet was provided.",
             evidence=evidence,
-            next_action="Write a reviewed playbook packet before parity or execution work.",
+            next_action="Write a reviewed playbook packet before parity or shadow work.",
         )
     if not evidence["locked_validation_exists"]:
         return GateResult(
-            gate="locked_validation_gate",
-            status="review",
-            reason="Playbook packet exists, but locked validation/stress evidence is missing.",
+            gate="p2_packet_freeze_gate",
+            status="pass",
+            reason="Playbook packet exists. Locked stress evidence is missing, but it does not block shadow.",
             evidence=evidence,
-            next_action="Run locked-packet holdout, multiple-comparisons, cost, and stress checks.",
+            next_action="Run Mala/Bhiksha signal parity and prepare the shadow-only execution packet.",
         )
     payload = _read_json(locked_validation)
     status = str(payload.get("status", "")).lower()
     evidence["locked_validation_status"] = status
     if status == "passed":
         return GateResult(
-            gate="locked_validation_gate",
+            gate="p2_packet_freeze_gate",
             status="pass",
-            reason="Locked packet validation passed.",
+            reason="Playbook packet exists and optional locked stress evidence passed.",
             evidence=evidence,
             next_action="Run or attach Mala/Bhiksha signal parity.",
         )
     return GateResult(
-        gate="locked_validation_gate",
-        status="block",
-        reason="Locked packet validation did not pass.",
+        gate="p2_packet_freeze_gate",
+        status="review",
+        reason="Playbook packet exists, but optional locked stress evidence did not pass.",
         evidence=evidence,
-        next_action="Retune or kill the locked packet; do not proceed to automation.",
+        next_action="Shadow may continue only if the packet is explicitly marked as a scout; do not use this artifact for live promotion.",
     )
 
 
-def _parity_gate(parity_report: Path | None, validation_passed: bool) -> GateResult:
+def _parity_gate(parity_report: Path | None, packet_frozen: bool) -> GateResult:
     evidence = {
         "parity_report": str(parity_report) if parity_report else "",
         "parity_report_exists": bool(parity_report and parity_report.exists()),
     }
-    if not validation_passed:
+    if not packet_frozen:
         return GateResult(
-            gate="parity_gate",
+            gate="p3_parity_gate",
             status="block",
-            reason="Locked validation has not passed.",
+            reason="Packet freeze gate has not passed.",
             evidence=evidence,
-            next_action="Resolve locked validation before parity promotion.",
+            next_action="Resolve packet freeze before parity work.",
         )
     if not evidence["parity_report_exists"]:
         return GateResult(
-            gate="parity_gate",
+            gate="p3_parity_gate",
             status="block",
             reason="No parity report was provided.",
             evidence=evidence,
@@ -224,14 +245,14 @@ def _parity_gate(parity_report: Path | None, validation_passed: bool) -> GateRes
     )
     if status == "passed" and missing == 0 and extra == 0:
         return GateResult(
-            gate="parity_gate",
+            gate="p3_parity_gate",
             status="pass",
             reason="Mala/Bhiksha signal parity passed with no missing or extra events.",
             evidence=evidence,
-            next_action="Open shadow execution for the exact packet version.",
+            next_action="Approve or attach a shadow-only execution packet for this exact packet version.",
         )
     return GateResult(
-        gate="parity_gate",
+        gate="p3_parity_gate",
         status="block",
         reason="Parity is not clean enough for execution promotion.",
         evidence=evidence,
@@ -239,10 +260,68 @@ def _parity_gate(parity_report: Path | None, validation_passed: bool) -> GateRes
     )
 
 
-def _shadow_execution_gate(
+def _shadow_authorization_gate(
+    *,
+    shadow_execution_packet: Path | None,
+    parity_passed: bool,
+) -> GateResult:
+    evidence = {
+        "shadow_execution_packet": str(shadow_execution_packet) if shadow_execution_packet else "",
+        "shadow_execution_packet_exists": bool(
+            shadow_execution_packet and shadow_execution_packet.exists()
+        ),
+    }
+    if not parity_passed:
+        return GateResult(
+            gate="p4_shadow_authorization_gate",
+            status="block",
+            reason="Parity has not passed.",
+            evidence=evidence,
+            next_action="Do not shadow until parity is clean.",
+        )
+    if not evidence["shadow_execution_packet_exists"]:
+        return GateResult(
+            gate="p4_shadow_authorization_gate",
+            status="review",
+            reason="Parity passed, but no approved shadow-only execution packet is attached.",
+            evidence=evidence,
+            next_action="Write or attach the Bhiksha shadow-only execution packet.",
+        )
+    packet = _read_json(shadow_execution_packet)
+    status = str(packet.get("status", "")).lower()
+    runtime_mode = str(packet.get("runtime_mode", "")).lower()
+    controls = packet.get("runtime_controls", {}) if isinstance(packet.get("runtime_controls"), dict) else {}
+    shadow_only = bool(controls.get("shadow_only"))
+    live_automated_allowed = bool(controls.get("live_automated_allowed"))
+    evidence.update(
+        {
+            "packet_status": status,
+            "runtime_mode": runtime_mode,
+            "shadow_only": shadow_only,
+            "live_automated_allowed": live_automated_allowed,
+        }
+    )
+    if status == "approved" and runtime_mode == "shadow" and shadow_only and not live_automated_allowed:
+        return GateResult(
+            gate="p4_shadow_authorization_gate",
+            status="pass",
+            reason="Approved Bhiksha shadow-only packet is attached with live automation disabled.",
+            evidence=evidence,
+            next_action="Run Bhiksha shadow and collect executable option, lifecycle, and skip evidence.",
+        )
+    return GateResult(
+        gate="p4_shadow_authorization_gate",
+        status="block",
+        reason="Execution packet is not a clean approved shadow-only packet.",
+        evidence=evidence,
+        next_action="Use a packet with runtime_mode=shadow, shadow_only=true, approved status, and live automation disabled.",
+    )
+
+
+def _shadow_feedback_gate(
     *,
     shadow_outcomes: Path | None,
-    parity_passed: bool,
+    shadow_authorized: bool,
     min_shadow_closed_trades: int,
 ) -> GateResult:
     evidence = {
@@ -250,19 +329,19 @@ def _shadow_execution_gate(
         "shadow_outcomes_exists": bool(shadow_outcomes and shadow_outcomes.exists()),
         "min_shadow_closed_trades": min_shadow_closed_trades,
     }
-    if not parity_passed:
+    if not shadow_authorized:
         return GateResult(
-            gate="shadow_execution_gate",
+            gate="p5_shadow_feedback_gate",
             status="block",
-            reason="Parity has not passed.",
+            reason="Shadow authorization has not passed.",
             evidence=evidence,
-            next_action="Do not shadow until parity is clean.",
+            next_action="Resolve shadow authorization before judging feedback.",
         )
     if not evidence["shadow_outcomes_exists"]:
         return GateResult(
-            gate="shadow_execution_gate",
+            gate="p5_shadow_feedback_gate",
             status="review",
-            reason="Parity passed, but no closed shadow outcome evidence is attached yet.",
+            reason="Shadow is authorized, but no closed shadow outcome evidence is attached yet.",
             evidence=evidence,
             next_action="Run shadow and collect option fill, PnL, lifecycle, and skip evidence.",
         )
@@ -286,7 +365,7 @@ def _shadow_execution_gate(
     )
     if len(closed) < min_shadow_closed_trades:
         return GateResult(
-            gate="shadow_execution_gate",
+            gate="p5_shadow_feedback_gate",
             status="review",
             reason="Shadow evidence exists, but sample is too small for live review.",
             evidence=evidence,
@@ -294,7 +373,7 @@ def _shadow_execution_gate(
         )
     if defects:
         return GateResult(
-            gate="shadow_execution_gate",
+            gate="p5_shadow_feedback_gate",
             status="block",
             reason="Runtime defects remain in shadow evidence.",
             evidence=evidence,
@@ -302,14 +381,14 @@ def _shadow_execution_gate(
         )
     if avg_option_r <= 0:
         return GateResult(
-            gate="shadow_execution_gate",
+            gate="p5_shadow_feedback_gate",
             status="block",
             reason="Closed shadow trades do not show positive executable option R.",
             evidence=evidence,
             next_action="Retune or kill; do not promote the packet.",
         )
     return GateResult(
-        gate="shadow_execution_gate",
+        gate="p5_shadow_feedback_gate",
         status="pass",
         reason="Shadow evidence is positive and runtime-clean.",
         evidence=evidence,
@@ -319,51 +398,58 @@ def _shadow_execution_gate(
 
 def _live_approval_gate(
     *,
-    execution_packet: Path | None,
-    shadow_passed: bool,
+    live_execution_packet: Path | None,
+    shadow_feedback_passed: bool,
 ) -> GateResult:
     evidence = {
-        "execution_packet": str(execution_packet) if execution_packet else "",
-        "execution_packet_exists": bool(execution_packet and execution_packet.exists()),
+        "live_execution_packet": str(live_execution_packet) if live_execution_packet else "",
+        "live_execution_packet_exists": bool(live_execution_packet and live_execution_packet.exists()),
     }
-    if not shadow_passed:
+    if not shadow_feedback_passed:
         return GateResult(
-            gate="live_approval_gate",
+            gate="p6_live_approval_gate",
             status="block",
-            reason="Shadow execution gate has not passed.",
+            reason="Shadow feedback gate has not passed.",
             evidence=evidence,
             next_action="Do not create live approval until shadow evidence is clean.",
         )
-    if not evidence["execution_packet_exists"]:
+    if not evidence["live_execution_packet_exists"]:
         return GateResult(
-            gate="live_approval_gate",
+            gate="p6_live_approval_gate",
             status="review",
             reason="Shadow passed, but no live approval-gated execution packet is attached.",
             evidence=evidence,
             next_action="Draft a live approval-gated execution packet with explicit controls.",
         )
-    packet = _read_json(execution_packet)
+    packet = _read_json(live_execution_packet)
     status = str(packet.get("status", "")).lower()
+    runtime_mode = str(packet.get("runtime_mode", "")).lower()
     controls = packet.get("runtime_controls", {}) if isinstance(packet.get("runtime_controls"), dict) else {}
     live_ticket_required = bool(controls.get("live_ticket_required"))
     live_automated_allowed = bool(controls.get("live_automated_allowed"))
     evidence.update(
         {
             "packet_status": status,
+            "runtime_mode": runtime_mode,
             "live_ticket_required": live_ticket_required,
             "live_automated_allowed": live_automated_allowed,
         }
     )
-    if status == "approved" and live_ticket_required and not live_automated_allowed:
+    if (
+        status == "approved"
+        and runtime_mode == "live_approval_gated"
+        and live_ticket_required
+        and not live_automated_allowed
+    ):
         return GateResult(
-            gate="live_approval_gate",
+            gate="p6_live_approval_gate",
             status="pass",
             reason="Live approval-gated packet is approved with live automation still disabled.",
             evidence=evidence,
             next_action="Run approval-gated pilot and collect managed lifecycle evidence.",
         )
     return GateResult(
-        gate="live_approval_gate",
+        gate="p6_live_approval_gate",
         status="block",
         reason="Execution packet is not a clean live approval-gated packet.",
         evidence=evidence,
@@ -371,16 +457,25 @@ def _live_approval_gate(
     )
 
 
-def _automation_gate(live_gate: GateResult) -> GateResult:
+def _automation_gate(
+    *,
+    live_gate: GateResult,
+    locked_validation: Path | None,
+    shadow_outcomes: Path | None,
+) -> GateResult:
     return GateResult(
-        gate="automation_gate",
+        gate="p7_automation_gate",
         status="block",
         reason=(
             "Full automation is intentionally blocked until approval-gated live pilot feedback "
             "is ingested and a separate autonomous-control packet is approved."
         ),
         evidence={
-            "live_approval_gate_status": live_gate.status,
+            "p6_live_approval_gate_status": live_gate.status,
+            "locked_stress_artifact": str(locked_validation) if locked_validation else "",
+            "locked_stress_artifact_exists": bool(locked_validation and locked_validation.exists()),
+            "shadow_outcomes": str(shadow_outcomes) if shadow_outcomes else "",
+            "shadow_outcomes_exists": bool(shadow_outcomes and shadow_outcomes.exists()),
             "requires_feedback_ingestion": True,
             "requires_autonomous_control_packet": True,
         },
@@ -389,9 +484,14 @@ def _automation_gate(live_gate: GateResult) -> GateResult:
 
 
 def _overall_status(gates: list[GateResult]) -> str:
-    if gates[-1].status == "pass":
+    first_open = next((gate for gate in gates if gate.status != "pass"), None)
+    if first_open is None:
         return "automation_ready"
-    if any(gate.status == "block" for gate in gates[:-1]):
+    if first_open.gate == "p5_shadow_feedback_gate" and first_open.status == "review":
+        return "shadow_ready"
+    if first_open.gate == "p7_automation_gate":
+        return "automation_blocked"
+    if first_open.status == "block":
         return "blocked"
     return "in_review"
 
@@ -464,8 +564,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--playbook-packet", type=Path, default=None)
     parser.add_argument("--locked-validation", type=Path, default=None)
     parser.add_argument("--parity-report", type=Path, default=None)
+    parser.add_argument("--shadow-execution-packet", type=Path, default=None)
     parser.add_argument("--shadow-outcomes", type=Path, default=None)
-    parser.add_argument("--execution-packet", type=Path, default=None)
+    parser.add_argument(
+        "--execution-packet",
+        type=Path,
+        default=None,
+        help="Backward-compatible alias for --shadow-execution-packet.",
+    )
+    parser.add_argument("--live-execution-packet", type=Path, default=None)
     parser.add_argument("--min-shadow-closed-trades", type=int, default=10)
     parser.add_argument("--out-dir", type=Path, default=None)
     return parser.parse_args(argv)
@@ -478,7 +585,9 @@ def main(argv: list[str] | None = None) -> int:
         playbook_packet=args.playbook_packet,
         locked_validation=args.locked_validation,
         parity_report=args.parity_report,
+        shadow_execution_packet=args.shadow_execution_packet,
         shadow_outcomes=args.shadow_outcomes,
+        live_execution_packet=args.live_execution_packet,
         execution_packet=args.execution_packet,
         min_shadow_closed_trades=args.min_shadow_closed_trades,
     )

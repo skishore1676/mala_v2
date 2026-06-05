@@ -1,15 +1,27 @@
 # Playbook Consultation Layer
 
-This is the human-in-the-loop lane for using a Mala playbook before it becomes
-an automated Bhiksha execution packet.
+This is the evidence and replay lane for using a Mala playbook before it
+becomes an automated Bhiksha execution packet.
 
 The current supported playbook is:
 
 - `mean-reversion-at-extremes-intraday`
-- symbols: `IWM`, `QQQ`
-- packet: `playbook.mean_reversion_at_extremes.iwm_qqq` version `1`
+- current exploration universe: `IWM`, `QQQ`
+- current symbol-scoped packet: `playbook.mean_reversion_at_extremes.iwm_qqq` version `1`
 - runtime state: entry-signal parity passed for Bhiksha shadow support
-- execution state: not live automated; management is still operator-selected
+- execution state: approval-gated packet exists; full automation still needs
+  closed feedback and autonomous-control approval
+
+Naming convention: `mean-reversion-at-extremes-intraday` is the playbook.
+`iwm_qqq` is only the first explored universe suffix. Future symbol groups
+should get their own symbol-scoped packet suffixes without renaming the
+playbook itself.
+
+The long-term product is not manual screen trading. This layer exists to
+produce evidence, replay feedback, and management-policy proof so Bhiksha can
+eventually adopt a locked packet the way it adopts Mala strategy-lane rows:
+published evidence, explicit authorization, runtime capability, shadow/live
+feedback, then autonomous execution approval.
 
 ## Roles
 
@@ -37,15 +49,21 @@ authorization. The trader still decides take or pass.
    - historical review uses `replay-close` and cached bars
    - live/manual review uses manually supplied execution outcome later
 7. The batch is reviewed for whether consultation helped the decision.
-8. Only after enough useful closed rows does the playbook move toward an
-   execution packet and Bhiksha-managed shadow.
+8. Useful closed rows improve promotion evidence, but Bhiksha-managed shadow
+   can start once P1-P4 pass because it is no-capital feedback collection.
 
 ## Default Commands
 
 Set the current run once:
 
 ```bash
-RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
+RUN_DIR=research/results/playbooks/mean_reversion_at_extremes/current
+```
+
+The current symlink resolves to:
+
+```text
+research/results/playbooks/mean_reversion_at_extremes/20260515T_clean_rth_iwm_qqq_surface64
 ```
 
 Run a chart-first query:
@@ -157,6 +175,17 @@ silently mapping policy IDs to local defaults.
 That next bridge is:
 
 ```text
+P1-P4 packet approval
+  -> Bhiksha shadow
+  -> closed consultation and executable option feedback
+  -> Mala ingestion
+  -> promotion, retune, or kill
+  -> autonomous-control review
+```
+
+The older manual proof loop remains useful when chart semantics are unclear:
+
+```text
 closed consultation batch
   -> operator review
   -> execution packet review/approval
@@ -168,7 +197,7 @@ closed consultation batch
   -> feedback artifact back to Mala
 ```
 
-The current shadow execution packet is:
+The current IWM/QQQ exploration shadow execution packet is:
 
 ```text
 packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v1.json
@@ -178,7 +207,7 @@ It is `status=approved` for Bhiksha shadow-only activation. It is not approved
 for live automated execution, and its runtime controls keep `shadow_only=true`
 and `live_automated_allowed=false`.
 
-The Monday live-pilot execution packet is:
+The current IWM/QQQ exploration live-approval-gated execution packet is:
 
 ```text
 packets/execution/execution.mean_reversion_at_extremes.iwm_qqq/v2.json
@@ -191,6 +220,6 @@ requires the underlying stop price.
 
 ## Promotion Rule
 
-The consultation layer earns automation only if the closed batch shows that it
-improves judgment or management. A good card that the trader would not actually
-follow is still a pass for automation.
+The playbook layer earns automation only if closed replay/shadow/live feedback
+shows that the locked packet is useful and executable. Consultation artifacts
+are evidence-gathering tools, not the desired steady-state operator workflow.

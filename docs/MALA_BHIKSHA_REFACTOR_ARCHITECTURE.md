@@ -1,9 +1,9 @@
 # Mala / Bhiksha Refactor Architecture
 
 Status: active refactor implementation. The original proposal has crossed into
-the first working cutover path for the IWM/QQQ mean-reversion playbook, plus
-a cleaned strategy-shadow lane that must prove itself under option-aware
-evidence.
+the first working cutover path for the mean-reversion-at-extremes playbook,
+with IWM/QQQ as the first explored symbol universe, plus a cleaned
+strategy-shadow lane that must prove itself under option-aware evidence.
 
 ## Immediate Action Status - 2026-05-17
 
@@ -28,23 +28,24 @@ evidence.
    row-specific review. Weak rows are retuned or killed; they do not sit in
    the sheet by inertia.
 4. **Playbook automation path: action taken.** The automated playbook lane now
-   has a concrete gate evaluator and spec: surface gate, locked validation
-   gate, parity gate, shadow execution gate, live approval gate, and automation
-   gate. Full automation remains intentionally blocked until feedback ingestion
-   and a separate autonomous-control approval exist. First report was generated
-   for the current reversion run and is blocked at `locked_validation_gate`:
-   the playbook packet and parity report exist, but locked-packet validation /
-   stress evidence is not yet attached.
+   has a concrete `P1-P7` evaluator and spec: surface gate, packet freeze,
+   parity, shadow authorization, shadow feedback, live approval, and automation.
+   Shadow is intentionally allowed after P1-P4 because it is no-capital runtime
+   feedback. Locked stress evidence is useful for later promotion decisions,
+   but it is no longer a prerequisite for Bhiksha shadow. Full automation
+   remains blocked until feedback ingestion and a separate autonomous-control
+   approval exist.
 
 **Open questions:** none blocking Monday strategy shadow. For the automated
-playbook lane, the next concrete action is locked-packet validation/stress for
-the current mean-reversion packet.
+playbook lane, the next concrete action is to run the current IWM/QQQ
+exploration packet through Bhiksha shadow and ingest the resulting feedback
+back into Mala.
 
 ## Milestone Log
 
 - 2026-05-16: Created refactor work surfaces: `mala_v2` and `bhiksha` on `codex/shared-contract-refactor`, plus new `mala-bhiksha-kernel` repo.
 - 2026-05-16: Landed the first minimal kernel: packet schemas, capability manifest, signal parity primitives, registry helpers, and green kernel tests.
-- 2026-05-16: Wired Mala to write the IWM/QQQ mean-reversion playbook packet and generated the first canonical packet registry index.
+- 2026-05-16: Wired Mala to write the first IWM/QQQ exploration packet for the mean-reversion-at-extremes playbook and generated the first canonical packet registry index.
 - 2026-05-16: Wired Bhiksha packet compilation to validate shared-kernel packets and fail closed unless an approved execution packet has declared runtime capability.
 - 2026-05-16: Added the first signal-parity artifact path for the reversion playbook; current report is blocked with `runtime_adapter_missing`, not passed.
 - 2026-05-16: Verified the refactor path end to end: kernel `3 passed`, Mala `336 passed`, and Bhiksha `253 passed`.
@@ -77,6 +78,7 @@ the current mean-reversion packet.
 - 2026-05-17: Verified the deletion pass with Mala full suite `332 passed`; canonical handoff still generates `36` rows.
 - 2026-05-17: Added active-plan preflight to the oldmac daily shadow wrapper: expected `11` strategy deployments, `1` manual deployment, `0` suppressed rows, all enabled, all `shadow_only=true`.
 - 2026-05-17: Added the playbook automation gate evaluator and canonical spec: `src.research.playbook_automation_gates` plus `docs/PLAYBOOK_AUTOMATION_GATES.md`.
+- 2026-05-30: Reworked the playbook promotion ladder to `P1-P7`, removing locked validation as a blocker before no-capital Bhiksha shadow, and drafted `Mala_Playbook_Evidence_v2` as the playbook packet passport.
 - 2026-05-17: Reconciled the Mala 2.2 vision/refactor docs with the current two-lane model and moved stale runtime reports out of the active report surface.
 
 ## Current Stock Check
@@ -84,8 +86,8 @@ the current mean-reversion packet.
 As of 2026-05-17, the refactor is no longer only an architecture proposal. Two
 lanes are now distinct:
 
-1. **Kernel/playbook lane:** the IWM/QQQ mean-reversion playbook is the first
-   clean shared-contract target.
+1. **Kernel/playbook lane:** the mean-reversion-at-extremes playbook has its
+   first clean shared-contract target in the IWM/QQQ exploration packet.
 2. **Strategy-shadow lane:** legacy M1-M5 families are not grandfathered, but
    a small set has re-earned short-term shadow through M6 option-aware
    evidence, M7 provider translation, and current `active_strategy` approval.
@@ -179,10 +181,11 @@ lanes are now distinct:
   intentionally aggressive shadow. The decision in one to two weeks is promote,
   retune, or kill based on executable option behavior, not old underlying
   expectancy.
-- **Playbook automation gates.** The playbook lane now has a concrete gate
-  evaluator. It can show where a playbook is blocked, in review, or ready for
-  approval-gated live pilot, while still blocking full automation until
-  feedback ingestion and autonomous-control approval are built.
+- **Playbook promotion gates.** The playbook lane now has a concrete `P1-P7`
+  evaluator. It can show whether a packet is ready for Bhiksha shadow,
+  whether shadow feedback is sufficient for live approval review, and why full
+  automation remains blocked until feedback ingestion and autonomous-control
+  approval are built.
 
 ### Next Pickup
 
@@ -192,9 +195,9 @@ lanes are now distinct:
 2. Build the minimal Bhiksha-native Trader Desk/API surface for the existing
    lane: load packet, consult, take/pass, choose management policy, run option
    preview, start shadow, view position state, and show live block reasons.
-3. Run locked-packet validation/stress for the current reversion packet and
-   attach the artifact to the playbook automation gate report. The first gate
-   report already exists and is blocked at `locked_validation_gate`.
+3. Push the current reversion shadow packet through the `P1-P4` gate report and
+   run Bhiksha shadow as the feedback-generating step. Locked stress can be
+   attached later as promotion evidence, but should not block shadow.
 4. Add the feedback ingestion bridge back into Mala so shadow outcomes and
    operator/analyst notes become packet-versioned review artifacts.
 5. Expand the monitor into a first-class Bhiksha service/desk control with
@@ -225,6 +228,8 @@ Current docs:
 - [`MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md`](MALA_BHIKSHA_REFACTOR_ARCHITECTURE.md): state of state and next actions.
 - [`MALA_BHIKSHA_OPERATING_LANES.md`](MALA_BHIKSHA_OPERATING_LANES.md): lane boundaries.
 - [`PLAYBOOK_AUTOMATION_GATES.md`](PLAYBOOK_AUTOMATION_GATES.md): playbook automation gate contract.
+- [`MALA_PLAYBOOK_EVIDENCE_V2.md`](MALA_PLAYBOOK_EVIDENCE_V2.md):
+  proposed playbook packet evidence passport for Bhiksha adoption.
 - [`PLAYBOOK_CONSULTATION_LAYER.md`](PLAYBOOK_CONSULTATION_LAYER.md) and
   [`PLAYBOOK_REPLAY_CONSULTATION_SOP.md`](PLAYBOOK_REPLAY_CONSULTATION_SOP.md):
   active consultation workflow.
@@ -266,9 +271,9 @@ broad M1-M5 shadow campaign ran roughly 30% win rate with negative expectancy
 over the last month. There is no runtime behavior to preserve by default.
 Re-evaluating those hypotheses against the new contracts is an unavoidable
 cost and is treated here as a feature, not a regression. The kernel/playbook
-lane carries over the IWM/QQQ mean-reversion playbook. The strategy-shadow
-lane carries only the rows that re-earned current M6 option-aware evidence
-and explicit active authorization.
+lane carries over the mean-reversion-at-extremes playbook through its first
+IWM/QQQ exploration packet. The strategy-shadow lane carries only the rows that
+re-earned current M6 option-aware evidence and explicit active authorization.
 
 Legacy code paths are deleted as families migrate. Dead strategies are retired
 loudly, not parked. Human review of a system half-converted is harder and

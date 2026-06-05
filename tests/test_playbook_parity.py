@@ -106,7 +106,7 @@ def _write_packet(tmp_path: Path) -> Path:
         packet_id="playbook.mean_reversion_at_extremes.iwm_qqq",
         version=1,
         status=PacketStatus.REVIEW,
-        title="IWM/QQQ Mean Reversion At Extremes",
+        title="Mean Reversion At Extremes Intraday - IWM/QQQ Exploration",
         symbol_scope=["IWM", "QQQ"],
         intended_horizon="intraday-short-horizon",
         feature_contract=FeatureContract(
