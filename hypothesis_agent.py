@@ -38,7 +38,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import polars as pl
 import yaml
@@ -319,6 +319,141 @@ def evaluate_m1_gate(top_df: pl.DataFrame) -> tuple[bool, str]:
     if reasons:
         return False, "; ".join(reasons)
     return True, f"pct_pos={pct:.0%}  exp_r={exp_r:+.4f}  signals={signals}  windows={windows}"
+
+
+def write_m1_failure_diagnostics(
+    *,
+    out_dir: Path,
+    strategy_name: str,
+    frames: dict[str, pl.DataFrame],
+    configs: list[dict[str, Any]],
+    metrics: MetricsCalculator,
+    detail_m1: pl.DataFrame,
+    agg_m1: pl.DataFrame,
+    top_m1: pl.DataFrame,
+    reason: str,
+    frame_resolver: Callable[[dict[str, Any]], dict[str, pl.DataFrame]] | None = None,
+) -> Path:
+    rows: list[dict[str, Any]] = []
+    frame_row_counts: dict[str, int] = {}
+    for idx, config in enumerate(configs, start=1):
+        config_id = _diagnostic_config_id(config)
+        config_frames = frame_resolver(config) if frame_resolver is not None else frames
+        for ticker, frame in config_frames.items():
+            frame_row_counts[ticker] = max(frame_row_counts.get(ticker, 0), frame.height)
+        try:
+            strategy = _build_configured_strategy(strategy_name, config)
+        except Exception as exc:
+            for ticker in config_frames:
+                rows.append(
+                    {
+                        "config_index": idx,
+                        "config_id": config_id,
+                        "ticker": ticker,
+                        "signal_count": None,
+                        "long_signal_count": None,
+                        "short_signal_count": None,
+                        "playbook_valid_path_count": None,
+                        "diagnostic_error": f"strategy_build_failed:{exc}",
+                        **config,
+                    }
+                )
+            continue
+        for ticker, frame in config_frames.items():
+            try:
+                signals = strategy.generate_signals(frame.clone())
+                signal_count = signals.filter(pl.col("signal")).height
+                long_count = signals.filter(pl.col("signal_direction") == "long").height
+                short_count = signals.filter(pl.col("signal_direction") == "short").height
+                valid_path_count = None
+                if signal_count:
+                    enriched = metrics.add_directional_forward_metrics(
+                        signals,
+                        snapshot_windows=(),
+                    )
+                    if "playbook_pnl_r" in enriched.columns:
+                        valid_path_count = (
+                            enriched.filter(
+                                pl.col("signal") & pl.col("playbook_pnl_r").is_not_nan()
+                            )
+                            .drop_nulls(subset=["playbook_pnl_r"])
+                            .height
+                        )
+                rows.append(
+                    {
+                        "config_index": idx,
+                        "config_id": config_id,
+                        "ticker": ticker,
+                        "signal_count": signal_count,
+                        "long_signal_count": long_count,
+                        "short_signal_count": short_count,
+                        "playbook_valid_path_count": valid_path_count,
+                        "diagnostic_error": "",
+                        **config,
+                    }
+                )
+            except Exception as exc:
+                rows.append(
+                    {
+                        "config_index": idx,
+                        "config_id": config_id,
+                        "ticker": ticker,
+                        "signal_count": None,
+                        "long_signal_count": None,
+                        "short_signal_count": None,
+                        "playbook_valid_path_count": None,
+                        "diagnostic_error": f"signal_generation_failed:{exc}",
+                        **config,
+                    }
+                )
+
+    diagnostics_csv = out_dir / "M1_failure_diagnostics.csv"
+    diagnostics_df = pl.DataFrame(rows) if rows else pl.DataFrame()
+    if not diagnostics_df.is_empty():
+        _csv_safe(diagnostics_df).write_csv(diagnostics_csv)
+
+    if detail_m1.is_empty():
+        empty_reason = (
+            "M1_detail.csv was empty: no config/ticker/window/direction row met "
+            f"the minimum signal requirement ({MIN_SIGNALS}) for walk-forward evaluation."
+        )
+    elif agg_m1.is_empty():
+        empty_reason = "M1_aggregate.csv was empty even though detail rows existed."
+    elif top_m1.is_empty():
+        empty_reason = (
+            "M1_top.csv was empty: aggregate rows existed, but none had positive "
+            "after-cost average test expectancy after direction filtering."
+        )
+    else:
+        empty_reason = "M1_top.csv existed but did not satisfy the M1 promotion thresholds."
+
+    error_count = sum(1 for row in rows if row.get("diagnostic_error"))
+    frame_lines = [f"- {ticker}: {rows} rows" for ticker, rows in sorted(frame_row_counts.items())]
+    lines = [
+        "# M1 Failure Diagnostics",
+        "",
+        f"- reason: `{reason}`",
+        f"- config_count: `{len(configs)}`",
+        f"- detail_rows: `{detail_m1.height}`",
+        f"- aggregate_rows: `{agg_m1.height}`",
+        f"- top_rows: `{top_m1.height}`",
+        f"- diagnostic_errors: `{error_count}`",
+        f"- signal_diagnostics_csv: `{diagnostics_csv.name if rows else 'not_written'}`",
+        "",
+        "## Frame Rows",
+        *frame_lines,
+        "",
+        "## Empty Artifact Reason",
+        empty_reason,
+    ]
+    diagnostics_md = out_dir / "M1_FAILURE_DIAGNOSTICS.md"
+    diagnostics_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return diagnostics_md
+
+
+def _diagnostic_config_id(config: dict[str, Any]) -> str:
+    payload = json.dumps(config, sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
 
 
 def run_m2(
@@ -1435,6 +1570,24 @@ def main() -> None:
         log(f"M1  {'PASS' if passes else 'FAIL'}  {reason}")
 
         if not passes:
+            diagnostics_path = write_m1_failure_diagnostics(
+                out_dir=out_dir,
+                strategy_name=strategy,
+                frames=frames_cal,
+                configs=configs,
+                metrics=metrics,
+                detail_m1=detail_m1,
+                agg_m1=agg_m1,
+                top_m1=top_m1,
+                reason=reason,
+                frame_resolver=(
+                    (lambda config: _load_group_frames(config, "cal"))
+                    if multi_feature
+                    else None
+                ),
+            )
+            notes.append(f"M1 diagnostics: {diagnostics_path.name}")
+            log(f"M1_DIAGNOSTICS  {diagnostics_path}")
             any_pos = (not agg_m1.is_empty() and "avg_test_exp_r" in agg_m1.columns
                        and agg_m1.filter(pl.col("avg_test_exp_r") > 0).height > 0)
             finish("retune" if any_pos else "kill")

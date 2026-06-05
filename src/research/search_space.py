@@ -19,6 +19,11 @@ def build_search_configs(
     strategy = build_strategy_by_name(strategy_name)
     if mode == "fixed":
         return [strategy.search_config()]
+    custom_configs = getattr(strategy, "research_search_configs", None)
+    if callable(custom_configs):
+        configs = custom_configs(mode=mode, max_configs=max_configs)
+        if configs:
+            return configs
     search_spec = strategy.search_spec
     if search_spec is not None:
         space = _space_from_spec(search_spec, mode=mode)

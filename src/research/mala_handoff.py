@@ -459,6 +459,12 @@ def derive_signal_window(strategy_key: str, params: dict[str, Any]) -> tuple[str
                 "session_start / session_end",
             )
         return None, None, "use_time_filter=false"
+    if strategy_key == "intraday_mean_reversion_extremes":
+        return (
+            _normalize_time(params.get("entry_window_start") or "09:30"),
+            _normalize_time(params.get("entry_window_end") or "10:15"),
+            "entry_window_start / entry_window_end",
+        )
     return None, None, "no strategy-level signal window in Mala strategy params"
 
 

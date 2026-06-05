@@ -100,6 +100,29 @@ def _fixed_horizon_eval_df() -> pl.DataFrame:
     )
 
 
+def _sample_playbook_eval_df() -> pl.DataFrame:
+    ts = [datetime(2025, 1, 1, 9, 30) + timedelta(minutes=i) for i in range(3)]
+    return pl.DataFrame(
+        {
+            "timestamp": ts,
+            "close": [100.0, 100.8, 101.0],
+            "high": [100.1, 101.2, 101.1],
+            "low": [99.8, 100.4, 100.9],
+            "signal": [True, False, False],
+            "signal_direction": ["long", None, None],
+            "market_pulse_stage": ["accumulation", "accumulation", "accumulation"],
+            "playbook_stop_family": ["reversal_extreme", "reversal_extreme", "reversal_extreme"],
+            "playbook_exit_family": ["fixed_1r", "fixed_1r", "fixed_1r"],
+            "playbook_reversal_low": [99.0, 99.0, 99.0],
+            "playbook_reversal_high": [100.5, 100.5, 100.5],
+            "playbook_reversal_midpoint": [99.75, 99.75, 99.75],
+            "playbook_reference_price": [101.0, 101.0, 101.0],
+            "forward_mfe_eod": [0.1, None, None],
+            "forward_mae_eod": [2.0, None, None],
+        }
+    )
+
+
 def test_build_windows_creates_expected_rolls() -> None:
     windows = build_windows(date(2025, 1, 1), date(2025, 12, 31), 6, 3)
     assert len(windows) == 2
@@ -119,6 +142,34 @@ def test_evaluate_df_combined() -> None:
     assert result["signals"] == 2
     assert result["confidence"] == 1.0
     assert result["exp_r"] == 1.45
+
+
+def test_directional_metrics_adds_intraday_playbook_trade_path_metrics() -> None:
+    enriched = MetricsCalculator().add_directional_forward_metrics(
+        _sample_playbook_eval_df(),
+        snapshot_windows=(),
+    )
+
+    signal = enriched.filter(pl.col("signal")).row(0, named=True)
+    assert signal["playbook_entry_price"] == 100.0
+    assert signal["playbook_stop_price"] == 99.0
+    assert signal["playbook_target_price"] == 101.0
+    assert signal["playbook_exit_reason"] == "target"
+    assert signal["playbook_pnl_r"] == 1.0
+
+
+def test_evaluate_df_prefers_intraday_playbook_realized_r() -> None:
+    enriched = MetricsCalculator().add_directional_forward_metrics(
+        _sample_playbook_eval_df(),
+        snapshot_windows=(),
+    )
+
+    result = evaluate_df(enriched, "combined", ratio=2.0, cost_r=0.05)
+
+    assert result["signals"] == 1
+    assert result["confidence"] == 1.0
+    assert result["exp_r"] == 0.95
+    assert result["evaluation_window"] == "playbook_realized"
 
 
 def test_metrics_calculator_supports_custom_win_policy() -> None:

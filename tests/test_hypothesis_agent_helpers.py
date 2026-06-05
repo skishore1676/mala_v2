@@ -7,6 +7,7 @@ from hypothesis_agent import (
     _best_m5_row,
     _catalog_candidate_rows,
     _candidate_key,
+    _diagnostic_config_id,
     _exit_optimization_candidate_rows,
     _write_catalog_selected,
     _matching_promoted_candidate,
@@ -15,6 +16,7 @@ from hypothesis_agent import (
     write_run_summary,
 )
 from src.research.exit_optimizer import ExitOptimizationResult
+from src.research.playbook_surface import _config_id
 
 
 def test_matching_promoted_candidate_uses_same_row_as_best_m5_selection() -> None:
@@ -62,6 +64,26 @@ def test_matching_promoted_candidate_uses_same_row_as_best_m5_selection() -> Non
     assert matched is not None
     assert matched["direction"] == "short"
     assert matched["entry_window_minutes"] == 60
+
+
+def test_diagnostic_config_id_matches_playbook_surface_id() -> None:
+    config = {
+        "entry_window_end": "10:15",
+        "stretch_source": "prior_rth_close_atr",
+        "stretch_threshold": 1.0,
+        "reversal_range_minutes": 5,
+        "confirming_bars": 1,
+        "velocity_periods_back": 5,
+        "velocity_filter": "no_filter",
+        "stage_filter": "no_filter",
+        "gap_state_filter": "no_filter",
+        "use_jerk_confirmation": True,
+        "relative_volume_threshold": None,
+        "stop_family": "reversal_extreme",
+        "exit_family": "fixed_1r",
+    }
+
+    assert _diagnostic_config_id(config) == _config_id(config) == "f09fcdd6b5"
 
 
 def test_best_m5_row_prefers_single_option_profile_for_bhiksha() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.research.playbook_surface import _playbook_configs
 from src.research.search_space import build_search_configs, search_param_keys
 
 
@@ -89,3 +90,50 @@ def test_market_impulse_descendant_search_space_is_bounded_and_mode_valid() -> N
             assert "confirmation_type" not in config
         if not config.get("use_volume_filter", False):
             assert "min_relative_volume" not in config
+
+
+def test_intraday_mean_reversion_uses_balanced_target_surface() -> None:
+    configs = build_search_configs(
+        "Intraday Mean Reversion at Extremes",
+        mode="discovery",
+        max_configs=32,
+    )
+
+    assert configs
+    assert len(configs) <= 32
+    assert {config["stretch_source"] for config in configs} >= {
+        "opening_vwap_rth",
+        "prior_rth_close_atr",
+        "vpoc_4h",
+    }
+    assert "market_pulse_flip" in {config["exit_family"] for config in configs}
+    assert "15" in {str(config["reversal_range_minutes"]) for config in configs}
+
+
+def test_intraday_mean_reversion_surface64_covers_exit_families() -> None:
+    configs = build_search_configs(
+        "Intraday Mean Reversion at Extremes",
+        mode="discovery",
+        max_configs=64,
+    )
+
+    assert len(configs) <= 64
+    assert {config["exit_family"] for config in configs} >= {
+        "fixed_1r",
+        "fixed_1_5r",
+        "fixed_2r",
+        "vwap_return",
+        "partial_retrace_50",
+        "market_pulse_flip",
+        "time_stop",
+    }
+
+
+def test_intraday_mean_reversion_surface64_matches_playbook_surface() -> None:
+    configs = build_search_configs(
+        "Intraday Mean Reversion at Extremes",
+        mode="discovery",
+        max_configs=64,
+    )
+
+    assert configs == _playbook_configs(max_configs=64)

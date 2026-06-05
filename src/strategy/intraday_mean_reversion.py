@@ -9,6 +9,7 @@ conditional surface.
 from __future__ import annotations
 
 from datetime import time
+import json
 from typing import Any
 
 import polars as pl
@@ -55,6 +56,7 @@ EXIT_FAMILIES = (
     "market_pulse_flip",
     "time_stop",
 )
+PLAYBOOK_STRETCH_SOURCES = ("opening_vwap_rth", "prior_rth_close_atr", "vpoc_4h")
 
 
 class IntradayMeanReversionStrategy(BaseStrategy):
@@ -314,6 +316,14 @@ class IntradayMeanReversionStrategy(BaseStrategy):
             "allow_short": self.allow_short,
         }
 
+    def research_search_configs(self, *, mode: str, max_configs: int) -> list[dict[str, Any]]:
+        """Balanced strategy-lane configs for the playbook-derived target surface."""
+        if mode == "retune":
+            return _sample_balanced_configs(_intraday_mean_reversion_candidates(), max_configs=max(1, max_configs // 2))
+        if mode != "discovery":
+            return []
+        return _sample_balanced_configs(_intraday_mean_reversion_candidates(), max_configs=max_configs)
+
     def generate_signals(self, df: pl.DataFrame) -> pl.DataFrame:
         missing = self.required_features - set(df.columns)
         if missing:
@@ -458,9 +468,13 @@ class IntradayMeanReversionStrategy(BaseStrategy):
                     .then(pl.lit("short"))
                     .otherwise(pl.lit(None))
                     .alias("signal_direction"),
+                    pl.lit(self.entry_window_start.isoformat(timespec="minutes")).alias(
+                        "playbook_entry_start_et"
+                    ),
                     pl.lit(self.entry_window_end.isoformat(timespec="minutes")).alias(
                         "playbook_entry_cutoff_et"
                     ),
+                    pl.lit(self.stage_timeframe).alias("playbook_stage_timeframe"),
                     pl.lit(self.stage_filter).alias("playbook_stage_filter"),
                     pl.lit(self.gap_state_filter).alias("playbook_gap_state_filter"),
                     pl.lit(self.stop_family).alias("playbook_stop_family"),
@@ -573,3 +587,118 @@ def _require_one(name: str, value: str, legal: tuple[str, ...]) -> str:
     if normalized not in legal:
         raise ValueError(f"Unsupported {name} {value!r}; expected one of {legal!r}")
     return normalized
+
+
+def _intraday_mean_reversion_candidates() -> list[dict[str, Any]]:
+    base = IntradayMeanReversionStrategy()
+    prior = base.search_spec.prior_config() if base.search_spec is not None else base.search_config()
+    stretch_thresholds = {
+        "opening_vwap_rth": [1.5, 2.0, 2.5, 3.0, 3.5],
+        "vpoc_4h": [1.5, 2.0, 2.5, 3.0, 3.5],
+        "prior_rth_close_atr": [0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0],
+    }
+    candidates: list[dict[str, Any]] = [dict(prior)]
+
+    def add(**updates: Any) -> None:
+        config = dict(prior)
+        config.update(updates)
+        if config.get("stretch_source") in {"opening_vwap_rth", "vpoc_4h"} and config.get(
+            "stretch_threshold"
+        ) == 0.75:
+            config["stretch_threshold"] = 1.5
+        candidates.append(config)
+
+    for source in PLAYBOOK_STRETCH_SOURCES:
+        for threshold in stretch_thresholds[source]:
+            add(stretch_source=source, stretch_threshold=threshold)
+    for stage_filter in STAGE_FILTERS:
+        add(stage_filter=stage_filter, stretch_threshold=2.0)
+    for gap_state_filter in GAP_STATE_FILTERS:
+        add(gap_state_filter=gap_state_filter, stretch_threshold=2.0)
+    for entry_window_end in ["09:45", "10:00", "10:15", "11:00"]:
+        add(entry_window_end=entry_window_end, stretch_threshold=2.0)
+    for reversal_range_minutes in [5, 15]:
+        for confirming_bars in [1, 2]:
+            add(
+                reversal_range_minutes=reversal_range_minutes,
+                confirming_bars=confirming_bars,
+                stretch_threshold=2.0,
+            )
+    for velocity_periods_back in [1, 5, 15]:
+        for velocity_filter in VELOCITY_FILTERS:
+            add(
+                velocity_periods_back=velocity_periods_back,
+                velocity_filter=velocity_filter,
+                stretch_threshold=2.0,
+            )
+    for relative_volume_threshold in [None, 1.0, 1.25, 1.5]:
+        add(relative_volume_threshold=relative_volume_threshold, stretch_threshold=2.0)
+    for use_jerk_confirmation in [True, False]:
+        add(use_jerk_confirmation=use_jerk_confirmation, stretch_threshold=2.0)
+    for stop_family in STOP_FAMILIES:
+        for exit_family in EXIT_FAMILIES:
+            add(stop_family=stop_family, exit_family=exit_family, stretch_threshold=2.0)
+
+    ordered: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for config in candidates:
+        key = json.dumps(config, sort_keys=True, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(config)
+    return ordered
+
+
+def _sample_balanced_configs(configs: list[dict[str, Any]], *, max_configs: int) -> list[dict[str, Any]]:
+    if len(configs) <= max_configs:
+        return configs
+    if max_configs <= 1:
+        return configs[:1]
+    required: list[dict[str, Any]] = [configs[0]]
+    seen_keys = {json.dumps(configs[0], sort_keys=True, default=str)}
+    coverage_targets = [
+        ("stretch_source", list(PLAYBOOK_STRETCH_SOURCES)),
+        ("stage_filter", list(STAGE_FILTERS)),
+        ("gap_state_filter", list(GAP_STATE_FILTERS)),
+        ("reversal_range_minutes", [5, 15]),
+        ("confirming_bars", [1, 2]),
+        ("velocity_periods_back", [1, 5, 15]),
+        ("velocity_filter", list(VELOCITY_FILTERS)),
+        ("relative_volume_threshold", [None, 1.0, 1.25, 1.5]),
+        ("stop_family", list(STOP_FAMILIES)),
+        ("exit_family", list(EXIT_FAMILIES)),
+    ]
+    for key, values in coverage_targets:
+        for value in values:
+            match = next((config for config in configs if config.get(key) == value), None)
+            if match is None:
+                continue
+            match_key = json.dumps(match, sort_keys=True, default=str)
+            if match_key in seen_keys:
+                continue
+            required.append(match)
+            seen_keys.add(match_key)
+            if len(required) >= max_configs:
+                return required[:max_configs]
+    remaining = [config for config in configs if json.dumps(config, sort_keys=True, default=str) not in seen_keys]
+    slots = max_configs - len(required)
+    if slots <= 0:
+        return required[:max_configs]
+    return [*required, *_sample_evenly(remaining, max_configs=slots)]
+
+
+def _sample_evenly(configs: list[dict[str, Any]], *, max_configs: int) -> list[dict[str, Any]]:
+    if max_configs <= 0:
+        return []
+    if len(configs) <= max_configs:
+        return configs
+    if max_configs == 1:
+        return configs[:1]
+    indexes = sorted(
+        {
+            round(index * (len(configs) - 1) / (max_configs - 1))
+            for index in range(max_configs)
+        }
+    )
+    return [configs[index] for index in indexes]

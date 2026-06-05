@@ -19,8 +19,9 @@ import polars as pl
 from loguru import logger
 
 from src.config import settings
+from src.oracle.playbook_simulator import simulate_intraday_reversion_event
 from src.oracle.policies import RewardRiskWinCondition
-from src.time_utils import et_date_expr
+from src.time_utils import et_date_expr, et_time_expr
 
 
 class MetricsCalculator:
@@ -319,6 +320,7 @@ class MetricsCalculator:
             self.win_condition.expr("forward_mfe_eod", "forward_mae_eod")
             .alias(self.directional_win_column)
         )
+        df = self._add_playbook_trade_path_metrics(df)
 
         logger.info(
             "Directional forward metrics added (EOD + snapshots: {})",
@@ -348,6 +350,93 @@ class MetricsCalculator:
             accepted[idx] = True
             last_signal_idx_by_date[trade_date] = idx
         return accepted
+
+    def _add_playbook_trade_path_metrics(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Append realized playbook path metrics when a strategy declares them."""
+        required = {
+            "timestamp",
+            "high",
+            "low",
+            "close",
+            "signal",
+            "signal_direction",
+            "playbook_stop_family",
+            "playbook_exit_family",
+        }
+        if not required.issubset(set(df.columns)):
+            return df
+
+        n = len(df)
+        prepared = (
+            df.with_row_index("_playbook_row_nr")
+            .with_columns(
+                [
+                    et_date_expr("timestamp").alias("_playbook_trade_date"),
+                    et_time_expr("timestamp").alias("_playbook_bar_time"),
+                ]
+            )
+        )
+        rows = prepared.to_dicts()
+
+        entry_price = np.full(n, np.nan)
+        stop_price = np.full(n, np.nan)
+        risk = np.full(n, np.nan)
+        target_price = np.full(n, np.nan)
+        exit_price = np.full(n, np.nan)
+        pnl_r = np.full(n, np.nan)
+        mfe_r = np.full(n, np.nan)
+        mae_r = np.full(n, np.nan)
+        exit_reason: list[str | None] = [None] * n
+
+        for row in rows:
+            idx = int(row["_playbook_row_nr"])
+            if not row.get("signal"):
+                continue
+            direction = str(row.get("signal_direction") or "")
+            if direction not in {"long", "short"}:
+                continue
+            stop_family = str(row.get("playbook_stop_family") or "reversal_extreme")
+            exit_family = str(row.get("playbook_exit_family") or "fixed_1r")
+            stage_timeframe = str(row.get("playbook_stage_timeframe") or "1m")
+            stage_column = (
+                "market_pulse_stage"
+                if stage_timeframe == "1m"
+                else f"market_pulse_stage_{stage_timeframe}"
+            )
+            path = simulate_intraday_reversion_event(
+                row=row,
+                future_rows=rows[idx + 1 :],
+                direction=direction,
+                stop_family=stop_family,
+                exit_family=exit_family,
+                market_pulse_stage_column=stage_column,
+            )
+            if path is None:
+                continue
+            entry_price[idx] = path.entry
+            stop_price[idx] = path.stop
+            risk[idx] = path.risk
+            if path.target is not None:
+                target_price[idx] = path.target
+            exit_price[idx] = path.exit_price
+            pnl_r[idx] = path.pnl_r
+            mfe_r[idx] = path.max_favorable_excursion_r
+            mae_r[idx] = path.max_adverse_excursion_r
+            exit_reason[idx] = path.exit_reason
+
+        return df.with_columns(
+            [
+                pl.Series("playbook_entry_price", entry_price),
+                pl.Series("playbook_stop_price", stop_price),
+                pl.Series("playbook_risk", risk),
+                pl.Series("playbook_target_price", target_price),
+                pl.Series("playbook_exit_price", exit_price),
+                pl.Series("playbook_pnl_r", pnl_r),
+                pl.Series("playbook_mfe_r", mfe_r),
+                pl.Series("playbook_mae_r", mae_r),
+                pl.Series("playbook_exit_reason", exit_reason),
+            ]
+        )
 
     def summarise_directional_signals(self, df: pl.DataFrame) -> pl.DataFrame:
         """

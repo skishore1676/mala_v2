@@ -8,6 +8,7 @@ from src.strategy.intraday_mean_reversion import IntradayMeanReversionStrategy
 from src.strategy.jerk_pivot_momentum import JerkPivotMomentumStrategy
 from src.strategy.market_impulse import MarketImpulseStrategy
 from src.strategy.opening_drive_classifier import OpeningDriveClassifierStrategy
+from src.research.strategy_keys import to_strategy_key
 
 
 def test_build_jerk_pivot_tight_by_name() -> None:
@@ -52,6 +53,13 @@ def test_build_intraday_mean_reversion_strategy() -> None:
     assert isinstance(strategy, IntradayMeanReversionStrategy)
     assert strategy.stretch_source == "prior_close_atr"
     assert strategy.entry_window_end == time(10, 0)
+
+
+def test_intraday_mean_reversion_uses_canonical_handoff_key() -> None:
+    assert (
+        to_strategy_key("Intraday Mean Reversion at Extremes")
+        == "intraday_mean_reversion_extremes"
+    )
 
 
 def test_build_market_impulse_with_timeframe_override() -> None:

@@ -42,6 +42,16 @@ def test_opening_drive_signal_window_is_authoritative_from_offsets() -> None:
     assert "entry_start_offset_minutes" in derivation
 
 
+def test_intraday_mean_reversion_signal_window_is_authoritative_from_params() -> None:
+    start, end, derivation = derive_signal_window(
+        "intraday_mean_reversion_extremes",
+        {"entry_window_start": "09:30", "entry_window_end": "10:00"},
+    )
+
+    assert (start, end) == ("09:30", "10:00")
+    assert "entry_window_end" in derivation
+
+
 def test_mala_handoff_packet_keeps_runtime_fields_out_of_evidence(tmp_path: Path) -> None:
     run_dir = _write_market_impulse_run(tmp_path)
     manifest_path = _write_capability_manifest(tmp_path)

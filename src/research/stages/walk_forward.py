@@ -57,6 +57,72 @@ def cost_r_from_bps(cost_bps: float, avg_mae_dollars: float, avg_entry_price: fl
     return (avg_entry_price * cost_bps / 10_000.0) / avg_mae_dollars
 
 
+def _evaluate_playbook_df(
+    df_eval: pl.DataFrame,
+    direction: str,
+    cost_r: float | None = None,
+    cost_bps: float | None = None,
+) -> dict[str, float | int | str | None]:
+    base = df_eval.filter(pl.col("signal")).drop_nulls(
+        subset=["playbook_pnl_r", "signal_direction"]
+    )
+    if direction != "combined":
+        base = base.filter(pl.col("signal_direction") == direction)
+
+    if base.is_empty():
+        return {
+            "signals": 0,
+            "confidence": None,
+            "exp_r": None,
+            "avg_mfe_mae_ratio": None,
+            "effective_cost_r": None,
+            "evaluation_window": "playbook_realized",
+        }
+
+    pnl_r = base["playbook_pnl_r"].to_numpy()
+    valid_pnl_mask = np.isfinite(pnl_r)
+    pnl_r = pnl_r[valid_pnl_mask]
+    if len(pnl_r) == 0:
+        return {
+            "signals": 0,
+            "confidence": None,
+            "exp_r": None,
+            "avg_mfe_mae_ratio": None,
+            "effective_cost_r": None,
+            "evaluation_window": "playbook_realized",
+        }
+
+    if cost_bps is not None:
+        risk_col = "playbook_risk" if "playbook_risk" in base.columns else None
+        entry_col = "playbook_entry_price" if "playbook_entry_price" in base.columns else "close"
+        avg_risk = float(base[risk_col].mean()) if risk_col else 0.0
+        avg_entry = float(base[entry_col].mean()) if entry_col in base.columns else 0.0
+        effective_cost_r = cost_r_from_bps(cost_bps, avg_risk, avg_entry)
+    else:
+        effective_cost_r = cost_r or 0.05
+
+    net_pnl_r = pnl_r - effective_cost_r
+    avg_mfe_mae_ratio = None
+    if {"playbook_mfe_r", "playbook_mae_r"}.issubset(base.columns):
+        mfe = base["playbook_mfe_r"].to_numpy()[valid_pnl_mask]
+        mae = base["playbook_mae_r"].to_numpy()[valid_pnl_mask]
+        valid_ratio_mask = np.isfinite(mfe) & np.isfinite(mae) & (mae > 0)
+        if np.any(valid_ratio_mask):
+            avg_mfe_mae_ratio = round(
+                float(np.mean(mfe[valid_ratio_mask] / mae[valid_ratio_mask])),
+                4,
+            )
+
+    return {
+        "signals": len(net_pnl_r),
+        "confidence": round(float(np.mean(net_pnl_r > 0)), 4),
+        "exp_r": round(float(np.mean(net_pnl_r)), 4),
+        "avg_mfe_mae_ratio": avg_mfe_mae_ratio,
+        "effective_cost_r": round(effective_cost_r, 5),
+        "evaluation_window": "playbook_realized",
+    }
+
+
 def evaluate_df(
     df_eval: pl.DataFrame,
     direction: str,
@@ -64,7 +130,15 @@ def evaluate_df(
     cost_r: float | None = None,
     cost_bps: float | None = None,
     evaluation_window: int | None = None,
-) -> dict[str, float | int | None]:
+) -> dict[str, float | int | str | None]:
+    if "playbook_pnl_r" in df_eval.columns:
+        return _evaluate_playbook_df(
+            df_eval,
+            direction,
+            cost_r=cost_r,
+            cost_bps=cost_bps,
+        )
+
     mfe_col, mae_col, resolved_window = resolve_directional_metric_columns(
         df_eval,
         evaluation_window=evaluation_window,

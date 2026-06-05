@@ -16,6 +16,7 @@ _DISPLAY_STRATEGY_KEYS: dict[str, str] = {
     "Opening Drive Classifier": "opening_drive_classifier",
     "Jerk-Pivot Momentum (tight)": "jerk_pivot_momentum",
     "Compression Expansion Breakout": "compression_expansion_breakout",
+    "Intraday Mean Reversion at Extremes": "intraday_mean_reversion_extremes",
 }
 
 
