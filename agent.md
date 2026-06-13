@@ -16,6 +16,26 @@ Polygon.io by default, Public optional (Parquet cache) → Newton (physics featu
 
 ---
 
+## Current direction (2026-06-13)
+
+The active build direction is the **exit-profile lane**: the operator trades 4
+playbooks, each mapped 1:1 to a named option exit profile, and for options the
+exit is the differentiator, not the entry. Build sequence:
+
+- **Wave 1 (now) — exits first:** harden `src/research/exit_optimizer.py` with
+  the profile exit families, group the existing live strategies into the 4
+  profiles, re-run `scripts/reoptimize_exits.py` (exit-only, no entry
+  rediscovery), republish `Mala_Evidence_v1`, then extend Bhiksha to consume
+  the profile.
+- **Wave 2 (later) — entry discovery** for the playbooks via the S0-S5 gates.
+
+Canonical: `docs/EXIT_PROFILE_PLAYBOOKS.md` + workbook
+`docs/Strategy_Lane_V2_S_Gates_Planning.xlsx`; gate spec
+`docs/STRATEGY_LANE_V2_S_GATES.md`. This sits alongside (does not replace) the
+M1-M5/M7 lane described below.
+
+---
+
 ## Commands
 
 ```bash
