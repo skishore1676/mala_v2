@@ -322,6 +322,195 @@ class HoldToEodExitPolicy(ExitPolicy):
         return None
 
 
+@dataclass(slots=True)
+class HighWaterGivebackExitPolicy(ExitPolicy):
+    """Exit when an armed trade gives back a fraction of its peak favorable move.
+
+    Arms once the best favorable excursion since entry reaches ``arm_pct``
+    (fraction of entry price), then exits on close once price retraces
+    ``retrace_frac`` of that peak. Underlying-path proxy for the live option
+    profile's high-water giveback rule.
+    """
+
+    arm_pct: float
+    retrace_frac: float = 0.5
+    policy_name: str = "high_water_giveback"
+    _best_by_entry_idx: dict[int, float] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.arm_pct <= 0:
+            raise ValueError("arm_pct must be positive for high_water_giveback exits.")
+        if not 0.0 < self.retrace_frac < 1.0:
+            raise ValueError("retrace_frac must be between 0 and 1 for high_water_giveback exits.")
+
+    def reset(self) -> None:
+        self._best_by_entry_idx.clear()
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        entry = trade.entry_price
+        if entry <= 0:
+            return None
+        long = trade.direction == "long"
+        best = self._best_by_entry_idx.get(trade.entry_idx, entry)
+        best_move = (best - entry) if long else (entry - best)
+        if best_move > 0 and (best_move / entry) >= self.arm_pct:
+            floor_move = best_move * (1.0 - self.retrace_frac)
+            floor_price = entry + floor_move if long else entry - floor_move
+            if (long and bar.close <= floor_price) or (not long and bar.close >= floor_price):
+                return ExitDecision(reason="high_water_giveback", exit_price=bar.close)
+        # Update best favorable extreme AFTER the check (avoid same-bar arm+exit).
+        self._best_by_entry_idx[trade.entry_idx] = (
+            max(best, bar.high) if long else min(best, bar.low)
+        )
+        return None
+
+
+@dataclass(slots=True)
+class NoProgressTimeStopExitPolicy(ExitPolicy):
+    """Exit a trade that "never got going" after a configured number of bars.
+
+    If, by ``no_progress_bars`` after entry, the best favorable excursion is
+    still below ``min_favorable_pct`` (fraction of entry price), close at the
+    current bar. Distinct from a plain wall-clock time stop: it only fires when
+    the thesis has failed to make progress.
+    """
+
+    no_progress_bars: int
+    min_favorable_pct: float = 0.0
+    policy_name: str = "no_progress"
+    _best_by_entry_idx: dict[int, float] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.no_progress_bars <= 0:
+            raise ValueError("no_progress_bars must be positive for no_progress exits.")
+
+    def reset(self) -> None:
+        self._best_by_entry_idx.clear()
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        entry = trade.entry_price
+        if entry <= 0:
+            return None
+        long = trade.direction == "long"
+        best = self._best_by_entry_idx.get(trade.entry_idx, entry)
+        best = max(best, bar.high) if long else min(best, bar.low)
+        self._best_by_entry_idx[trade.entry_idx] = best
+        best_move = (best - entry) if long else (entry - best)
+        if bar.idx - trade.entry_idx >= self.no_progress_bars:
+            if (best_move / entry) < self.min_favorable_pct:
+                return ExitDecision(reason="no_progress", exit_price=bar.close)
+        return None
+
+
+@dataclass(slots=True)
+class ProfileExitPolicy(ExitPolicy):
+    """Named operator exit profile evaluated on the underlying path.
+
+    A deterministic priority ladder approximating a live option exit profile
+    (``public_api_trading_v3`` ``profiles.py``) on underlying bars:
+    initial stop -> partial at target_1 (then move the stop to breakeven) ->
+    target_2 -> high-water giveback -> no-progress / max-hold time stop.
+
+    R is defined by ``stop_loss_pct`` (underlying-scaled). The partial
+    scale-out is modeled as a blended single-trade exit price, so the
+    simulator's per-unit P&L reflects banking ``target_1_quantity`` at T1 and
+    riding the remainder. Time bounds are in bars (1-minute bars ~ minutes).
+    """
+
+    profile_name: str
+    stop_loss_pct: float
+    target_1_r: float = 1.0
+    target_2_r: float = 2.0
+    target_1_quantity: float = 0.5
+    giveback_arm_r: float | None = None
+    giveback_retrace_frac: float = 0.5
+    no_progress_bars: int | None = None
+    no_progress_floor_r: float = 0.25
+    max_hold_bars: int | None = None
+    breakeven_after_t1: bool = True
+    policy_name: str = "profile_exit"
+    _state_by_entry_idx: dict[int, dict] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.stop_loss_pct <= 0:
+            raise ValueError("stop_loss_pct must be positive for profile exits.")
+        if not 0.0 <= self.target_1_quantity <= 1.0:
+            raise ValueError("target_1_quantity must be between 0 and 1 for profile exits.")
+
+    def reset(self) -> None:
+        self._state_by_entry_idx.clear()
+
+    def should_exit(self, trade: OpenTrade, bar: BarSnapshot) -> ExitDecision | None:
+        entry = trade.entry_price
+        risk = entry * self.stop_loss_pct
+        if risk <= 0:
+            return None
+        long = trade.direction == "long"
+        st = self._state_by_entry_idx.setdefault(
+            trade.entry_idx, {"best": entry, "t1": False, "t1_price": 0.0}
+        )
+
+        best_move = (st["best"] - entry) if long else (entry - st["best"])
+        best_r = best_move / risk  # from prior bars only
+
+        def signed_move(price: float) -> float:
+            return (price - entry) if long else (entry - price)
+
+        def blended(runner_price: float) -> float:
+            if st["t1"]:
+                return (
+                    self.target_1_quantity * st["t1_price"]
+                    + (1.0 - self.target_1_quantity) * runner_price
+                )
+            return runner_price
+
+        # 1. Stop — initial protective stop, or breakeven after the T1 partial.
+        if st["t1"] and self.breakeven_after_t1:
+            stop_price = entry
+            stop_reason = "breakeven_stop"
+        else:
+            stop_price = entry - risk if long else entry + risk
+            stop_reason = "stop_loss_underlying"
+        if (long and bar.low <= stop_price) or (not long and bar.high >= stop_price):
+            return ExitDecision(reason=stop_reason, exit_price=blended(stop_price))
+
+        # 2. Target 1 — bank the partial and move the stop to breakeven.
+        if not st["t1"] and self.target_1_quantity > 0:
+            t1_price = entry + self.target_1_r * risk if long else entry - self.target_1_r * risk
+            if (long and bar.high >= t1_price) or (not long and bar.low <= t1_price):
+                st["t1"] = True
+                st["t1_price"] = t1_price
+                if self.target_1_quantity >= 1.0:
+                    return ExitDecision(reason="take_profit_underlying", exit_price=t1_price)
+
+        # 3. Target 2 — full exit of the runner (or single target when no partial).
+        if st["t1"] or self.target_1_quantity == 0:
+            t2_price = entry + self.target_2_r * risk if long else entry - self.target_2_r * risk
+            if (long and bar.high >= t2_price) or (not long and bar.low <= t2_price):
+                return ExitDecision(reason="take_profit_underlying", exit_price=blended(t2_price))
+
+        # 4. High-water giveback (armed by peak R from prior bars).
+        if self.giveback_arm_r is not None and best_r >= self.giveback_arm_r:
+            floor_r = best_r * (1.0 - self.giveback_retrace_frac)
+            if signed_move(bar.close) / risk <= floor_r:
+                return ExitDecision(reason="high_water_giveback", exit_price=blended(bar.close))
+
+        # 5. Time stops — max hold, then no-progress.
+        bars_elapsed = bar.idx - trade.entry_idx
+        if self.max_hold_bars is not None and bars_elapsed >= self.max_hold_bars:
+            return ExitDecision(reason="max_hold", exit_price=blended(bar.close))
+        if (
+            self.no_progress_bars is not None
+            and bars_elapsed >= self.no_progress_bars
+            and best_r < self.no_progress_floor_r
+        ):
+            return ExitDecision(reason="no_progress", exit_price=blended(bar.close))
+
+        # Update best favorable extreme after all checks.
+        st["best"] = max(st["best"], bar.high) if long else min(st["best"], bar.low)
+        return None
+
+
 @dataclass
 class SimulationResult:
     """Aggregate results from the trade simulation."""

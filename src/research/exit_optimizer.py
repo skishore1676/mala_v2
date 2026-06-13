@@ -35,6 +35,7 @@ from src.oracle.trade_simulator import (
     TradeSimulator,
     VmaTrailingExitPolicy,
 )
+from src.research.exit_profiles import EXIT_PROFILES
 from src.research.strategy_keys import to_strategy_key
 from src.strategy.base import BaseStrategy
 
@@ -439,6 +440,26 @@ def _policy_candidates(
                 ),
             )
         )
+    # Operator exit profiles (Wave 1): test every named profile and let the
+    # optimizer select the best-scoring one. The profile bundles initial stop,
+    # target-1 partial (then breakeven), target-2 runner, high-water giveback,
+    # and no-progress/max-hold time stops — modeled on the underlying path.
+    for profile in EXIT_PROFILES.values():
+        policy_label = f"profile:{profile.name.lower()}"
+        candidates.append(
+            _PolicyCandidate(
+                name=policy_label,
+                thesis_exit_policy=policy_label,
+                thesis_exit_params=profile.thesis_exit_params(),
+                simulator=TradeSimulator(
+                    entry_delay_bars=entry_delay_bars,
+                    min_hold_bars=min_hold_bars,
+                    cooldown_bars_after_signal=cooldown_bars_after_signal,
+                    exit_policy=profile.build_policy(),
+                ),
+            )
+        )
+
     return candidates
 
 
