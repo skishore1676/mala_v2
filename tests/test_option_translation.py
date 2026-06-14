@@ -55,6 +55,13 @@ def test_leverage_helps_puts_in_selloff():
     assert lev["expectancy_pct"] >= flat["expectancy_pct"]
 
 
+def test_zero_trade_frame_returns_n0_without_error():
+    # _frame signals "short"; scoring "long" matches nothing -> empty pnls path.
+    res = score_profile_on_options(_frame([100.0] * 20), "long", "FLASH_REVERSAL", vol_beta=0.0)
+    assert res["n"] == 0
+    assert res["expectancy_pct"] == 0.0
+
+
 def test_realized_vol_fallback():
     assert annualized_realized_vol(_frame([100.0] * 30)) == 0.30
 

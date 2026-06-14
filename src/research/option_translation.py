@@ -173,7 +173,8 @@ def score_profile_on_options(
         i = j + 1
 
     if not pnls:
-        return {"profile": profile_name, "iv_model": iv_model, "n": 0,
+        return {"profile": profile_name, "iv_premium_factor": iv_premium_factor,
+                "vol_beta": vol_beta, "n": 0,
                 "expectancy_pct": 0.0, "win_rate": 0.0, "avg_win_pct": 0.0, "avg_loss_pct": 0.0}
     wins = [x for x in pnls if x > 0]
     losses = [x for x in pnls if x < 0]
