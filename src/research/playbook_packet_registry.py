@@ -10,7 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from src.research.exit_profiles import assigned_profile
+from src.research.option_translation import OPTION_PROFILES
 from src.research.shared_kernel import ensure_kernel_on_path
+from src.research.strategy_keys import to_strategy_key
 from src.strategy.intraday_mean_reversion import PLAYBOOK_ID, STRATEGY_NAME
 
 ensure_kernel_on_path()
@@ -133,7 +136,9 @@ def write_mean_reversion_shadow_execution_packet(
 
     management_policy_ids = [policy.policy_id for policy in playbook_packet.management_policies]
     management_policy_specs = {
-        policy.policy_id: _management_policy_spec_from_policy(policy).model_dump(mode="json")
+        policy.policy_id: _management_policy_spec_from_policy(
+            policy, strategy_name=STRATEGY_NAME
+        ).model_dump(mode="json")
         for policy in playbook_packet.management_policies
     }
     packet = ExecutionPacket(
@@ -228,7 +233,9 @@ def write_mean_reversion_live_execution_packet(
 
     management_policy_ids = [policy.policy_id for policy in playbook_packet.management_policies]
     management_policy_specs = {
-        policy.policy_id: _management_policy_spec_from_policy(policy).model_dump(mode="json")
+        policy.policy_id: _management_policy_spec_from_policy(
+            policy, strategy_name=STRATEGY_NAME
+        ).model_dump(mode="json")
         for policy in playbook_packet.management_policies
     }
     packet = ExecutionPacket(
@@ -417,7 +424,73 @@ def _management_policy_from_surface_row(row: dict[str, str], *, rank: int) -> Ma
     )
 
 
-def _management_policy_spec_from_policy(policy: ManagementPolicy) -> ManagementPolicySpec:
+# Exit-profile bars are 1-minute bars; the kernel spec carries wall-clock
+# seconds, so time bounds convert ×60.
+_BARS_TO_SECONDS = 60
+
+# Map the profile's giveback tier name onto the kernel's high_water_giveback
+# policy enum (OFF|STRICT|MODERATE|LOOSE). They share the same vocabulary.
+_GIVEBACK_TO_POLICY = {
+    "OFF": "OFF",
+    "STRICT": "STRICT",
+    "MODERATE": "MODERATE",
+    "LOOSE": "LOOSE",
+}
+
+
+def _exit_profile_spec_fields(strategy_name: str | None) -> dict[str, Any]:
+    """Resolve a strategy's assigned exit profile into v2 ManagementPolicySpec
+    fields.
+
+    Returns the additive kwargs (initial_stop_pct, premium_disaster_stop_pct,
+    target_1_r/target_2_r, target_1_quantity, no_progress_seconds,
+    max_hold_seconds, high_water_giveback_policy, breakeven_after_t1, eod_flat)
+    for a strategy that maps (via to_strategy_key -> PROFILE_BY_STRATEGY ->
+    OPTION_PROFILES) to a profile. Returns an EMPTY dict when there is no
+    strategy name or no assigned profile, so the spec is emitted exactly as
+    before (pre-v2 defaults, back-compatible).
+    """
+    if not strategy_name:
+        return {}
+    profile_name = assigned_profile(to_strategy_key(strategy_name))
+    if not profile_name:
+        return {}
+    profile = OPTION_PROFILES.get(profile_name)
+    if profile is None:
+        return {}
+
+    no_progress_bars = profile.get("no_progress_bars")
+    max_hold_bars = profile.get("max_hold_bars")
+    return {
+        # premium % managed stop -> initial protective stop
+        "initial_stop_pct": profile["stop_loss_pct"],
+        # operator's hard premium backstop -> disaster stop
+        "premium_disaster_stop_pct": profile["disaster_stop_pct"],
+        # staged R-multiple targets + partial bank at target 1
+        "target_1_r": profile["target_1_r"],
+        "target_2_r": profile["target_2_r"],
+        "target_1_quantity": profile["target_1_quantity"],
+        # time bounds: 1-minute bars -> wall-clock seconds (None stays None)
+        "no_progress_seconds": (
+            None if no_progress_bars is None else int(no_progress_bars) * _BARS_TO_SECONDS
+        ),
+        "max_hold_seconds": (
+            None if max_hold_bars is None else int(max_hold_bars) * _BARS_TO_SECONDS
+        ),
+        # giveback tier -> high-water giveback policy enum
+        "high_water_giveback_policy": _GIVEBACK_TO_POLICY[profile["giveback"]],
+        # ratchet to breakeven after target 1 is banked
+        "breakeven_after_t1": True,
+        # flatten by the session close per the profile
+        "eod_flat": profile["eod_flat"],
+    }
+
+
+def _management_policy_spec_from_policy(
+    policy: ManagementPolicy,
+    *,
+    strategy_name: str | None = None,
+) -> ManagementPolicySpec:
     stop_family, exit_family = _policy_families(policy)
     parameters = dict(policy.parameters)
     return _management_policy_spec(
@@ -426,6 +499,7 @@ def _management_policy_spec_from_policy(policy: ManagementPolicy) -> ManagementP
         exit_family=exit_family,
         source_config_id=_optional_str(parameters.get("source_config_id")),
         parameters=parameters,
+        strategy_name=strategy_name,
     )
 
 
@@ -436,7 +510,11 @@ def _management_policy_spec(
     exit_family: str,
     source_config_id: str | None,
     parameters: dict[str, Any],
+    strategy_name: str | None = None,
 ) -> ManagementPolicySpec:
+    # Additive exit-profile fields (kernel contract v2). Empty when the strategy
+    # has no assigned profile -> spec is identical to the pre-v2 emission.
+    profile_fields = _exit_profile_spec_fields(strategy_name)
     return ManagementPolicySpec(
         policy_id=policy_id,
         stop_family=stop_family,
@@ -449,6 +527,7 @@ def _management_policy_spec(
         target_order_mode="virtual_or_broker",
         source_config_id=source_config_id,
         parameters=parameters,
+        **profile_fields,
     )
 
 
