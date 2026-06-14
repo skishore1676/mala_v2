@@ -23,6 +23,7 @@ from src.research.playbook_operator_policy import load_operator_policy
 from src.research.playbook_packet_registry import write_mean_reversion_playbook_packet
 from src.research.playbook_packet_registry import write_mean_reversion_live_execution_packet
 from src.research.playbook_packet_registry import write_mean_reversion_shadow_execution_packet
+from src.research.playbook_packet_registry import _management_policy_spec_from_policy
 from src.research.playbook_surface import (
     _entry_signal_cache_key,
     _evaluate_one_event,
@@ -47,7 +48,12 @@ from src.research.shared_kernel import ensure_kernel_on_path
 from src.strategy.intraday_mean_reversion import PLAYBOOK_ID
 
 ensure_kernel_on_path()
-from mala_bhiksha_kernel import PacketKind, PacketStatus, read_packet  # noqa: E402
+from mala_bhiksha_kernel import (  # noqa: E402
+    ManagementPolicy,
+    PacketKind,
+    PacketStatus,
+    read_packet,
+)
 
 
 def test_playbook_surface_writes_contract_artifacts(tmp_path: Path) -> None:
@@ -298,6 +304,99 @@ def test_playbook_packet_registry_writes_live_approval_gated_execution_packet(tm
     assert loaded.runtime_controls["live_management_required"] is True
     assert loaded.runtime_controls["max_live_quantity"] == 1
     assert loaded.runtime_controls["max_trade_premium_usd"] == 300.0
+
+
+def test_execution_packet_emits_assigned_exit_profile_into_spec(tmp_path: Path) -> None:
+    # The mean-reversion playbook resolves (to_strategy_key ->
+    # PROFILE_BY_STRATEGY -> OPTION_PROFILES) to FLASH_REVERSAL, so every
+    # ManagementPolicySpec carried into the execution packet must populate the
+    # v2 exit-profile fields with that profile's mapped values.
+    run_dir = _write_packet_registry_run(tmp_path)
+    packet_root = tmp_path / "registry"
+    playbook_packet_path = write_mean_reversion_playbook_packet(
+        run_dir,
+        packet_root=packet_root,
+    )
+    parity_report_path = tmp_path / "PARITY_REPORT.json"
+    parity_report_path.write_text(
+        json.dumps(
+            {
+                "report_id": "parity.playbook.mean_reversion_at_extremes.iwm_qqq.test",
+                "packet_ref": {
+                    "packet_id": "playbook.mean_reversion_at_extremes.iwm_qqq",
+                    "version": 1,
+                    "kind": "playbook",
+                },
+                "status": "passed",
+                "compared_event_count": 21127,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_mean_reversion_shadow_execution_packet(
+        playbook_packet_path=playbook_packet_path,
+        parity_report_path=parity_report_path,
+        packet_root=packet_root,
+    )
+    loaded = read_packet(
+        packet_root,
+        packet_id="execution.mean_reversion_at_extremes.iwm_qqq",
+        version=1,
+        kind=PacketKind.EXECUTION,
+    )
+
+    specs = loaded.runtime_controls["management_policy_specs"]
+    assert specs, "expected at least one management policy spec"
+    # FLASH_REVERSAL mapped fields (docs/EXIT_PROFILE_PLAYBOOKS.md +
+    # OPTION_PROFILES): stop 0.30, disaster 0.30, T1 1.0R / T2 2.0R, bank 75%,
+    # no-progress 15 min -> 900 s, max-hold 90 min -> 5400 s, STRICT giveback,
+    # breakeven after T1, EOD flat on.
+    for policy_id, spec in specs.items():
+        assert spec["initial_stop_pct"] == 0.30, policy_id
+        assert spec["premium_disaster_stop_pct"] == 0.30, policy_id
+        assert spec["target_1_r"] == 1.0, policy_id
+        assert spec["target_2_r"] == 2.0, policy_id
+        assert spec["target_1_quantity"] == 0.75, policy_id
+        assert spec["no_progress_seconds"] == 15 * 60, policy_id
+        assert spec["max_hold_seconds"] == 90 * 60, policy_id
+        assert spec["high_water_giveback_policy"] == "STRICT", policy_id
+        assert spec["breakeven_after_t1"] is True, policy_id
+        assert spec["eod_flat"] is True, policy_id
+        # The pre-v2 fields are untouched by profile emission.
+        assert spec["option_stop_fallback_pct"] == 0.45, policy_id
+
+
+def test_unprofiled_strategy_emits_unchanged_management_policy_spec() -> None:
+    # A policy with no assigned exit profile (no strategy_name, and an
+    # unrecognized strategy name) must emit the spec exactly as before the v2
+    # contract: none of the new exit-profile fields populated, so each falls
+    # back to its pre-v2 default and behaves identically.
+    policy = ManagementPolicy(
+        policy_id="reversal_extreme__fixed_1r",
+        name="reversal_extreme / fixed_1r",
+        rank=1,
+        parameters={"stop_family": "reversal_extreme", "exit_family": "fixed_1r"},
+    )
+
+    for strategy_name in (None, "Totally Unknown Strategy With No Profile"):
+        spec = _management_policy_spec_from_policy(policy, strategy_name=strategy_name)
+        # New v2 fields stay at their back-compatible defaults.
+        assert spec.target_1_r is None
+        assert spec.target_2_r is None
+        assert spec.target_1_quantity == 1.0
+        assert spec.initial_stop_pct is None
+        assert spec.premium_disaster_stop_pct is None
+        assert spec.no_progress_seconds is None
+        assert spec.max_hold_seconds is None
+        assert spec.high_water_giveback_policy == "OFF"
+        assert spec.breakeven_after_t1 is True
+        assert spec.eod_flat is True
+        # Pre-v2 fields unchanged from the original emission.
+        assert spec.target_r == 1.0
+        assert spec.option_stop_fallback_pct == 0.45
+        assert spec.stop_anchor == "underlying_reversal_extreme"
 
 
 def _write_packet_registry_run(tmp_path: Path) -> Path:

@@ -53,15 +53,26 @@ IV_BAND = (
 # Option-premium-side profile params (the live values from
 # public_api_trading_v3 profiles.py): stop is premium %, R-multiples/partials/
 # giveback/time carry over, plus vehicle selection (dte, delta).
+#
+# ``disaster_stop_pct`` (the operator's hard premium backstop, distinct from the
+# managed ``stop_loss_pct``) and ``eod_flat`` (flatten by the session close)
+# carry the remaining two operator exit dials verbatim from the canonical table
+# in ``docs/EXIT_PROFILE_PLAYBOOKS.md`` so a downstream consumer (Bhiksha, via
+# the kernel ManagementPolicySpec v2) can emit the full exit DNA. They do not
+# affect the S4 premium-path scorer, which reads only the keys it names.
 OPTION_PROFILES: dict[str, dict] = {
     "FLASH_REVERSAL":      dict(stop_loss_pct=0.30, target_1_r=1.0, target_2_r=2.0, target_1_quantity=0.75,
-                                giveback="STRICT",   no_progress_bars=15,  max_hold_bars=90,  dte=2,  delta=0.52),
+                                giveback="STRICT",   no_progress_bars=15,  max_hold_bars=90,  dte=2,  delta=0.52,
+                                disaster_stop_pct=0.30, eod_flat=True),
     "EXHAUSTION_REVERSAL": dict(stop_loss_pct=0.45, target_1_r=1.0, target_2_r=2.5, target_1_quantity=0.50,
-                                giveback="MODERATE", no_progress_bars=75,  max_hold_bars=240, dte=8,  delta=0.35),
+                                giveback="MODERATE", no_progress_bars=75,  max_hold_bars=240, dte=8,  delta=0.35,
+                                disaster_stop_pct=0.45, eod_flat=True),
     "TREND_CONTINUATION":  dict(stop_loss_pct=0.35, target_1_r=1.0, target_2_r=2.0, target_1_quantity=0.60,
-                                giveback="MODERATE", no_progress_bars=45,  max_hold_bars=180, dte=7,  delta=0.33),
+                                giveback="MODERATE", no_progress_bars=45,  max_hold_bars=180, dte=7,  delta=0.33,
+                                disaster_stop_pct=0.35, eod_flat=True),
     "RANGE_EXPANSION":     dict(stop_loss_pct=0.40, target_1_r=1.0, target_2_r=2.0, target_1_quantity=0.40,
-                                giveback="LOOSE",    no_progress_bars=120, max_hold_bars=None, dte=16, delta=0.30),
+                                giveback="LOOSE",    no_progress_bars=120, max_hold_bars=None, dte=16, delta=0.30,
+                                disaster_stop_pct=0.40, eod_flat=False),
 }
 
 
