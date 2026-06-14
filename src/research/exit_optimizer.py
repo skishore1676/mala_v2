@@ -16,6 +16,7 @@ Output fields formerly fed into legacy Strategy_Catalog playbook_summary_json:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time as dt_time, timedelta
 from pathlib import Path
@@ -38,6 +39,12 @@ from src.oracle.trade_simulator import (
 from src.research.exit_profiles import EXIT_PROFILES
 from src.research.strategy_keys import to_strategy_key
 from src.strategy.base import BaseStrategy
+
+# The underlying optimizer is the WRONG judge for option-exit profiles (they're
+# scored on the option path via src/research/option_translation.py). Exclude them
+# from underlying candidate selection by default so production M-runs are
+# unchanged; enable for research with MALA_EXIT_PROFILE_CANDIDATES=1.
+INCLUDE_PROFILE_CANDIDATES = os.environ.get("MALA_EXIT_PROFILE_CANDIDATES", "0") == "1"
 
 
 # ── Default catastrophe exit (used when no strategy-specific one is set) ─────
@@ -276,6 +283,7 @@ def _policy_candidates(
     entry_delay_bars: int = 0,
     min_hold_bars: int = 0,
     cooldown_bars_after_signal: int = 0,
+    include_profiles: bool = INCLUDE_PROFILE_CANDIDATES,
 ) -> list[_PolicyCandidate]:
     candidates: list[_PolicyCandidate] = []
 
@@ -440,25 +448,25 @@ def _policy_candidates(
                 ),
             )
         )
-    # Operator exit profiles (Wave 1): test every named profile and let the
-    # optimizer select the best-scoring one. The profile bundles initial stop,
-    # target-1 partial (then breakeven), target-2 runner, high-water giveback,
-    # and no-progress/max-hold time stops — modeled on the underlying path.
-    for profile in EXIT_PROFILES.values():
-        policy_label = f"profile:{profile.name.lower()}"
-        candidates.append(
-            _PolicyCandidate(
-                name=policy_label,
-                thesis_exit_policy=policy_label,
-                thesis_exit_params=profile.thesis_exit_params(),
-                simulator=TradeSimulator(
-                    entry_delay_bars=entry_delay_bars,
-                    min_hold_bars=min_hold_bars,
-                    cooldown_bars_after_signal=cooldown_bars_after_signal,
-                    exit_policy=profile.build_policy(),
-                ),
+    # Operator exit profiles (Wave 1) — OFF by default (INCLUDE_PROFILE_CANDIDATES):
+    # the underlying path is the wrong judge for option-exit profiles, which are
+    # scored on the option path via src/research/option_translation.py.
+    if include_profiles:
+        for profile in EXIT_PROFILES.values():
+            policy_label = f"profile:{profile.name.lower()}"
+            candidates.append(
+                _PolicyCandidate(
+                    name=policy_label,
+                    thesis_exit_policy=policy_label,
+                    thesis_exit_params=profile.thesis_exit_params(),
+                    simulator=TradeSimulator(
+                        entry_delay_bars=entry_delay_bars,
+                        min_hold_bars=min_hold_bars,
+                        cooldown_bars_after_signal=cooldown_bars_after_signal,
+                        exit_policy=profile.build_policy(),
+                    ),
+                )
             )
-        )
 
     return candidates
 

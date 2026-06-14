@@ -121,14 +121,20 @@ def test_exit_profiles_registry():
     assert PROFILE_BY_STRATEGY["compression_expansion_breakout"] == "RANGE_EXPANSION"
 
 
-def test_optimizer_includes_profile_candidates():
-    candidates = _policy_candidates(strategy_key="elastic_band_reversion", strategy=object())
+def test_optimizer_includes_profile_candidates_when_enabled():
+    candidates = _policy_candidates(
+        strategy_key="elastic_band_reversion", strategy=object(), include_profiles=True)
     names = {c.name for c in candidates}
     for profile in (
         "profile:flash_reversal", "profile:exhaustion_reversal",
         "profile:trend_continuation", "profile:range_expansion",
     ):
         assert profile in names
+
+
+def test_optimizer_excludes_profiles_by_default():
+    candidates = _policy_candidates(strategy_key="elastic_band_reversion", strategy=object())
+    assert not any(c.name.startswith("profile:") for c in candidates)
 
 
 def test_profile_runs_through_simulator_with_blended_partial():

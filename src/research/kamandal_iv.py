@@ -13,6 +13,7 @@ modeled `iv_premium_factor`.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
@@ -20,7 +21,25 @@ from pathlib import Path
 from src.chronos.storage import LocalStorage
 from src.research.option_translation import annualized_realized_vol
 
-DEFAULT_KAMANDAL_DB = Path("/Users/suman/code/kamandal_v2/data/kamandal_v2.db")
+
+def _resolve_kamandal_db() -> Path:
+    """Find the kamandal IV db across machines. mala runs on oldmac (where IV is
+    captured) and on this dev Mac; honor KAMANDAL_DB_PATH, else the first
+    existing known location, else the dev path."""
+    candidates = [
+        os.environ.get("KAMANDAL_DB_PATH"),
+        "/Users/sunny/Documents/kamandal_v2/data/kamandal_v2.db",   # oldmac (prod capture)
+        "/Users/suman/code/kamandal_v2/data/kamandal_v2.db",        # this Mac (dev)
+        str(Path.home() / "Documents/kamandal_v2/data/kamandal_v2.db"),
+        str(Path.home() / "code/kamandal_v2/data/kamandal_v2.db"),
+    ]
+    for c in candidates:
+        if c and Path(c).exists():
+            return Path(c)
+    return Path("/Users/suman/code/kamandal_v2/data/kamandal_v2.db")
+
+
+DEFAULT_KAMANDAL_DB = _resolve_kamandal_db()
 # Prefer short-dated IV (matches the 2-7 DTE profiles); fall back to 30-45 DTE.
 PREFERRED_METRICS = ("atm_2_10_mean_iv", "atm_30_45_mean_iv")
 
