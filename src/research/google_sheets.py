@@ -117,6 +117,7 @@ class GoogleSheetTableClient:
 
         start_index = len(headers) + 1
         end_index = start_index + len(missing) - 1
+        self._ensure_grid_columns(end_index)
         (
             self.service.spreadsheets()
             .values()
@@ -129,6 +130,48 @@ class GoogleSheetTableClient:
             .execute()
         )
         return missing
+
+    def _ensure_grid_columns(self, required_columns: int) -> None:
+        """Grow the sheet grid before writing headers beyond current bounds."""
+        metadata = (
+            self.service.spreadsheets()
+            .get(spreadsheetId=self.spreadsheet_id)
+            .execute()
+        )
+        for sheet in metadata.get("sheets", []):
+            properties = sheet.get("properties", {})
+            if str(properties.get("title", "")).strip() != self.sheet_name:
+                continue
+            grid = properties.get("gridProperties", {})
+            current_columns = int(grid.get("columnCount") or 0)
+            if current_columns >= required_columns:
+                return
+            sheet_id = properties.get("sheetId")
+            if sheet_id is None:
+                return
+            (
+                self.service.spreadsheets()
+                .batchUpdate(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": sheet_id,
+                                        "gridProperties": {
+                                            "columnCount": required_columns,
+                                        },
+                                    },
+                                    "fields": "gridProperties.columnCount",
+                                }
+                            }
+                        ]
+                    },
+                )
+                .execute()
+            )
+            return
 
     def sheet_titles(self) -> list[str]:
         metadata = (
