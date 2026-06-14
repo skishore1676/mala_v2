@@ -141,9 +141,13 @@ def main() -> None:
             print(f"{r.get('strategy','?')[:34]:>34s} {r.get('symbol','?'):>5s}  --  ERROR: {r['error']}")
             continue
         assigned = f"{r['assigned_profile']}(#{r['assigned_rank']})" if r['assigned_profile'] else "-"
+        # opt values are None when no legacy/profile candidate exists (profiles are
+        # off by default — MALA_EXIT_PROFILE_CANDIDATES=1 to include them).
+        leg_opt = f"{r['best_legacy_opt']:>+8.4f}" if r['best_legacy_opt'] is not None else f"{'—':>8s}"
+        prof_opt = f"{r['best_profile_opt']:>+8.4f}" if r['best_profile_opt'] is not None else f"{'—':>8s}"
         print(f"{r['strategy'][:34]:>34s} {r['symbol']:>5s} {r['direction']:>5s} "
-              f"{str(r['best_legacy'])[:30]:>30s} {r['best_legacy_opt']:>+8.4f} "
-              f"{str(r['best_profile'])[:26]:>26s} {r['best_profile_opt']:>+8.4f} "
+              f"{str(r['best_legacy'])[:30]:>30s} {leg_opt} "
+              f"{str(r['best_profile'])[:26]:>26s} {prof_opt} "
               f"{assigned[:22]:>22s} {str(r['selected'])[:26]:>26s}")
 
 
