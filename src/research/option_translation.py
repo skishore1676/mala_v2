@@ -7,12 +7,21 @@ underlying path via Black-Scholes with a *modeled* IV, then runs the SAME
 ProfileExitPolicy on the premium — where the profile's R-targets, partials, and
 giveback are designed to live.
 
-IV is modeled (no real chain needed) and run as a BAND so fragility is named:
-  flat        — IV held at entry
-  mean_revert — IV drifts toward a realized-vol anchor over the hold
-  crush       — IV deflates as the trade goes favorable (vega drag)
+IV is modeled (no real historical chain exists yet) and made DIRECTION-AWARE via
+the equity spot-vol leverage effect: IV rises when spot falls (negative spot-vol
+correlation). Because the IV response keys off the SIGNED underlying return,
+puts bought into a selloff correctly get IV *expansion* (vega tailwind) and calls
+bought into a melt-up get IV bleed — fixing the earlier direction-agnostic crush.
 
-Entry IV anchor = iv_premium_factor x annualized realized vol of the underlying.
+  sigma_t = entry_iv * (1 + vol_beta * (-return_since_entry)),  clamped [0.3x, 3x]
+  entry_iv = iv_premium_factor * annualized realized vol of the underlying
+
+Run as a BAND over the two real unknowns — how rich options were at entry
+(iv_premium_factor) and how strong the leverage effect is (vol_beta) — so the
+expectancy spread names the fragility. Real IV (Public get_option_greeks) is
+LIVE-only today; it can calibrate iv_premium_factor / vol_beta going forward but
+cannot fill a past holdout, so the historical path stays modeled.
+
 Single-session (exits at EOD), matching the underlying simulator. See
 docs/EXIT_PROFILE_PLAYBOOKS.md.
 """
@@ -29,9 +38,17 @@ from src.oracle import black_scholes as bs
 from src.oracle.trade_simulator import BarSnapshot, OpenTrade, ProfileExitPolicy
 from src.time_utils import et_date_expr, et_time_expr
 
-IV_MODELS = ("flat", "mean_revert", "crush")
 _YEAR_MINUTES = 365 * 24 * 60
 _GIVEBACK = {"STRICT": (0.5, 0.5), "MODERATE": (0.75, 0.6), "LOOSE": (1.0, 0.75), "OFF": (None, 0.5)}
+
+# IV-band scenarios: (label, iv_premium_factor, vol_beta). "flat" turns the
+# leverage effect off as a baseline; the rest keep it on and vary entry richness.
+IV_BAND = (
+    ("flat", 1.2, 0.0),
+    ("leverage", 1.2, 2.5),
+    ("cheap_iv", 1.0, 2.5),
+    ("rich_iv", 1.4, 2.5),
+)
 
 # Option-premium-side profile params (the live values from
 # public_api_trading_v3 profiles.py): stop is premium %, R-multiples/partials/
@@ -61,12 +78,13 @@ def annualized_realized_vol(frame: pl.DataFrame) -> float:
     return max(0.05, statistics.pstdev(rets) * math.sqrt(252))
 
 
-def _iv(model: str, entry_iv: float, anchor: float, elapsed_frac: float, fav_frac: float) -> float:
-    if model == "crush":
-        return max(0.05, entry_iv * (1.0 - 0.5 * min(1.0, max(0.0, fav_frac))))
-    if model == "mean_revert":
-        return entry_iv + (anchor - entry_iv) * min(1.0, max(0.0, elapsed_frac))
-    return entry_iv
+def _iv(entry_iv: float, underlying_return: float, vol_beta: float) -> float:
+    """Direction-aware IV via the spot-vol leverage effect (negative spot-vol
+    correlation): IV rises as spot falls. ``underlying_return`` is signed since
+    entry, so puts-in-selloffs get IV up and calls-in-melt-ups get IV bleed.
+    Clamped to [0.3x, 3x] entry IV."""
+    sigma = entry_iv * (1.0 + vol_beta * (-underlying_return))
+    return min(max(sigma, 0.3 * entry_iv), 3.0 * entry_iv)
 
 
 def _build_policy(profile_name: str) -> ProfileExitPolicy:
@@ -83,8 +101,8 @@ def _build_policy(profile_name: str) -> ProfileExitPolicy:
 
 def score_profile_on_options(
     frame: pl.DataFrame, direction: str, profile_name: str, *,
-    iv_model: str = "flat", iv_premium_factor: float = 1.2, r: float = 0.04,
-    market_close: dt.time = dt.time(15, 59), crush_move_scale: float = 0.02,
+    iv_premium_factor: float = 1.2, vol_beta: float = 2.5, r: float = 0.04,
+    market_close: dt.time = dt.time(15, 59),
 ) -> dict:
     """Premium-path expectancy (% per trade) of a profile on a holdout frame.
 
@@ -125,9 +143,7 @@ def score_profile_on_options(
         j, k = i + 1, 1
         while j < n and dates[j] == dates[i] and times[j] < market_close:
             T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
-            fav = (S0 - float(low[j])) / S0 if kind == "put" else (float(high[j]) - S0) / S0
-            sigma = _iv(iv_model, entry_iv, anchor, k / max(1.0, T0 * _YEAR_MINUTES),
-                        max(0.0, fav) / crush_move_scale)
+            sigma = _iv(entry_iv, (float(close[j]) - S0) / S0, vol_beta)
             pc = bs.price(float(close[j]), K, T, sigma, kind, r=r)
             if kind == "call":
                 ph = bs.price(float(high[j]), K, T, sigma, kind, r=r)
@@ -145,7 +161,7 @@ def score_profile_on_options(
         if exit_prem is None:
             jj = min(j, n - 1)
             T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
-            sigma = _iv(iv_model, entry_iv, anchor, 1.0, 0.0)
+            sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)
         pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
         i = j + 1
@@ -156,7 +172,8 @@ def score_profile_on_options(
     wins = [x for x in pnls if x > 0]
     losses = [x for x in pnls if x < 0]
     return {
-        "profile": profile_name, "iv_model": iv_model, "n": len(pnls),
+        "profile": profile_name, "iv_premium_factor": iv_premium_factor,
+        "vol_beta": vol_beta, "n": len(pnls),
         "expectancy_pct": sum(pnls) / len(pnls),
         "win_rate": len(wins) / len(pnls),
         "avg_win_pct": sum(wins) / len(wins) if wins else 0.0,
@@ -165,5 +182,10 @@ def score_profile_on_options(
 
 
 def score_profile_band(frame: pl.DataFrame, direction: str, profile_name: str, **kw) -> list[dict]:
-    """Run all IV-band models for a profile; expectancy spread names the fragility."""
-    return [score_profile_on_options(frame, direction, profile_name, iv_model=m, **kw) for m in IV_MODELS]
+    """Run the IV-band scenarios for a profile; expectancy spread names the fragility."""
+    out = []
+    for label, factor, beta in IV_BAND:
+        res = score_profile_on_options(frame, direction, profile_name,
+                                       iv_premium_factor=factor, vol_beta=beta, **kw)
+        out.append({"scenario": label, **res})
+    return out
