@@ -103,6 +103,7 @@ def score_profile_on_options(
     frame: pl.DataFrame, direction: str, profile_name: str, *,
     iv_premium_factor: float = 1.2, vol_beta: float = 2.5, r: float = 0.04,
     market_close: dt.time = dt.time(15, 59),
+    symbol: str | None = None, use_real_iv: bool = False,
 ) -> dict:
     """Premium-path expectancy (% per trade) of a profile on a holdout frame.
 
@@ -113,6 +114,11 @@ def score_profile_on_options(
     p = OPTION_PROFILES[profile_name]
     kind = "call" if direction.lower() == "long" else "put"
     anchor = annualized_realized_vol(frame)
+    if use_real_iv and symbol:
+        from src.research.kamandal_iv import real_iv_factor  # lazy: avoid import cycle
+        real_factor = real_iv_factor(symbol)
+        if real_factor:
+            iv_premium_factor = real_factor
     entry_iv = max(0.05, iv_premium_factor * anchor)
     T0 = p["dte"] / 365.0
 
