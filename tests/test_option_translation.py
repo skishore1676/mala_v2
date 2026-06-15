@@ -62,6 +62,36 @@ def test_zero_trade_frame_returns_n0_without_error():
     assert res["expectancy_pct"] == 0.0
 
 
+def _multiday_frame(days):
+    """Frame spanning multiple trading days. ``days`` is a list of (n_bars,
+    signal_index) -> a session of n_bars flat bars with a long signal at the
+    given bar index (or None for no signal)."""
+    rows = []
+    base = dt.datetime(2025, 1, 2, 9, 30)
+    for d, (n_bars, sig_idx) in enumerate(days):
+        day_start = base + dt.timedelta(days=d)
+        for m in range(n_bars):
+            t = day_start + dt.timedelta(minutes=m)
+            rows.append(
+                (t, 100.0, 100.05, 99.95, m == sig_idx, "long" if m == sig_idx else None)
+            )
+    return pl.DataFrame(
+        rows,
+        schema=["timestamp", "close", "high", "low", "signal", "signal_direction"],
+        orient="row",
+    )
+
+
+def test_next_session_first_bar_signal_not_skipped():
+    # Regression: a trade that holds to EOD ends the inner loop on the first bar
+    # of the NEXT day (day rollover). The outer scan must resume AT that bar, not
+    # past it -- otherwise a signal on the first bar of the next session is
+    # silently dropped. Both days signal on their first bar -> expect 2 trades.
+    frame = _multiday_frame([(5, 0), (5, 0)])
+    res = score_profile_on_options(frame, "long", "FLASH_REVERSAL", vol_beta=0.0)
+    assert res["n"] == 2
+
+
 def test_realized_vol_fallback():
     assert annualized_realized_vol(_frame([100.0] * 30)) == 0.30
 
