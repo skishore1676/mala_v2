@@ -157,6 +157,7 @@ def score_profile_on_options(
         otrade = OpenTrade(entry_idx=0, entry_time=ts[i], direction="long",
                            entry_price=entry_prem, entry_date=dates[i], entry_values={})
         exit_prem = None
+        policy_exit = False
         j, k = i + 1, 1
         while j < n and dates[j] == dates[i] and times[j] < market_close:
             T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
@@ -173,6 +174,7 @@ def score_profile_on_options(
             decision = pol.should_exit(otrade, bar)
             if decision is not None:
                 exit_prem = decision.exit_price if decision.exit_price is not None else pc
+                policy_exit = True
                 break
             j += 1; k += 1
         if exit_prem is None:
@@ -181,7 +183,13 @@ def score_profile_on_options(
             sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)
         pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
-        i = j + 1
+        # Advance past the bar the trade exited on. A policy exit consumed bar
+        # ``j`` (the trade held through it), so resume at ``j + 1``. When the
+        # inner loop instead fell through its bound (session/date/close
+        # boundary, or end-of-frame), bar ``j`` was NOT held -- it is the first
+        # un-traded bar -- so resume AT ``j`` to avoid skipping a fresh entry
+        # signal there (e.g. the first bar of the next trading day).
+        i = (j + 1) if policy_exit else max(j, i + 1)
 
     if not pnls:
         return {"profile": profile_name, "iv_premium_factor": iv_premium_factor,
