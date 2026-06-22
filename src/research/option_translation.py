@@ -176,10 +176,20 @@ def score_profile_on_options(
                 break
             j += 1; k += 1
         if exit_prem is None:
-            jj = min(j, n - 1)
-            T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
+            # Held to the session boundary: the loop stopped because we ran out of
+            # data, crossed into the next day, or reached market_close. This is a
+            # SINGLE-SESSION scorer, so the EOD exit must price on the entry day's
+            # last in-session bar (j - 1), never the next day's first bar -- pricing
+            # on a gapped next-day bar overstates expectancy wildly. Resume entry
+            # scanning from j (the boundary bar) so a signal there is not skipped.
+            jj = max(i + 1, min(j - 1, n - 1))
+            kk = jj - i  # bars since entry at the priced bar
+            T = max((T0 * _YEAR_MINUTES - kk) / _YEAR_MINUTES, 1e-6)
             sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)
+            pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
+            i = j
+            continue
         pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
         i = j + 1
 

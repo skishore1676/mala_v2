@@ -70,3 +70,49 @@ def test_band_returns_scenarios():
     closes = [100.0 - min(i, 15) * 0.3 for i in range(30)]
     band = score_profile_band(_frame(closes), "short", "FLASH_REVERSAL")
     assert [b["scenario"] for b in band] == ["flat", "leverage", "cheap_iv", "rich_iv"]
+
+
+def _two_day_frame(day1, day2, *, day1_signal_bars, day2_signal_bars):
+    """Two trading days of 1-min bars with explicit per-bar closes/signals."""
+    rows = []
+    base1 = dt.datetime(2025, 1, 2, 9, 30)
+    for i, c in enumerate(day1):
+        rows.append((base1 + dt.timedelta(minutes=i), c, i in day1_signal_bars))
+    base2 = dt.datetime(2025, 1, 3, 9, 30)
+    for i, c in enumerate(day2):
+        rows.append((base2 + dt.timedelta(minutes=i), c, i in day2_signal_bars))
+    ts = [r[0] for r in rows]
+    closes = [r[1] for r in rows]
+    sig = [r[2] for r in rows]
+    return pl.DataFrame({
+        "timestamp": ts,
+        "close": closes,
+        "high": [c + 0.05 for c in closes],
+        "low": [c - 0.05 for c in closes],
+        "signal": sig,
+        "signal_direction": ["short" if s else None for s in sig],
+    })
+
+
+def test_hold_to_eod_prices_on_entry_day_not_next_day_gap():
+    # A put bought on day1 (flat at 100 all session, no exit fires -> hold to EOD)
+    # must be valued on day1's last bar, NOT day2's gapped-down open. The scorer is
+    # single-session; pricing the EOD exit on the overnight gap fabricated a ~+998%
+    # win. Regression: expectancy stays a tiny theta loss near zero.
+    frame = _two_day_frame(
+        [100.0] * 30, [80.0] * 30, day1_signal_bars={0}, day2_signal_bars=set()
+    )
+    res = score_profile_on_options(frame, "short", "RANGE_EXPANSION", vol_beta=0.0)
+    assert res["n"] == 1
+    assert -5.0 < res["expectancy_pct"] < 1.0  # pre-fix this was ~+998
+
+
+def test_next_day_first_bar_signal_is_not_skipped():
+    # Day1 signal holds to EOD; day2's FIRST bar also signals. The hold-to-EOD path
+    # used to advance the entry cursor past the boundary bar (i = j + 1), dropping
+    # the next-day signal. Both signals must now enter -> n == 2.
+    frame = _two_day_frame(
+        [100.0] * 30, [100.0] * 30, day1_signal_bars={0}, day2_signal_bars={0}
+    )
+    res = score_profile_on_options(frame, "short", "EXHAUSTION_REVERSAL", vol_beta=0.0)
+    assert res["n"] == 2
