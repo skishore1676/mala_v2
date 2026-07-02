@@ -69,3 +69,14 @@ trace every path to the broker; (3) repeat after each fix. "Tests pass" ≠ "saf
   footgun above.
 - "It's deferred / nothing calls it yet" as a substitute for a structural guard — fine for
   shadow, not for the eventual flip; the flip is exactly when the deferral bites.
+
+## Addendum (2026-07-02, exits-live-scale-riskmgr lane)
+The pattern held and sharpened when the profile exits actually went live. Three
+audit rounds on the bhiksha money path each caught a different bug class —
+including a fix-introduced regression whose unit test encoded the bug as
+expected behavior. Full write-ups now live in the bhiksha repo:
+`bhiksha/docs/lessons/money-path-audit-rounds-catch-different-bug-classes.md`,
+`armed-config-needs-gate-input-telemetry.md`,
+`sheet-is-the-operator-control-surface.md`. Key addition to this note's
+pattern: after fixing audit findings, send the DELTA back to the SAME auditor
+to re-run its own repros — round 2 found the worst bug both times.
