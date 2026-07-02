@@ -76,7 +76,9 @@ approve/archive). Owner job: bhiksha launchd (app owns its jobs), weekly Fri pos
 ## Operating cadence (2026-07-02 → ~2 weeks, operator-agreed)
 
 Trading days (CT): **09:42** morning watch (quiet unless notable) · **13:07** midday watch (quiet
-unless notable) · **15:24** close readback to operator + ONE build increment from the status board
+unless notable) · **15:24** close readback to operator + ONE build increment from the status board.
+**Every wake-up appends a dated entry to the Diary section below** (the close entry is the full one;
+watches add a line or two even when all-quiet); the close job commits this doc in mala_v2
 (worker + tests + review + adversarial round if money-path; deploy evenings only, one increment/day
 so the live experiment stays attributable). **Fridays**: weekly synthesis instead of a build.
 
