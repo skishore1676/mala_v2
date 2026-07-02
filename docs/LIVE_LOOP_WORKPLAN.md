@@ -17,14 +17,14 @@
 | 7 | Revive daily shadow-EV report | TODO | job re-home | Old OpenClaw cron died in migration (May). Re-home per app-owns-jobs structure; publish via bus. |
 | 8 | Capability: market-impulse descendant variants + compression family | TODO (bigger) | bhiksha capability | Unblocks 9 catalog rows (mi-desc ×5, compression/vpoc ×4). |
 | 9 | Serial bar-fetch stall under provider slowness | TODO | bhiksha perf | One 241s heartbeat spike 2026-07-02 14:13 CT; no exposure (protection is broker-side). Fix = concurrent per-symbol fetch. |
-| 10 | Label profile-dispatched exits distinctly (`exit_mode`) | TODO, small | bhiksha reporting | Today they show `exit_mode=strategy`; month readback needs clean attribution. |
+| 10 | Exit attribution (`exit_rule` column + Exit column in reports) | **DEPLOYED** 2026-07-02 eve | bhiksha reporting | Additive trade_sessions.exit_rule (profile:<rule> vs stop/target/strategy/hard_flat); exit_mode untouched (reprice branches key off it). |
 | 11 | `entry_selector_empty` on AVGO (×4) / AMZN (×1) | TODO, small | vehicle filters | New shadow lanes can't find contracts passing DTE/delta/OI filters. |
 | 12 | Operator's risk-manager audit | RESOLVED 2026-07-02 | — | Delivered in-conversation; verdict accepted; its 5 priorities are items 13–17 below. |
 | 13 | launchd_status stranded-return bug (audit P1) | **FIXED** 2026-07-02 | bhiksha bug | `_runtime_status` parsing was dead code after `_bhiksha_python`'s return → Control Tower lied by omission. Fixed + 2 regression tests; **DEPLOYED + verified live** (runtime non-null on oldmac). |
 | 14 | Budget before entry / block on unknown (audit P2) | **DEPLOYED** 2026-07-02 eve — production proof at 2026-07-03 08:20 startup | bhiksha code | 08:31–08:37 window: Rail A inactive (no cash_budget_day), SMH live entry allowed. Fix = startup budget prefetch + `risk_rail_a_budget_unavailable` entry block when unknown (no flatten on unknown). Flips the earlier fail-safe per operator audit. |
-| 15 | Risk knobs → Operator_Defaults_v1 + report readback (audit P3) | TODO | bhiksha + Sheet | Env works today (tiers set 5.0/7.5 = −$479/−$718 on audit's $9,579.74 budget) but knobs belong on the operator surface; resolved values + validation warnings into the session report. SettingsSource hook already exists. |
+| 15 | Risk knobs → Operator_Defaults_v1 + report readback (audit P3) | **DEPLOYED** 2026-07-02 eve | bhiksha + Sheet | Env works today (tiers set 5.0/7.5 = −$479/−$718 on audit's $9,579.74 budget) but knobs belong on the operator surface; resolved values + validation warnings into the session report. SettingsSource hook already exists. |
 | 16 | Rail A.5: mark-to-market open-book drawdown (audit P4) | TODO | bhiksha code | Rail A is realized-only; native stops protect per-trade meanwhile. v1 = open-book drawdown WARNING event from position marks; halt/flatten escalation a later decision. |
-| 17 | Relaxed-evidence labels in reports (audit P5) | TODO (analytics lane) | reporting | Keep shadow relaxation (strategically right per audit); surface `evidence_gates_relaxed` per lane in session/weekly reports so a weak shadow row is never promoted by accident. |
+| 17 | Relaxed-evidence labels in reports (audit P5) | **DEPLOYED** 2026-07-02 eve | reporting | Keep shadow relaxation (strategically right per audit); surface `evidence_gates_relaxed` per lane in session/weekly reports so a weak shadow row is never promoted by accident. |
 
 ## §1 Risk-tier calibration (the 2% / 3% question)
 
