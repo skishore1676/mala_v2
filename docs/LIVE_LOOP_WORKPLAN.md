@@ -25,6 +25,7 @@
 | 15 | Risk knobs → Operator_Defaults_v1 + report readback (audit P3) | **DEPLOYED** 2026-07-02 eve | bhiksha + Sheet | Env works today (tiers set 5.0/7.5 = −$479/−$718 on audit's $9,579.74 budget) but knobs belong on the operator surface; resolved values + validation warnings into the session report. SettingsSource hook already exists. |
 | 16 | Rail A.5: mark-to-market open-book drawdown (audit P4) | TODO | bhiksha code | Rail A is realized-only; native stops protect per-trade meanwhile. v1 = open-book drawdown WARNING event from position marks; halt/flatten escalation a later decision. |
 | 17 | Relaxed-evidence labels in reports (audit P5) | **DEPLOYED** 2026-07-02 eve | reporting | Keep shadow relaxation (strategically right per audit); surface `evidence_gates_relaxed` per lane in session/weekly reports so a weak shadow row is never promoted by accident. |
+| 18 | Playbook discovery program (all-4-profile coverage) | SPEC'D 2026-07-03 | research lane | Live book is a TREND_CONTINUATION monoculture (17/19 lanes). Program: tag operator's timestamped fills → detectors that "fire where he fired" → option-path validation → shadow. Gates + success criteria: `docs/PLAYBOOK_DISCOVERY_PROGRAM.md`. First gate = P0 spec-lock (operator sitting). |
 
 ## §1 Risk-tier calibration (the 2% / 3% question)
 
@@ -137,3 +138,17 @@ P1 Control Tower blind (fixed same evening + regression tests), P2 budget-unavai
 deployed. Evening sprint (in flight): exit attribution + relaxed-evidence labels; risk knobs →
 Operator_Defaults_v1 with report readback. Cadence agreed: 09:42/13:07 watches + 15:24 close
 readback + one build/day for ~2 weeks.
+
+### 2026-07-03 (Thu, overnight) — the monoculture finding + playbook discovery program
+Live-surface audit (oldmac active_plan): **17/19 lanes are TREND_CONTINUATION, 2 profile-less** —
+the month test covers 1 of the operator's 4 profiles. Blockers per profile: FLASH has no carrier
+(M1 mis-kill), EXHAUSTION rows triage-killed on tradability (bhiksha supports the family), RANGE
+blocked on capability (#8). Operator rejected cross-profile counterfactuals (thesis-coupled — we'd
+never act on them) and the manual-bot trickle as evidence engines; direction = refine the 4 playbook
+hypotheses themselves. Data correction while grounding it: the personal corpus is **5,760 unique
+round-trips, not 17,002** (three overlapping export batches; superset = `20260429_232737`);
+1,465 timestamped (89% IWM/SPY), bar cache to 2021-05 → supervised "distill the operator" is
+feasible today on IWM/SPY. Program doc with per-gate success criteria: **item #18,
+`docs/PLAYBOOK_DISCOVERY_PROGRAM.md`** (P0 spec-lock → P1 tagging → P2 fires-where-he-fired →
+P3 option-path validation → P4 shadow; fast-follows F1 IWM elastic-band unblock, F2 per-profile
+weekly columns). Next action gated on operator: P0 sitting (~1 hr).
