@@ -166,3 +166,17 @@ candidates (regime-conditioned flash direction, high-IV squeeze gate, pattern-fa
 the draft spec for item #4 morning bias ("Morning Chores" page). Two open confirmations
 (non-blocking): R4 overnight intent, X3 unclassified-share guess. **Gate P1 (tagging) is next** —
 corpus prep, entry-context features, rule tagger citing the spec, first adjudication packet.
+
+### 2026-07-04 (Fri, evening) — P1 round 1 built and out
+Tagger shipped (`src/research/playbook_tagging.py` + `scripts/tag_personal_trades.py`, 7 tests
+green): 1,443 long timestamped fills → **390 episodes** (~3.7 fills/episode — the doubling-down is
+real). Machine round-1 tags: FLASH 104 (open-hour dominated, ~breakeven $), TREND 84 (61% win,
++$17.7k — the moneymaker), EXHAUSTION 21 (mid-day only, none at the open), RANGE 18, UNCLASSIFIED
+31% (target ≤25%) — and the UNCLASSIFIED bucket holds **−$65k**, i.e. the machine can't map the
+worst trades to any playbook (consistent with the operator's own "rule-breaking gambles" pages).
+Caught+fixed a silent-corruption bug before publishing: polars `dt.hour()` is Int8 → minute axis
+wrapped mod 256 → every feature computed at the wrong bar (first fingerprint was invalid;
+regression test added). Round-1 adjudication packet (43 charted episodes, inline SVG) published to
+the bus + Telegram nudge. Known iteration items for round 2: 55 early-open entries (09:30–09:35)
+lack lookback context (FLASH-at-open blind spot); EXHAUSTION possibly under-counted (FLASH
+precedence). Awaiting operator adjudication → agreement metric → rule iteration.
