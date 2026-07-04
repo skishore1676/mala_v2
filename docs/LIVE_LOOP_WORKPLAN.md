@@ -152,3 +152,17 @@ feasible today on IWM/SPY. Program doc with per-gate success criteria: **item #1
 `docs/PLAYBOOK_DISCOVERY_PROGRAM.md`** (P0 spec-lock → P1 tagging → P2 fires-where-he-fired →
 P3 option-path validation → P4 shadow; fast-follows F1 IWM elastic-band unblock, F2 per-profile
 weekly columns). Next action gated on operator: P0 sitting (~1 hr).
+
+### 2026-07-04 (Fri) — P0 spec-lock CLOSED
+Operator returned the questionnaire via Lathi bus (decision: revise, 5 comments) + 7 pages of
+handwritten trading rules (preserved local-only at
+`data/personal_imports/operator_notes/Rules_2026-07-04.pdf`; context-not-spec per operator).
+Material corrections folded into `EXIT_PROFILE_PLAYBOOKS.md` § P0 Spec-Lock: **EXHAUSTION
+reframed** (85–90th percentile stretch, symbol-AGNOSTIC, any timeframe; entry = inability to cross
+the prior extreme) — supersedes index-first; **TREND anchor is the 10 VMA**, not VWAP;
+**RANGE includes earnings-gap continuation**; **FLASH is counter-trend by definition** + doubling
+down is part of the play (forces episode-level tagging). Handwritten notes yield P2 feature
+candidates (regime-conditioned flash direction, high-IV squeeze gate, pattern-failure trigger) and
+the draft spec for item #4 morning bias ("Morning Chores" page). Two open confirmations
+(non-blocking): R4 overnight intent, X3 unclassified-share guess. **Gate P1 (tagging) is next** —
+corpus prep, entry-context features, rule tagger citing the spec, first adjudication packet.

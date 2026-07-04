@@ -1,5 +1,9 @@
 # P0 Spec-Lock Questionnaire — the 4 playbooks, taggable
 
+> **STATUS: COLLECTED + FOLDED 2026-07-04.** Operator reviewed via Lathi bus (decision: revise,
+> 5 comments). The corrected spec now lives in `EXIT_PROFILE_PLAYBOOKS.md` § "P0 Spec-Lock" — that
+> section is authoritative; this file remains as the question record.
+
 > Gate P0 of `docs/PLAYBOOK_DISCOVERY_PROGRAM.md`. Every answer below is **PROPOSED by Claude** from
 > `docs/EXIT_PROFILE_PLAYBOOKS.md`, the profile dials, and your fill fingerprints — **none of it is
 > your word yet**. Correct inline with pointy brackets (`<like this>`) — a bare "ok" on a question
