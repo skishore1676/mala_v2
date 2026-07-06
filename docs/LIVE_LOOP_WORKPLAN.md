@@ -203,3 +203,12 @@ full-size-target amputation prevented and that the exit-authority rule (#2) rest
 until a shadow lane actually trended for the mechanic to show. Paper (shadow), but real market data
 and real profile FSM. No live lane trended today (IWM stopped out), so this is the first end-to-end
 proof the ladder does what it's armed to do.
+
+### 2026-07-06 (Mon, midday) — SPY runner completed the full ladder
+The SPY shadow runner flagged late-morning closed at **1.35 via `max_hold`** (2-contract runner after
+the T1 partial): entered 1.12 → partial banked at ~1R → runner rode → max_hold exit at +0.23
+premium on the runner. First **complete** end-to-end ladder cycle in production (partial + runner,
+both green) — the exit DNA working exactly as armed, on real market data. Rest of book unchanged:
+IWM live −$310 (disaster_stop, target correctly suppressed) is the only live trade; shadows META ×2
+(−), AAPL (+). Health all clean (rails 24 decisions, budget/mismatch/recovered all 0). Operator not
+re-paged — this closes the loop on the late-morning runner heads-up.
