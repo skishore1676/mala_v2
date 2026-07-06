@@ -180,3 +180,16 @@ regression test added). Round-1 adjudication packet (43 charted episodes, inline
 the bus + Telegram nudge. Known iteration items for round 2: 55 early-open entries (09:30–09:35)
 lack lookback context (FLASH-at-open blind spot); EXHAUSTION possibly under-counted (FLASH
 precedence). Awaiting operator adjudication → agreement metric → rule iteration.
+
+### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
+First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
+budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),
+rails quiet (14 risk_manager_decision by 10:27 vs 5,066 on flip day — noise fix holding). By 10:27:
+1 live + 4 shadow. **IWM live** (row_3, long 0.77→0.5118 ×12 = **−$310**) exited via
+`exit_rule=disaster_stop`, profile-route dispatched (dry_run=0) — and the entry's full target was
+correctly suppressed (`profit_target_suppressed: profile_owns_profit_taking`), so the exit-authority
+rule is confirmed live: the stop is the only resting order, the profile owns the rest. Shadow:
+META ×2 (−$20, −$19), AAPL (+$70), SPY still target_active. Health clean: identity_mismatch=0,
+broker_recovered=0, 5 protective stops submitted. Heartbeat avg 7.3s (max 39s — one slow sweep,
+under the 60s cadence, no exposure; #9 bar-fetch item still stands). No T2 runner yet (IWM went
+down, not up). Nothing anomalous — operator not paged.
