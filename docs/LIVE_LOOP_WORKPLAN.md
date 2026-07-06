@@ -193,3 +193,13 @@ META ×2 (−$20, −$19), AAPL (+$70), SPY still target_active. Health clean: i
 broker_recovered=0, 5 protective stops submitted. Heartbeat avg 7.3s (max 39s — one slow sweep,
 under the 60s cadence, no exposure; #9 bar-fetch item still stands). No T2 runner yet (IWM went
 down, not up). Nothing anomalous — operator not paged.
+
+### 2026-07-06 (Mon, late morning) — FIRST live sighting of the T2-runner mechanic
+Between the morning watch and midday, **SPY shadow** executed the full ladder for the first time in
+production: entered 1.12, **banked the T1 partial** (4→2 contracts, `target_1_banked=true`,
+`exit_rule=target_1_partial`), stop to breakeven, and the runner is riding — profile holding at
+**+0.89R**, status `target_active`. This is the exact partial-and-ride behavior the flip-day
+full-size-target amputation prevented and that the exit-authority rule (#2) restored; it just took
+until a shadow lane actually trended for the mechanic to show. Paper (shadow), but real market data
+and real profile FSM. No live lane trended today (IWM stopped out), so this is the first end-to-end
+proof the ladder does what it's armed to do.
