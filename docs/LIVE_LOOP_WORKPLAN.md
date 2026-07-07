@@ -18,7 +18,7 @@
 | 8 | Capability: market-impulse descendant variants + compression family | TODO (bigger) | bhiksha capability | Unblocks 9 catalog rows (mi-desc ×5, compression/vpoc ×4). |
 | 9 | Serial bar-fetch stall under provider slowness | **DEPLOYED** 2026-07-07 eve (ec12a11) | bhiksha perf | Per-symbol fetch now concurrent (asyncio.gather + Semaphore(8)); sweep wall-clock ~max not sum; dispatch order + error isolation preserved; 5 new tests. Watch heartbeat_lag_ms drops next session. |
 | 10 | Exit attribution (`exit_rule` column + Exit column in reports) | **DEPLOYED** 2026-07-02 eve | bhiksha reporting | Additive trade_sessions.exit_rule (profile:<rule> vs stop/target/strategy/hard_flat); exit_mode untouched (reprice branches key off it). |
-| 11 | `entry_selector_empty` on AVGO (×4) / AMZN (×1) | TODO, small | vehicle filters | New shadow lanes can't find contracts passing DTE/delta/OI filters. |
+| 11 | `entry_selector_empty` — vehicle filters reject all contracts | **ELEVATED 2026-07-07 (live-impact)** | vehicle filters + operator judgment | NOT cosmetic: on 07-07 SMH LIVE signaled short but ALL 1122 contracts were rejected → 0 live trades. Of ~266 in-DTE-window puts: 168 open-interest-below-min, 89 delta-out-of-band, 9 spread. OPEN QUESTION for operator: is the OI floor correctly protecting against illiquid SMH short-DTE puts, or too strict and costing live entries? Tuning a live-entry filter needs operator sign-off on the liquidity/fill trade-off. See §11. |
 | 12 | Operator's risk-manager audit | RESOLVED 2026-07-02 | — | Delivered in-conversation; verdict accepted; its 5 priorities are items 13–17 below. |
 | 13 | launchd_status stranded-return bug (audit P1) | **FIXED** 2026-07-02 | bhiksha bug | `_runtime_status` parsing was dead code after `_bhiksha_python`'s return → Control Tower lied by omission. Fixed + 2 regression tests; **DEPLOYED + verified live** (runtime non-null on oldmac). |
 | 14 | Budget before entry / block on unknown (audit P2) | **DEPLOYED** 2026-07-02 eve — production proof at 2026-07-03 08:20 startup | bhiksha code | 08:31–08:37 window: Rail A inactive (no cash_budget_day), SMH live entry allowed. Fix = startup budget prefetch + `risk_rail_a_budget_unavailable` entry block when unknown (no flatten on unknown). Flips the earlier fail-safe per operator audit. |
@@ -300,3 +300,28 @@ isolation preserved, no order-path change); review + deploy this session (market
 to trend (the runner mechanic proven on shadow 07-06, not yet in live dollars).
 
 **Update (~16:20):** #9 bar-fetch concurrency reviewed + DEPLOYED (ec12a11, boot green). Per-symbol fetches now fire concurrently (gather + Semaphore(8)); dispatch order and error isolation byte-identical to serial; 632 tests. Expect heartbeat_lag_ms max to drop below the ~54s plateau next session — will confirm at the 07-08 morning watch.
+
+## §11 entry_selector_empty — the live-entry blocker (2026-07-07)
+
+Corrects the day's earlier "no live signal" read. SMH live (row_6) DID signal short at 08:59 CT
+(and 09:03); no trade resulted because the option-contract selector rejected all 1122 SMH candidates.
+Full breakdown (`runtime_issue` category=entry_selector_empty): 561 wrong type (calls, correct for a
+short), 295 out of the 3–7 DTE window (chain offered 3/6/10/13/15 → only 3,6 qualify), then of the
+~266 in-window puts: **168 open_interest_below_min, 55 delta_below_min, 34 delta_above_max, 9
+spread_above_max → 0 survived**. Dominant blocker = open interest (thin SMH short-DTE puts) + delta
+band. Fallback `allow_nearest_after` (→10 DTE) exists but those contracts also failed OI/delta.
+
+**The lever (operator judgment needed):** the OI floor + delta band (0.15–0.35) + spread max are
+protecting against illiquid/bad fills, but they also mean SMH-type lanes go quiet when their
+short-DTE chain is thin. Loosening trades more at the cost of fill quality. This is a live-money
+behavior change → operator decides the thresholds before any tuning. Candidate next build increment
+once the trade-off is decided. Also relevant: this suppression is invisible in the daily P&L (looks
+like "quiet day") — worth a report line counting entry_selector_empty per live lane so silent
+live-entry blocks surface.
+
+### 2026-07-07 (Tue, evening) — CORRECTION: a live lane DID fire; selector blocked it
+Re-examined "why nothing live today" (operator asked). NOT true that no live lane signaled: SMH live
+signaled short 08:59 + 09:03 CT. Both hit `entry_selector_empty` — all 1122 SMH contracts rejected
+(see §11). So today's live $0 was a VEHICLE-FILTER block, not a signal drought. Elevated #11 from
+cosmetic filler to live-impact item pending operator call on the OI/delta thresholds. Earlier diary
+lines for 07-07 saying "no qualifying signal" are superseded by this.
