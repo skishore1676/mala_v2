@@ -97,6 +97,33 @@ def svg_chart(bars: SymbolBars, ep: Episode, pre_min: int = 120, post_min: int =
     )
 
 
+def _median(vals: list[float]):
+    xs = sorted(vals)
+    return xs[len(xs) // 2] if xs else None
+
+
+def _tag_row(tag: str, eps: list[Episode]) -> str:
+    """One fingerprint-table row. Every stat cell is guarded independently:
+    a tag with valid episodes but missing holds / DTE / PnL blanks only that
+    cell (it must never crash on an empty list nor collapse the whole row)."""
+    n_high = sum(1 for e in eps if e.confidence == "HIGH")
+    n_med = sum(1 for e in eps if e.confidence == "MEDIUM")
+    med_hold = _median([e.holding_minutes for e in eps if e.holding_minutes is not None])
+    med_dte = _median([e.dte for e in eps if e.dte is not None])
+    pnls = [e.pnl for e in eps if e.pnl is not None]
+    hold_cell = f"{med_hold:.0f}" if med_hold is not None else ""
+    dte_cell = f"{med_dte}" if med_dte is not None else ""
+    if pnls:
+        win_cell = f"{sum(1 for p in pnls if p > 0) / len(pnls):.0%}"
+        sum_cell = f"{sum(pnls):+,.0f}"
+    else:
+        win_cell = sum_cell = ""
+    return (
+        f"| {tag} | {len(eps)} | {n_high} | {n_med} | "
+        f"{hold_cell} | {dte_cell} | {win_cell} | {sum_cell} |"
+    )
+
+
 def kmeans_sidecar(episodes: list[Episode], k: int = 4, iters: int = 60) -> str:
     """Tiny numpy k-means on standardized features; contingency vs tags."""
     tagged = [e for e in episodes if e.features]
@@ -194,18 +221,7 @@ def main() -> None:
         if not eps:
             rep.append(f"| {tag} | 0 | | | | | | |")
             continue
-        holds = sorted(e.holding_minutes for e in eps if e.holding_minutes is not None)
-        dtes = sorted(e.dte for e in eps if e.dte is not None)
-        pnls = [e.pnl for e in eps if e.pnl is not None]
-        wins = sum(1 for p in pnls if p > 0)
-        rep.append(
-            f"| {tag} | {len(eps)} | "
-            f"{sum(1 for e in eps if e.confidence == 'HIGH')} | "
-            f"{sum(1 for e in eps if e.confidence == 'MEDIUM')} | "
-            f"{holds[len(holds)//2]:.0f}" + (" | " if holds else "| ") +
-            f"{dtes[len(dtes)//2] if dtes else ''} | "
-            f"{wins/len(pnls):.0%} | {sum(pnls):+,.0f} |" if pnls else "| | |"
-        )
+        rep.append(_tag_row(tag, eps))
     rep += ["", "## Symbol league by tag", ""]
     for tag in PLAYBOOKS:
         eps = by_tag.get(tag, [])
