@@ -282,3 +282,19 @@ missed. Still awaiting the first LIVE winner to trend.
 Trading loop active (5,830 signal evals). Health clean: dispatches 0, suppressed_targets 0 (no live
 armed entries fired), broker_recovered 0, identity_mismatch 0, MTM warnings 0. Heartbeat max held
 flat at 54s (same as AM — stable, not climbing; #9 still just a watch item). Operator not paged.
+
+### 2026-07-07 (Tue, close) — flat day (live $0); token fix held; building #9 bar-fetch concurrency
+**Day tally:** live **0 trades / $0**, shadow 2 trades **−$132** (IWM +$33 target_1_partial, AAPL
+−$165). Status GREEN, no rails fired (0 halts, 0 demotes), no live entries triggered (live lanes
+caught no qualifying signal; trading loop healthy at 5,830+ evals). **Schwab token fix confirmed
+held** at first real startup (token_valid, rc=0) — last night's recovery + guard fix validated.
+Health clean all day (dispatches 0, suppressed_targets 0, broker_recovered 0, identity_mismatch 0,
+MTM warnings 0). Heartbeat max flat at 54s (stable, not climbing).
+**Build increment tonight:** pulling **#9 bar-fetch concurrency** ahead of the #4 morning-bias lane —
+rationale: #9 is the item with real operational signal (heartbeat lag edging toward the 60s bar
+cadence, 54s×2 days + a 241s spike 07-06 = risk of a missed bar), and it protects the live loop;
+the morning-bias overlay (#4) is a multi-day lane deserving operator involvement, not an autonomous
+evening increment. Worker parallelizing the serial per-symbol fetch sweep (asyncio.gather, error
+isolation preserved, no order-path change); review + deploy this session (market closed).
+**Experiment tally: 07-02 +$1,001 · 07-06 −$293 · 07-07 $0 live.** Still awaiting first live winner
+to trend (the runner mechanic proven on shadow 07-06, not yet in live dollars).
