@@ -212,3 +212,19 @@ both green) — the exit DNA working exactly as armed, on real market data. Rest
 IWM live −$310 (disaster_stop, target correctly suppressed) is the only live trade; shadows META ×2
 (−), AAPL (+). Health all clean (rails 24 decisions, budget/mismatch/recovered all 0). Operator not
 re-paged — this closes the loop on the late-morning runner heads-up.
+
+### 2026-07-06 (Mon, close) — day −$293; rails calibration validated; runner mechanic proven; A.5 building
+**Day tally:** live 1 trade **−$309.84** (IWM disaster_stop, target correctly suppressed), shadow 4
+trades **+$17** net (SPY +46 runner, AAPL +70, META −80/−19). Total **−$292.84**, status GREEN.
+**Rails calibration validated live:** the −$310 loss sat INSIDE the −$526.55 tier-1 halt line
+(usable budget $10,531 × 5%) → no halt, exactly as intended; the old 2%/−$194 would have wrongly
+ended the day. Report Risk Rails section renders resolved tiers in pct+$ (item 15 confirmed live).
+**Milestone:** first COMPLETE T2-runner ladder cycle in production (SPY shadow: partial banked →
+runner rode → max_hold exit, both legs green) — the exit DNA doing exactly what the exit-authority
+rule (#2) armed it to do. Health all clean (identity_mismatch 0, broker_recovered 0, budget
+prefetched, 0 budget-unavailable, exit attribution populated: disaster_stop + max_hold).
+**Build increment tonight (market closed):** item #16 Rail A.5 mark-to-market open-book drawdown
+WARNING (v1 warning-only, no halt/flatten, reuses existing per-position quote seam) — worker
+building; review + deploy this session. Open question for the week: no live lane has trended yet
+(2 live trades total since flip both stopped/scratched); the runner mechanic is proven on shadow but
+still awaits a live winner. **Experiment tally so far: 07-02 +$1,001, 07-06 −$293 live.**
