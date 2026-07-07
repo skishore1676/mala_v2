@@ -16,7 +16,7 @@
 | 6 | Session reports → Obsidian approve/archive surface | PARTIAL | lathi-bus wiring | Telegram via lathi-bus WIRED (jarvis-northstar). Obsidian/approve→archive NOT wired. Control-tower: bhiksha-side contract done (`bhiksha/docs/lathi_control_tower_bhiksha_jobs.md`); tower-side consumption to verify. |
 | 7 | Revive daily shadow-EV report | TODO | job re-home | Old OpenClaw cron died in migration (May). Re-home per app-owns-jobs structure; publish via bus. |
 | 8 | Capability: market-impulse descendant variants + compression family | TODO (bigger) | bhiksha capability | Unblocks 9 catalog rows (mi-desc ×5, compression/vpoc ×4). |
-| 9 | Serial bar-fetch stall under provider slowness | TODO | bhiksha perf | One 241s heartbeat spike 2026-07-02 14:13 CT; no exposure (protection is broker-side). Fix = concurrent per-symbol fetch. |
+| 9 | Serial bar-fetch stall under provider slowness | **DEPLOYED** 2026-07-07 eve (ec12a11) | bhiksha perf | Per-symbol fetch now concurrent (asyncio.gather + Semaphore(8)); sweep wall-clock ~max not sum; dispatch order + error isolation preserved; 5 new tests. Watch heartbeat_lag_ms drops next session. |
 | 10 | Exit attribution (`exit_rule` column + Exit column in reports) | **DEPLOYED** 2026-07-02 eve | bhiksha reporting | Additive trade_sessions.exit_rule (profile:<rule> vs stop/target/strategy/hard_flat); exit_mode untouched (reprice branches key off it). |
 | 11 | `entry_selector_empty` on AVGO (×4) / AMZN (×1) | TODO, small | vehicle filters | New shadow lanes can't find contracts passing DTE/delta/OI filters. |
 | 12 | Operator's risk-manager audit | RESOLVED 2026-07-02 | — | Delivered in-conversation; verdict accepted; its 5 priorities are items 13–17 below. |
@@ -298,3 +298,5 @@ evening increment. Worker parallelizing the serial per-symbol fetch sweep (async
 isolation preserved, no order-path change); review + deploy this session (market closed).
 **Experiment tally: 07-02 +$1,001 · 07-06 −$293 · 07-07 $0 live.** Still awaiting first live winner
 to trend (the runner mechanic proven on shadow 07-06, not yet in live dollars).
+
+**Update (~16:20):** #9 bar-fetch concurrency reviewed + DEPLOYED (ec12a11, boot green). Per-symbol fetches now fire concurrently (gather + Semaphore(8)); dispatch order and error isolation byte-identical to serial; 632 tests. Expect heartbeat_lag_ms max to drop below the ~54s plateau next session — will confirm at the 07-08 morning watch.
