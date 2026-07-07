@@ -26,6 +26,7 @@
 | 16 | Rail A.5: mark-to-market open-book drawdown (audit P4) | TODO | bhiksha code | Rail A is realized-only; native stops protect per-trade meanwhile. v1 = open-book drawdown WARNING event from position marks; halt/flatten escalation a later decision. |
 | 17 | Relaxed-evidence labels in reports (audit P5) | **DEPLOYED** 2026-07-02 eve | reporting | Keep shadow relaxation (strategically right per audit); surface `evidence_gates_relaxed` per lane in session/weekly reports so a weak shadow row is never promoted by accident. |
 | 18 | Playbook discovery program (all-4-profile coverage) | SPEC'D 2026-07-03 | research lane | Live book is a TREND_CONTINUATION monoculture (17/19 lanes). Program: tag operator's timestamped fills → detectors that "fire where he fired" → option-path validation → shadow. Gates + success criteria: `docs/PLAYBOOK_DISCOVERY_PROGRAM.md`. First gate = P0 spec-lock (operator sitting). |
+| 19 | Schwab guard: proactive near-expiry browser re-auth | **FIXED + DEPLOYED** 2026-07-07 | bhiksha bug | Guard only browser-renewed AFTER expiry (browser invoked 0× ever) → refresh token silently lapsed 07-07 04:57 UTC. Fix: near-expiry gets own branch, proactive browser renewal while token still works + closes silent-alert gap. Root-caused, re-authed live (new token exp 07-14), fix deployed 6c4136c. |
 
 ## §1 Risk-tier calibration (the 2% / 3% question)
 
@@ -245,3 +246,21 @@ renews the access token but CANNOT renew an expired refresh token → needs oper
 non-fatal for live-start since Schwab is the REPLAY/enrichment provider, not the execution broker
 (Public) — a token expiry on a non-execution provider arguably shouldn't block trading. Flag for a
 build increment.
+
+### 2026-07-07 (Tue, ~00:45) — Schwab token: root-caused, re-authed live, fixed, deployed
+Operator asked why the "browser auto-reauth" let the token expire. **Root cause:** the guard's
+`refresh_token_near_expiry` state was grouped with `access_token_stale` in one branch that only did
+`direct_refresh` (mints a new ACCESS token, never a new REFRESH token). The browser-agent renewal
+only fired on ALREADY-expired / refresh-failure — so across all 4 guard receipts the browser agent
+was invoked **0 times** while the 7-day refresh token silently counted down and lapsed at
+04:57 UTC. The browser path was fully wired (`/Users/sunny/code/browser-agent/scripts/schwab-auto-refresh.sh`,
+mode=auto) but mis-triggered — set to act after the barn door was open.
+**Recovered live:** ran the guard now → browser agent invoked (return_code 0, its FIRST-EVER
+successful run) → new refresh token issued, **expires 2026-07-14**, state healthy. Boot check now
+exit 0. Tomorrow's 08:20 session unblocked.
+**Fixed (item #19, deployed 6c4136c):** near-expiry now its own branch — direct_refresh first
+(keeps access fresh), THEN proactive browser renewal to reset the 7-day clock while the token still
+works; near-expiry + any browser-renewal failure now always alert (closes the silent-alert gap that
+hid this for a week). 626 tests. So the guard will now self-renew at the 2-day mark (~07-12) instead
+of lapsing. Also confirmed: the earlier Rail A.5 boot "failure" was purely this token gate — with the
+token healthy, Rail A.5 (d0331bd) boots clean.
