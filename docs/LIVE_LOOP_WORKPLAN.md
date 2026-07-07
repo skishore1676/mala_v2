@@ -264,3 +264,14 @@ works; near-expiry + any browser-renewal failure now always alert (closes the si
 hid this for a week). 626 tests. So the guard will now self-renew at the 2-day mark (~07-12) instead
 of lapsing. Also confirmed: the earlier Rail A.5 boot "failure" was purely this token gate — with the
 token healthy, Rail A.5 (d0331bd) boots clean.
+
+### 2026-07-07 (Tue, morning) — Schwab token fix HELD at first real startup; quiet AM
+First live-start after last night's token re-auth + guard fix: **live-start rc=0, schwab_token
+True/token_valid** — the fix held, session started clean (the whole point of last night confirmed).
+Budget prefetched (1 row, 0 budget-unavailable), rails quiet (12 decisions), Rail A.5 live (0 MTM
+warnings, expected — no open live positions), identity_mismatch 0, broker_recovered 0. By 10:12:
+**no live trades yet**; 2 shadow — IWM banked another `target_1_partial` (+$33, ladder mechanic
+firing again on shadow), AAPL −$165. Heartbeat avg 7.9s but **max 54s** — creeping toward the 60s
+bar cadence (was 39s on 07-02, 241s spike 07-06); the #9 bar-fetch slow-sweep signature, no exposure
+(no live positions, protection broker-side) but worth watching — if it crosses 60s a bar could be
+missed. Still awaiting the first LIVE winner to trend.
