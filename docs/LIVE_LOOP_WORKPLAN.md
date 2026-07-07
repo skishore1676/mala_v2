@@ -228,3 +228,20 @@ WARNING (v1 warning-only, no halt/flatten, reuses existing per-position quote se
 building; review + deploy this session. Open question for the week: no live lane has trended yet
 (2 live trades total since flip both stopped/scratched); the runner mechanic is proven on shadow but
 still awaits a live winner. **Experiment tally so far: 07-02 +$1,001, 07-06 −$293 live.**
+
+### 2026-07-07 (Tue, ~00:15) — Rail A.5 deployed; SCHWAB TOKEN BLOCKER for the AM session
+Build increment #16 shipped: **Rail A.5 mark-to-market open-book drawdown WARNING** (audit P4),
+merged `d0331bd`, 622 tests green, deployed oldmac. Warning-only (no halt/flatten, no order path),
+reuses OrderManager.get_option_quote via a bounded once/min/position mark_price_provider; new knob
+`open_drawdown_warn_pct` (env>sheet>default, default=tier-1 pct); renders in report Risk Rails
+("open-book MTM warn (awareness only): 5.00% ($526.55)"). Reviewed the mark seam + sign math +
+fail-safes before deploy; warning-only so no adversarial round. Status board #16 → DEPLOYED.
+**BLOCKER discovered during boot check (NOT caused by this deploy):** Schwab refresh token EXPIRED
+04:57 UTC 07-07 (7-day life, issued 06-30). The startup health check hard-gates on `schwab_token`
+(`runtime.py:161`), so tomorrow's 08:20 CT live-start will FAIL unless re-authorized. Auto-guard
+renews the access token but CANNOT renew an expired refresh token → needs operator browser re-auth
+(`schwab_auth url` → authorize → `schwab_auth exchange <callback>`). **Operator alerted.** Public
+(live broker) health is fine (LEVEL_3, $10,775 BP). Open item: consider making schwab_token
+non-fatal for live-start since Schwab is the REPLAY/enrichment provider, not the execution broker
+(Public) — a token expiry on a non-execution provider arguably shouldn't block trading. Flag for a
+build increment.
