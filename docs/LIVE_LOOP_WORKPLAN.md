@@ -376,3 +376,12 @@ policy from data.
 **Premium cap: DEFERRED pending snapshot data** (interpretation to confirm with operator): caps stay
 per-lane as-is; the multi-lot question folds into the same learning loop (cheaper-strike preference
 within existing caps first; cap raises revisited with the slippage data and the new rails).
+
+### 2026-07-08 (Wed, afternoon supplement) — decisions landed; book unchanged
+14:02 CT: book unchanged since midday (3 trades, flat, health clean, heartbeat max steady 16.7s).
+Afternoon output: operator decisions locked in brainstorm — rails **7.5/11.25 APPLIED** to env
+(−$768/−$1,152 at tomorrow's start), OI → per-symbol percentile-learning design (§11b), caps
+deferred pending data. Public API confirmed NO historical chains → chain-snapshot capture built,
+audited-lite, **merged d285ebb** alongside the 3-round-audited hygiene batch (87fb8e1); both deploy
+at tonight's close block. QQQ true size confirmed 3-lot (banked leg 2x pending backfill with AMD's
+orphaned exit).
