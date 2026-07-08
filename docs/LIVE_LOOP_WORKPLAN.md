@@ -355,3 +355,24 @@ vehicle-policy question is now costing live entries on 2 of the last 2 sessions;
 on OI-as-aggressiveness numbers pending (brainstorm 07-08). Exit-race audit verdict SAFE-WITH-FIXES:
 3 fixes (fail-closed readback, partial-fill-at-cancel handling + oversell prevention, sweep timeout/
 give-up) dispatched to the worker; deploy at tonight's close block after re-verification.
+
+## §11b Vehicle-policy decisions (operator, 2026-07-08 afternoon)
+
+**Rails DECIDED + APPLIED:** halt 7.5% / flatten 11.25% (env on oldmac; live at next 08:20 start).
+On today's $10,237 budget: halt ≈ −$768, flatten ≈ −$1,152. Coherent with current caps: one worst-case
+stop-out at the $2,000 cap (−$700) stays under the halt line (survives one, halts before two).
+Ratio preserved at 1:1.5. Revisit as account grows.
+
+**OI: per-symbol LEARNED thresholds, not a global floor (operator's design).** A fixed OI=100 means
+nothing on SPY and everything on SMH — liquidity is symbol-relative. Direction: judge each contract's
+OI as a PERCENTILE within its own symbol's chain (per DTE window), and LEARN what "good OI" means
+per symbol by correlating entry OI-percentile with realized fill slippage once chain snapshots +
+fills accrue. Guard against the uniform-dead-chain failure (top-30%-of-nothing): keep a low absolute
+sanity bound + spread co-gate, and OI tier still maps to entry AGGRESSIVENESS (near-bid passive +
+no-chase on thin) per the 07-08 brainstorm. Chain-snapshot capture (approved) is the training set —
+build `option_chain_snapshots` at selection time, collect 3-4 sessions, then set the percentile
+policy from data.
+
+**Premium cap: DEFERRED pending snapshot data** (interpretation to confirm with operator): caps stay
+per-lane as-is; the multi-lot question folds into the same learning loop (cheaper-strike preference
+within existing caps first; cap raises revisited with the slippage data and the new rails).
