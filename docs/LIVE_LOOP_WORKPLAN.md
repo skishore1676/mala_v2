@@ -18,7 +18,7 @@
 | 8 | Capability: market-impulse descendant variants + compression family | TODO (bigger) | bhiksha capability | Unblocks 9 catalog rows (mi-desc ×5, compression/vpoc ×4). |
 | 9 | Serial bar-fetch stall under provider slowness | **DEPLOYED** 2026-07-07 eve (ec12a11) | bhiksha perf | Per-symbol fetch now concurrent (asyncio.gather + Semaphore(8)); sweep wall-clock ~max not sum; dispatch order + error isolation preserved; 5 new tests. Watch heartbeat_lag_ms drops next session. |
 | 10 | Exit attribution (`exit_rule` column + Exit column in reports) | **DEPLOYED** 2026-07-02 eve | bhiksha reporting | Additive trade_sessions.exit_rule (profile:<rule> vs stop/target/strategy/hard_flat); exit_mode untouched (reprice branches key off it). |
-| 11 | `entry_selector_empty` — vehicle filters reject all contracts | **ELEVATED 2026-07-07 (live-impact)** | vehicle filters + operator judgment | NOT cosmetic: on 07-07 SMH LIVE signaled short but ALL 1122 contracts were rejected → 0 live trades. Of ~266 in-DTE-window puts: 168 open-interest-below-min, 89 delta-out-of-band, 9 spread. OPEN QUESTION for operator: is the OI floor correctly protecting against illiquid SMH short-DTE puts, or too strict and costing live entries? Tuning a live-entry filter needs operator sign-off on the liquidity/fill trade-off. See §11. |
+| 11 | Vehicle policy: OI floor + caps + percentile learning | **PHASE 1 APPLIED** 2026-07-08 eve | vehicle filters + operator judgment | NOT cosmetic: on 07-07 SMH LIVE signaled short but ALL 1122 contracts were rejected → 0 live trades. Of ~266 in-DTE-window puts: 168 open-interest-below-min, 89 delta-out-of-band, 9 spread. OPEN QUESTION for operator: is the OI floor correctly protecting against illiquid SMH short-DTE puts, or too strict and costing live entries? Tuning a live-entry filter needs operator sign-off on the liquidity/fill trade-off. See §11. |
 | 12 | Operator's risk-manager audit | RESOLVED 2026-07-02 | — | Delivered in-conversation; verdict accepted; its 5 priorities are items 13–17 below. |
 | 13 | launchd_status stranded-return bug (audit P1) | **FIXED** 2026-07-02 | bhiksha bug | `_runtime_status` parsing was dead code after `_bhiksha_python`'s return → Control Tower lied by omission. Fixed + 2 regression tests; **DEPLOYED + verified live** (runtime non-null on oldmac). |
 | 14 | Budget before entry / block on unknown (audit P2) | **DEPLOYED** 2026-07-02 eve — production proof at 2026-07-03 08:20 startup | bhiksha code | 08:31–08:37 window: Rail A inactive (no cash_budget_day), SMH live entry allowed. Fix = startup budget prefetch + `risk_rail_a_budget_unavailable` entry block when unknown (no flatten on unknown). Flips the earlier fail-safe per operator audit. |
@@ -26,7 +26,7 @@
 | 16 | Rail A.5: mark-to-market open-book drawdown (audit P4) | TODO | bhiksha code | Rail A is realized-only; native stops protect per-trade meanwhile. v1 = open-book drawdown WARNING event from position marks; halt/flatten escalation a later decision. |
 | 17 | Relaxed-evidence labels in reports (audit P5) | **DEPLOYED** 2026-07-02 eve | reporting | Keep shadow relaxation (strategically right per audit); surface `evidence_gates_relaxed` per lane in session/weekly reports so a weak shadow row is never promoted by accident. |
 | 18 | Playbook discovery program (all-4-profile coverage) | SPEC'D 2026-07-03 | research lane | Live book is a TREND_CONTINUATION monoculture (17/19 lanes). Program: tag operator's timestamped fills → detectors that "fire where he fired" → option-path validation → shadow. Gates + success criteria: `docs/PLAYBOOK_DISCOVERY_PROGRAM.md`. First gate = P0 spec-lock (operator sitting). |
-| 20 | Exit cancel-race + partial-leg accounting (hygiene batch) | **MERGED 87fb8e1** — deploy tonight after close | bhiksha order-path + persistence | 3-round audited (SAFE-WITH-FIXES → fixes → SAFE-TO-DEPLOY, repros independently re-verified). Fixes live-observed AMD fill-orphan race; partial legs durably recorded (trade_partial_fills); selector-empty per lane + can_ladder tag in reports. |
+| 20 | Exit cancel-race + partial-leg accounting (hygiene batch) | **DEPLOYED** 2026-07-08 eve | bhiksha order-path + persistence | 3-round audited (SAFE-WITH-FIXES → fixes → SAFE-TO-DEPLOY, repros independently re-verified). Fixes live-observed AMD fill-orphan race; partial legs durably recorded (trade_partial_fills); selector-empty per lane + can_ladder tag in reports. |
 | 21 | Residual: dead-status resubmit branch lacks filledQuantity guard | TODO (next batch) | bhiksha order-path | Auditor P5: third resubmit site (supervisor.py:~3140, REJECTED/CANCELED/EXPIRED path) can still resubmit stale full qty after a partial fill — pre-existing on main, same class as the fixed A.2. Extend the ladder's guard there. |
 | 22 | Residual: sweep abandonment is quiet | TODO (next batch, small) | bhiksha reporting | partial_fill_enrich_abandoned is an event but not a runtime_issue → never reaches daily report/Telegram; a slow-broker abandonment is permanent and needs human backfill. Escalate to runtime_issue. |
 | 19 | Schwab guard: proactive near-expiry browser re-auth | **FIXED + DEPLOYED** 2026-07-07 | bhiksha bug | Guard only browser-renewed AFTER expiry (browser invoked 0× ever) → refresh token silently lapsed 07-07 04:57 UTC. Fix: near-expiry gets own branch, proactive browser renewal while token still works + closes silent-alert gap. Root-caused, re-authed live (new token exp 07-14), fix deployed 6c4136c. Alerting refined per operator (e908920): notify ONLY on failed re-auth, silent on successful near-expiry renewal. |
@@ -385,3 +385,19 @@ deferred pending data. Public API confirmed NO historical chains → chain-snaps
 audited-lite, **merged d285ebb** alongside the 3-round-audited hygiene batch (87fb8e1); both deploy
 at tonight's close block. QQQ true size confirmed 3-lot (banked leg 2x pending backfill with AMD's
 orphaned exit).
+
+### 2026-07-08 (Wed, close) — corrected day +$689 live; vehicle policy phase 1 + 2 deploys landed
+**Corrected day tally (after broker backfills):** live **+$689** — QQQ full ladder: banked leg 2×@3.94
+(+$212, backfilled to trade_partial_fills) + runner +$87 = **+$299**; AMD **+$390** (exit 14.30
+backfilled — the orphaned fill was a WIN, not a scratch). Shadow AAPL −$136. Day total +$553.
+**Experiment tally: 07-02 +$1,001 · 07-06 −$310 · 07-07 $0 · 07-08 +$689 = +$1,380 live since flip**
+(June baseline: ≈−$1,000/month). Rails: none fired. Health clean all day.
+**Deployed tonight (oldmac @ d285ebb):** #20 hygiene batch (3-round audited exit-race fix +
+partial-leg accounting + selector visibility + can_ladder) and chain-snapshot capture (percentile-OI
+training data starts tomorrow). **Vehicle policy phase 1 applied to the 5 live rows** (backup taken;
+LANE_CONFIG diff = exactly the 4 cap raises): min_open_interest 100→**50**, caps → **$2,000 uniform**
+(coherent with the operator rails 7.5/11.25 set today: worst stop-out −$700 < halt −$768). Compiled
+plan verified (oi_min=50 cap=2000 on all 5), boot green. Phase 2 = per-symbol percentile OI +
+entry-aggressiveness tiering, built from snapshot data (~3-4 sessions).
+Tomorrow watch: first session on new floor/caps — expect multi-lot entries (can_ladder tag now in
+reports), chain snapshots accruing, corrected accounting end-to-end.
