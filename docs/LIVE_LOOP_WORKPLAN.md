@@ -325,3 +325,20 @@ signaled short 08:59 + 09:03 CT. Both hit `entry_selector_empty` — all 1122 SM
 (see §11). So today's live $0 was a VEHICLE-FILTER block, not a signal drought. Elevated #11 from
 cosmetic filler to live-impact item pending operator call on the OI/delta thresholds. Earlier diary
 lines for 07-07 saying "no qualifying signal" are superseded by this.
+
+### 2026-07-08 (Wed, late morning) — FIRST LIVE WINNER via the full ladder + #9 fix confirmed
+**The milestone we've waited for since flip day: a LIVE position ran the complete profile ladder,
+end to end, and won.** QQQ live (row_5): entry 2.88 → **partial_scale** (banked T1, 10:18 CT) →
+**stop_to_breakeven** (10:19) → runner rode → **high_water_giveback square_off @ 3.75 = +$87** (10:36).
+All dispatches dry_run=0 (real), full target suppressed (exit-authority rule). The partial-and-runner
+mechanic — proven on shadow 07-06 — now proven **LIVE in dollars**.
+AMD live (row_2) also fired: target_1_partial → square_off (1-lot can't split, so squares at T1);
+**DATA GAP**: exit submitted + filled + position flat + reconciliation clean (broker_recovered 0),
+but exit_price/exit_filled_qty did NOT write back to trade_sessions → AMD's live P&L is unrecorded.
+QQQ's final square_off wrote back fine (3.75); the gap appears specific to the target_1_partial→
+square_off path on a 1-lot. Not a risk (book flat, no naked position) but undercounts live P&L →
+INVESTIGATE (candidate small build). Shadow: AAPL −$136.
+**#9 bar-fetch fix CONFIRMED WORKING:** heartbeat max **54s → 16.7s**, avg 7.9s → 4.0s. The
+concurrency deploy delivered. Health otherwise clean (identity_mismatch 0, budget_unavail 0,
+MTM warnings 0). Experiment tally: 07-02 +$1,001 · 07-06 −$293 · 07-07 $0 · 07-08 +$87 live so far
+(AMD P&L pending the data-gap fix).
