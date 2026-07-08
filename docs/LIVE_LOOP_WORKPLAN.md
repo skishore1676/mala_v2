@@ -342,3 +342,13 @@ INVESTIGATE (candidate small build). Shadow: AAPL −$136.
 concurrency deploy delivered. Health otherwise clean (identity_mismatch 0, budget_unavail 0,
 MTM warnings 0). Experiment tally: 07-02 +$1,001 · 07-06 −$293 · 07-07 $0 · 07-08 +$87 live so far
 (AMD P&L pending the data-gap fix).
+
+### 2026-07-08 (Wed, midday) — book flat after the milestone morning; selector blocked AMD twice more
+12:45 CT: no new trades since the morning's QQQ +$87 (first live full-ladder winner) and AMD
+(P&L pending backfill). Book flat, health clean (identity_mismatch 0, broker_recovered 0, heartbeat
+max 16.7s — #9 fix continuing to hold). **Selector-empty hit 4 more times today, 2 on AMD LIVE**
+(row_2 — after its morning trade closed, follow-up signals found no acceptable contract) — the #11
+vehicle-policy question is now costing live entries on 2 of the last 2 sessions; operator decision
+on OI-as-aggressiveness numbers pending (brainstorm 07-08). Exit-race audit verdict SAFE-WITH-FIXES:
+3 fixes (fail-closed readback, partial-fill-at-cancel handling + oversell prevention, sweep timeout/
+give-up) dispatched to the worker; deploy at tonight's close block after re-verification.
