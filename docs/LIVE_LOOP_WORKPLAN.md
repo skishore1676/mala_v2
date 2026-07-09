@@ -409,3 +409,9 @@ with oi_min=50, cap=$2,000; rails 7.5/11.25 active. No trades yet (entry windows
 snapshots correctly 0 until first signal. Watching for: first multi-lot live entry (can_ladder),
 AVGO-EB shadow conversion (8 signals, 0 trades under old floor), AMD lane clean after 07-08
 dead_lane, first snapshot rows.
+
+### 2026-07-09 (Thu, 08:51 update) — floor-50 validated in 21 minutes
+**AVGO elastic-band converted its FIRST trade ever** (8 signals/0 trades under old floor): 2-lot,
+2.36→2.48, +$24 paper, can_ladder=1 — precisely the lane the decision data flagged. Chain snapshots
+live (3 attempts, 1,010 contract rows). Selector empties 0 (vs 4 yesterday). can_ladder tag
+populating (TSLA/META shadow 1-lots tagged 0). Heartbeat 6.1s max. No live-lane signals yet.
