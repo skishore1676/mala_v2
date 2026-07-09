@@ -415,3 +415,14 @@ dead_lane, first snapshot rows.
 2.36→2.48, +$24 paper, can_ladder=1 — precisely the lane the decision data flagged. Chain snapshots
 live (3 attempts, 1,010 contract rows). Selector empties 0 (vs 4 yesterday). can_ladder tag
 populating (TSLA/META shadow 1-lots tagged 0). Heartbeat 6.1s max. No live-lane signals yet.
+
+### 2026-07-09 (Thu, 10:00 update) — FIRST LIVE T2 RUNNER: QQQ +$1,064; book transformed
+**The experiment's target event happened:** QQQ live entered 10-lot @ 1.94 (new cap), banked 6 @ 2.72
+(target_1_partial +$468, auto-recorded in trade_partial_fills), stop→breakeven, 4-lot runner rode to
+**target_2_runner @ 3.43 (+$596)**. First T2 exit ever; full exit DNA at proper size = +$1,064 one
+trade. Throughput transformed: 18 trades by 09:59 (> any full prior day); PLTR shadow ladder banked
+partial + giveback +$70; AVGO-EB 4 trades (was 0 lifetime); snapshots 6,020 rows/18 attempts;
+selector_empty 0; can_ladder=1 on 12/18. Open live: QQQ 10@1.98 + NVDA 7@2.57 (~$3.8k deployed —
+NOTED: two concurrent max-size stop-outs (~−$1.3k) would jointly breach flatten tier −$1,152;
+coherent with rails-as-catastrophe-brake; flagged concurrent-exposure cap as optional rail addition).
+Health clean (hb max 15.6s).
