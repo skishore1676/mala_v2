@@ -401,3 +401,11 @@ plan verified (oi_min=50 cap=2000 on all 5), boot green. Phase 2 = per-symbol pe
 entry-aggressiveness tiering, built from snapshot data (~3-4 sessions).
 Tomorrow watch: first session on new floor/caps — expect multi-lot entries (can_ladder tag now in
 reports), chain snapshots accruing, corrected accounting end-to-end.
+
+### 2026-07-09 (Thu, morning) — first session under vehicle policy phase 1; clean start
+08:26 CT, session 6 min old: live-start rc=0, budget prefetched instantly (third consecutive clean
+startup for audit-P2 fix). **New policy survived the 08:20 Sheet resync**: all 5 live lanes compiled
+with oi_min=50, cap=$2,000; rails 7.5/11.25 active. No trades yet (entry windows opening); chain
+snapshots correctly 0 until first signal. Watching for: first multi-lot live entry (can_ladder),
+AVGO-EB shadow conversion (8 signals, 0 trades under old floor), AMD lane clean after 07-08
+dead_lane, first snapshot rows.
