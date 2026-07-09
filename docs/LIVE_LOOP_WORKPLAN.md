@@ -426,3 +426,14 @@ selector_empty 0; can_ladder=1 on 12/18. Open live: QQQ 10@1.98 + NVDA 7@2.57 (~
 NOTED: two concurrent max-size stop-outs (~−$1.3k) would jointly breach flatten tier −$1,152;
 coherent with rails-as-catastrophe-brake; flagged concurrent-exposure cap as optional rail addition).
 Health clean (hb max 15.6s).
+
+### 2026-07-09 (Thu, midday) — round-trip to flat; exits proven both ways; deploys verified
+Live day settled at −$32: QQQ T2 runner +$1,064, then NVDA no_progress cut −$406 (saved ~$220 vs
+full stop) and QQQ #2 disaster stop −$690 (filled −34.8% vs 35% design — zero live slippage). Five
+distinct exit rules fired today, each per design intent; suppressed-target rule held on all armed
+trades. Book now flat. Signals: 36 → 18 entries + 18 open_protected blocks, 0 selector empties.
+Live since flip +$1,348 (9 trades); shadow WTD −$857 (18 trades — META/AVGO impulse churn is the
+signal-quality evidence for #5). Deploy verification: oldmac==origin==local (1d7ab16), rails
+7.5/11.25 confirmed in startup event, partial-leg accounting auto-recorded first real T1 bank.
+Operator aligned with midday readback. TONIGHT'S BUILD FLIPPED: #5 weekly scorecard first (Friday
+synthesis needs it), #21/#22 after if time allows.
