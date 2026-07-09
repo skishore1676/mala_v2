@@ -310,7 +310,10 @@ canon and commits (~50 lines). **No new service, no new repo, no database.**
    live in the repo brain (mala_v2 pushes to GitHub), or must personal facts stay in
    memory_core/memory-dir with the brain holding only system knowledge? (RFC assumes the
    latter.)
-4. **Phase 3 reach:** do you want Jarvis/phone answering trading-brain questions (mc
-   digest projection), and under which mc namespace?
+4. ~~RESOLVED (operator, 2026-07-09)~~ **Phase 3 reach:** phone digest goes through
+   **Pulsar** (the companion, ~/code/companion-pack) via its governed path — an mc
+   namespace and/or a companion-pack lane consuming bus cards. Jarvis is deprecated;
+   `jarvis-northstar` survives only as a legacy-named lathi-bus profile delivered by the
+   Beacon bot. Namespace naming lands with phase 3 design.
 5. **Naming:** `docs/brain/` (visible, operator-readable — recommended) vs `.intelligence/`
    (hidden). Any objection to `brain`?
