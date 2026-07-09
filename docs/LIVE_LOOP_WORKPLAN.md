@@ -8,7 +8,7 @@
 
 | # | Item | Status | Type | Notes |
 |---|---|---|---|---|
-| 1 | Risk-tier calibration | **DONE 2026-07-02** | config | Operator decided: halt ≈$500, flatten ≈$730 → set 5.0%/7.5% in oldmac .env (scales with account). Live at next 08:20 start. |
+| 1 | Risk-tier calibration | **DONE 2026-07-02, revised 2026-07-08** | config | Operator decided: halt ≈$500, flatten ≈$730 → 5.0%/7.5%; revised 07-08 to **7.5% / 11.25%** "till the account grows" (headroom for multi-lot book). Verified live 07-09 via risk_manager_startup (no validation warnings). |
 | 2 | Exit authority rule: profile-armed ⇒ no full resting target | **DEPLOYED** 2026-07-02 eve | bhiksha code | Non-overridable, in `_profit_target_configured`; stop placement proven untouched; `profit_target_suppressed` event per entry. Live at 2026-07-03 open. |
 | 3 | Rail-A consult restructure (once/bar, not per symbol) | **DEPLOYED** 2026-07-02 eve (5,070→39 rows/day) | bhiksha code, small | 4,966 redundant evals/day (13× multiplier). §3 |
 | 4 | Morning bias overlay (operator instinct #2) | TODO (next lane) | new feature | Pre-open brief → bounded plan pruning. Hooks exist (BiasSelection, suppression). |
