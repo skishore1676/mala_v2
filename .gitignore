@@ -10,3 +10,4 @@ logs/
 tmp/
 .DS_Store
 ~$*
+/.super-goal/
