@@ -299,6 +299,15 @@ canon and commits (~50 lines). **No new service, no new repo, no database.**
   and lets the brain hold everything; until then the public/private boundary is enforced
   by content type, and mala_v2 pushes stay paused or diary-free.
 
+**2026-07-09 late: ALL questions resolved.** Q2 steward home = oldmac launchd (default
+accepted); Q4 = via Pulsar (see below); Q5 naming = `docs/brain/` accepted; **home repo =
+mala_v2, decided** — decisive rationale: bhiksha's checkout IS the production runtime
+(deploy-gated, audited money path) and knowledge churn must never ride it; the embryo,
+session entry points, and system-level scope all live in mala_v2. Division of labor:
+bhiksha/docs/lessons/ stays code-adjacent, the brain indexes it by reference. RFC is
+CLEARED FOR PHASE 1 (one-evening scaffold + bootstrap test), scheduled as the next build
+increment after the 07-10 Friday synthesis.
+
 ## 9. Open questions (only you can answer)
 
 1. ~~RESOLVED (see §9a)~~ **Curation appetite:** one nightly "Brain update" card during active weeks — will you
