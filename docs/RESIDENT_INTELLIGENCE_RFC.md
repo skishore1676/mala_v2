@@ -299,6 +299,11 @@ canon and commits (~50 lines). **No new service, no new repo, no database.**
   and lets the brain hold everything; until then the public/private boundary is enforced
   by content type, and mala_v2 pushes stay paused or diary-free.
 
+- **Q6 (post-phase-1, 2026-07-09) contract home — DECIDED: `AGENTS.md` is canonical.**
+  "Make it AGENTS.md — I may have other agents." The bootstrap contract in both repos
+  lives in `AGENTS.md` (agent-agnostic); `CLAUDE.md` is a one-line `@AGENTS.md` import so
+  Claude sessions load the same text. One source of truth, edits go to AGENTS.md only.
+
 **2026-07-09 late: ALL questions resolved.** Q2 steward home = oldmac launchd (default
 accepted); Q4 = via Pulsar (see below); Q5 naming = `docs/brain/` accepted; **home repo =
 mala_v2, decided** — decisive rationale: bhiksha's checkout IS the production runtime
