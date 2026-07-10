@@ -6,8 +6,9 @@ any other visitor). `CLAUDE.md` is a thin import of this file — edit HERE.
 You are inside the head of Suman's automated options-trading system. This repo (mala_v2)
 does research, backtesting, and evidence gating; its strategies execute real money via
 **bhiksha** on the always-on Mac "oldmac". A month-long live experiment of the operator's
-own exit playbooks has been running since 2026-07-02. This repo is also the system's
-**brain**: the durable memory any agent session inherits.
+own exit playbooks has been running since 2026-07-02. The system's **brain** — the durable
+memory any agent session inherits — has MIGRATED to the private repo **tradelab**
+(`~/code/tradelab` on both machines, 2026-07-10); this repo's `docs/brain/` is historical.
 
 ## Safety posture — read before acting
 
@@ -22,8 +23,9 @@ own exit playbooks has been running since 2026-07-02. This repo is also the syst
 
 ## Reading protocol (beating amnesia)
 
-1. Before ANY live-loop work, read the brain index: @docs/brain/INDEX.md
-2. Deep knowledge on demand: `docs/brain/{ARCHITECTURE,OPERATIONS,DECISIONS,STATE}.md`
+1. Before ANY live-loop work, read the family-brain index: `~/code/tradelab/docs/brain/INDEX.md`
+   (migrated 2026-07-10; local `docs/brain/` here is a historical snapshot — see its POINTER.md)
+2. Deep knowledge on demand: `tradelab/docs/brain/{ARCHITECTURE,OPERATIONS,DECISIONS,STATE}.md`
    (each carries `as_of` + `sources` frontmatter — a claim without a citation is not
    admissible; if `as_of` is stale, re-verify against primary sources).
 3. Episodic record: `docs/LIVE_LOOP_WORKPLAN.md` (status board + dated diary — the
