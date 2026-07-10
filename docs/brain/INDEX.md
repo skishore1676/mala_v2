@@ -1,6 +1,6 @@
 # BRAIN INDEX — the map (always loaded)
 
-as_of: 2026-07-09 · maintainer: brain steward (nightly, planned) + supervisor sessions
+as_of: 2026-07-09 · maintainer: brain steward (nightly, dev-Mac launchd 21:45 — `scripts/brain/steward.py`) + supervisor sessions
 Trust order: **runtime evidence > diary > brain summary.** A brain claim without a
 citation is not admissible. If an `as_of` below looks stale, re-verify before relying.
 

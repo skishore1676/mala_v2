@@ -110,6 +110,31 @@ plus kernel src on PYTHONPATH**:
 - Known-environmental: `test_runtime_snapshot` may fail in a worktree — confirm it also
   fails at clean `main` before treating it as a regression.
 
+## Brain steward (nightly, DEV Mac — RFC 9a Q1 + Q2-REVISED)
+
+`com.mala.brain-steward` (launchd, dev Mac, 21:45 local) runs
+`scripts/brain/steward.py`: gathers evidence deterministically (mala git log, diary
+tail, supervisor-lane tail, bhiksha logs, **read-only** oldmac ssh readback), hires a
+**text-only** model via agent-broker (`scripts/brain/steward_policy.yaml`,
+opus→sonnet→codex), validates the returned file blocks fail-closed (only
+`docs/brain/STATE.md` + `docs/brain/candidates/*.md` accepted), auto-commits, runs
+`scripts/brain/freshness_lint.py`, and on Fridays publishes an advisory curation digest
+to the Obsidian Inbox via Lathi bus. On ANY failure it touches nothing — canon ages
+visibly (stale beats wrong). It lives on the dev Mac because mala_v2 is unpushed and
+canon lives here (RFC 9a Q2-REVISED); it never writes to oldmac.
+
+```bash
+python3 scripts/brain/steward.py --dry-run          # build the task bundle, no hire
+python3 scripts/brain/steward.py                    # full run (hire + auto-commit)
+python3 scripts/brain/freshness_lint.py             # staleness check (STATE budget 48h)
+bash scripts/brain/install_brain_steward.sh status  # job loaded? + log tail
+# logs + task bundles + receipts: ~/Library/Logs/mala-brain-steward/
+```
+
+Curation: steward commits are reviewed via the Friday digest card (pointy-bracket
+comments prune/correct after the fact); `docs/brain/candidates/` holds drafts for
+DECISIONS/ARCHITECTURE — the steward never edits those files directly.
+
 ## Lathi bus (alerts + phone review)
 
 Contract: `~/.claude/skills/lathi-review-bus/SKILL.md`. The bus CLI **cwd-switches to the

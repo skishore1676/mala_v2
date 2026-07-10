@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mala.brain-steward</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3</string>
+        <string>/Users/suman/code/mala_v2/scripts/brain/steward.py</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>45</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/suman/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/suman</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>/Users/suman/code/mala_v2</string>
+    <key>StandardOutPath</key>
+    <string>/Users/suman/Library/Logs/mala-brain-steward/steward.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/suman/Library/Logs/mala-brain-steward/steward.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

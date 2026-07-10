@@ -1,0 +1,30 @@
+# Brain steward — agent-broker provider policy.
+#
+# One actor, text-only (no tool grant anywhere in this chain): the runner
+# (scripts/brain/steward.py) gathers all evidence deterministically and the
+# hired model only reflects and drafts. Failover is infra-only: a valid
+# `no_change` outcome is a success, never re-rolled.
+#
+# Inspect with:
+#   /Users/suman/code/agent-broker/.venv/bin/agent-broker explain \
+#     --policy scripts/brain/steward_policy.yaml \
+#     --lane brain_steward --actor actors.steward
+schema: agent_broker.policy.v1
+
+default:
+  provider: claude
+  options: {model: sonnet, timeout_seconds: 1200}
+  fallback:
+    - {provider: codex, options: {}}
+
+lanes:
+  brain_steward:
+    actors:
+      # Frontier judgment first — this drafts canonical memory that every
+      # future session inherits; degrade to cheaper Claude, then Codex.
+      actors.steward:
+        provider: claude
+        options: {model: opus, timeout_seconds: 1200}
+        fallback:
+          - {provider: claude, options: {model: sonnet, timeout_seconds: 1200}}
+          - {provider: codex, options: {}}

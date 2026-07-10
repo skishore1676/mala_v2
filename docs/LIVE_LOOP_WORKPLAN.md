@@ -470,3 +470,21 @@ carried pre-revision rails → superseded banner added. Memory dir slimmed to po
 brain). RFC decisions all closed (home=mala_v2; auto-commit + advisory curation; personal data in
 memory_core while repos public; digest via Pulsar; Jarvis deprecated). Phase 2 next: nightly brain
 steward (agent-broker + launchd, oldmac) + weekly curation digest card.
+
+### 2026-07-09 (Thu, night) — BRAIN PHASE 2: nightly steward BUILT + first real run committed
+Steward pipeline live end-to-end tonight: scripts/brain/{steward.py,steward_prompt.md,
+steward_policy.yaml,freshness_lint.py} — deterministic runner gathers evidence (mala git log +
+diary tail + supervisor-lane tail + bhiksha logs + READ-ONLY oldmac ssh: runtime git, launchctl,
+latest_status.json), hires a TEXT-ONLY agent via agent-broker (opus→sonnet→codex, no tools),
+parses file blocks fail-closed (path whitelist docs/brain/STATE.md + candidates/ only, length +
+frontmatter + trust-banner validation), auto-commits per RFC 9a Q1. FIRST REAL RUN: opus layer-0,
+outcome=updated, committed dd26502 — draft QUALITY-REVIEWED: upgraded claims to runtime-verified
+(7 jobs verified EXECUTED with pids/rc, shadow-EV Telegram-delivered), caught dev-bhiksha 2 doc
+commits ahead of runtime (correctly flagged non-money-path), preserved the #23 DANGER note, and
+surfaced a NEW watch item: Schwab refresh token expires 07-14. Also filed its first candidate note
+(AGENTS.md bootstrap move). Q2 REVISED with runtime evidence: steward home = DEV-MAC launchd
+(21:45), not oldmac — oldmac's mala_v2 checkout is stale/diverged/pre-brain and the repo is
+deliberately unpushed (ADR-012), so oldmac can't host canon without a 2-way sync protocol +
+breaking the ssh-read-only rule + an interactive token mint. Friday digest → Lathi bus (doctor
+green). REMAINING: operator runs `bash scripts/brain/install_brain_steward.sh install` (launchd
+persistence needs operator's own hands — permission-gated, correctly).

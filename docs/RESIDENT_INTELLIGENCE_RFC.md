@@ -299,6 +299,17 @@ canon and commits (~50 lines). **No new service, no new repo, no database.**
   and lets the brain hold everything; until then the public/private boundary is enforced
   by content type, and mala_v2 pushes stay paused or diary-free.
 
+- **Q2 REVISED (phase-2 build, 2026-07-09 night): steward home = DEV-MAC launchd, not
+  oldmac.** Runtime evidence found at build time contradicted the assumption under the
+  oldmac default: oldmac's `~/Documents/mala_v2` checkout is weeks stale, 9 commits
+  diverged, has no `docs/brain/`, and — because this repo is deliberately unpushed
+  (ADR-012) — can never track canon via origin. Hosting the steward there would need a
+  two-way ssh sync protocol for an unpushed repo, an exception to the standing
+  "ssh to oldmac is read-only for agents" rule, and an interactive `claude setup-token`
+  mint (no headless token exists in the oldmac hub). Dev-Mac launchd survives restarts
+  and fires missed runs on wake (unlike the session-scoped cron whose fragility motivated
+  Q2); a slept-through night = acceptable staleness per §5.6.4. The steward reads oldmac
+  strictly over read-only ssh. Revisit if the repos go private and mala_v2 gets pushed.
 - **Q6 (post-phase-1, 2026-07-09) contract home — DECIDED: `AGENTS.md` is canonical.**
   "Make it AGENTS.md — I may have other agents." The bootstrap contract in both repos
   lives in `AGENTS.md` (agent-agnostic); `CLAUDE.md` is a one-line `@AGENTS.md` import so
