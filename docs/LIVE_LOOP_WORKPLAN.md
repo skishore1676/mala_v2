@@ -530,3 +530,28 @@ No new trades since morning (4 closed: SMH LIVE no_progress −$44; PLTR shadow 
 2 @ 2.17 + runner out 2.09; SPY/IWM paper losers). No open positions, live or shadow. Signals still
 23 (slow tape since ~11:00). Health clean; 1 runtime_issue = the morning SMH-shadow selector-empty,
 already noted. Live realized −$44. Next: 15:20 scorecard debut → 15:24 weekly synthesis.
+
+### 2026-07-10 (Fri, 15:24 CLOSE + WEEKLY SYNTHESIS) — week 1 of the live experiment
+**Day:** flat. 1 live trade (SMH no_progress −$44, first SMH live under floor-50), 23 signals,
+0 open, 0 selector-empty (live), health clean. Shadow: PLTR full ladder winner (+$306 wk),
+SPY/IWM/others paper red. Deliveries: shadow-EV OK; session-report GREEN but its **close Telegram
+leg timed out at 30s (2nd occurrence) — retried, delivered**; Obsidian projection OK. Scorecard's
+**first live scheduled run fired** (15:20, week 07-06→10).
+
+**WEEKLY VERDICT (from the deployed scorecard, real DB — authoritative):**
+- Profile vs legacy, overall: **profile +$1,308 (12t, 7W) vs legacy −$2,072 (20t, 4W)**.
+  Live-only: **profile +$993 (6t) vs legacy −$690** (the one legacy live exit = QQQ native stop,
+  the week's worst live trade). Every profitable live exit came from a profile rule. Thesis holding.
+- Live week +$303 (7t, 3W); shadow week −$1,067 (25t, 8W, EV negative — exploratory tuition).
+- Promotion candidates: **0.** PLTR shadow +$306 but only 2 trades (< n≥5 bar); META near-miss
+  (8t, −$245). No lane promotable yet.
+- Live cumulative since 07-02 flip: **+$1,304 (10 trades)** — month-test solidly green vs June ≈−$1,000.
+
+**HONESTY CORRECTION:** last night's snapshot-rendered week figures (live +$657 / profile +$1,429)
+were overstated by ~$310 — the offline snapshot dropped the 07-06 IWM live disaster-stop. Today's
+deployed run (full DB) is correct and lower. Cumulative figures were always right (IWM was in them).
+Lesson: verify scorecards from the deployed job against the live DB, never a bounded snapshot.
+No code bug — the scorecard query is correct (proven by today's run). New watch item: lathi
+telegram-notify 30s timeout recurring (2×) → candidate hardening (retry-on-timeout), not money-path.
+
+No build increment (Friday = synthesis). Cadence crons verified.
