@@ -73,7 +73,7 @@ month). **19 lanes: 5 live + 14 shadow.** Live book is a TREND_CONTINUATION mono
 
 1. **Morning-bias overlay (#4)** — operator-in-the-loop by design; the only remaining
    backlog build. Awaiting operator's earlier-routine material + first daily brief. [board #4]
-2. **Brain phase 1 — IN PROGRESS tonight** (this `docs/brain/` scaffold + bootstrap test).
+2. **Brain phase 1 — COMPLETED 2026-07-09 ~22:15 CT** (this scaffold; clean-room acceptance test PASSED — fresh agent answered the OI-floor, exit-authority, and dangerous-queue questions from bootstrap alone, ~590 lines read). Next: phase 2 steward (nightly job, oldmac).
    RFC fully resolved 07-09: home = mala_v2, auto-commit + advisory curation, personal
    data in memory_core while repos public, phone digest via Pulsar. [RFC §9a; memory note]
 3. **Board latent audit findings #23–25** (from the 07-09 #8/#21 audits):

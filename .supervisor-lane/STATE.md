@@ -96,3 +96,13 @@ operator-in-the-loop by design.
   _handle_bar_event. Truth correction: #8 unblocks 9 rows at capability layer, but only 2 become
   lanes post-steward-refresh (watch_only ×4… auditor says 4 not 5, KILL ×2). #8 ACCEPTED for merge.
   Waiting: #21 one-line null fix.
+- 17:45 CT WAVE 3 COMPLETE — LANE CLOSED. Merge order #21/#22→#5→#7→#6→#8; conflicts in job wiring
+  resolved by verbatim splice; integration suite 760 green (first-run 7-fail transient never
+  reproduced across 3 reruns); pushed ae75dc8; oldmac pulled + 7 launchd jobs loaded. Runtime
+  readback: shadow-EV first edition DELIVERED via Telegram (1 transient 30s bus timeout, retry ok);
+  Obsidian projection verified end-to-end from oldmac AFTER integration fix (relative source path
+  broke under bus cwd-switch — caught only on runtime host, worker's local test used abs path);
+  weekly scorecard verified on real deployments (Relaxed column populates, window Mon 07-06→today).
+  Board rows 5/6/7/8/21/22 → DEPLOYED; new latent items 23–25 added. Readiness: owned execution
+  (deployed, live-verified). Residue for operator: 3 review notes in vault Inbox to archive;
+  Friday 15:20 = scorecard live debut; #23 needs sheet-cell verification BEFORE fixing.

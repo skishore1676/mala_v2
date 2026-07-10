@@ -457,3 +457,16 @@ needs sheet verification first — do NOT rush). 760 tests green at integration;
 loaded. Vault Inbox has 3 review notes (TEST + 2 deploy-verify) — archive them from the phone as
 the first exercise of the new approve/archive surface. #4 morning bias remains the only queued
 build, deliberately operator-in-the-loop.
+
+### 2026-07-09 (Thu, late) — THE BRAIN IS LIVE: phase 1 built same-night, acceptance test PASSED
+Operator: "why can't you spin multiple agents and get it done tonight?" — done. 4 Opus workers wrote
+docs/brain/{ARCHITECTURE,OPERATIONS,DECISIONS,STATE}.md (13 ADRs; live-verified deploy state);
+supervisor wrote CLAUDE.md bootstrap contract + INDEX.md (never-re-derive facts) + bhiksha stub
+(pushed). CLEAN-ROOM ACCEPTANCE TEST PASSED: a fresh zero-context agent answered the OI-floor
+question (with the waterfall caveat + phase-2 plan), located exit-authority enforcement to the
+line, and identified #23 as dangerous-to-rush with the correct failure mode — from bootstrap alone
+(~590 lines; INDEX front-loaded ~70%). Tester also caught real staleness: VEHICLE_POLICY_DECISION
+carried pre-revision rails → superseded banner added. Memory dir slimmed to pointers (4 notes →
+brain). RFC decisions all closed (home=mala_v2; auto-commit + advisory curation; personal data in
+memory_core while repos public; digest via Pulsar; Jarvis deprecated). Phase 2 next: nightly brain
+steward (agent-broker + launchd, oldmac) + weekly curation digest card.

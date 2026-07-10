@@ -1,5 +1,11 @@
 # Vehicle Policy Decision: OI Floor, Premium Cap, Risk-Rail Pair
 
+> **STALENESS NOTE (added 2026-07-09 eve):** rail percentages in this document (5.0%/7.5%,
+> and the modeled "7.5%/11%") predate the operator's 2026-07-08 revision. Current rails are
+> **7.5% / 11.25%** — see `docs/brain/DECISIONS.md` ADR-002 and `docs/brain/STATE.md`.
+> The data pull and cap arithmetic below remain the valid rationale record for ADR-003.
+
+
 **Read-only pull. No code/config/DB changes. Data as of 2026-07-08, queried live over ssh from `oldmac`.**
 Sources: `~/Documents/bhiksha/bhiksha.db` (events, trade_sessions, cash_budget_days), `~/Documents/bhiksha/artifacts/playbook/active_plan.json` (compiled plan, generated 2026-07-08T13:20:11Z), `~/Documents/kamandal_v2/data/kamandal_v2.db` (`chain_snapshots`, public-quote source only).
 
