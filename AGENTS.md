@@ -1,5 +1,9 @@
 # Agent Instructions
 
+**Start here for ANY session: read `CLAUDE.md` (bootstrap contract), then
+`docs/brain/INDEX.md` — the system's durable memory (architecture, operations,
+decisions, current state). Trust order: runtime evidence > diary > brain summary.**
+
 This repo's maintained agent onboarding document is `agent.md`.
 
 Read `agent.md` first, then follow the relevant skill:
