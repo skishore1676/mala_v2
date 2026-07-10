@@ -342,3 +342,24 @@ increment after the 07-10 Friday synthesis.
    Beacon bot. Namespace naming lands with phase 3 design.
 5. **Naming:** `docs/brain/` (visible, operator-readable — recommended) vs `.intelligence/`
    (hidden). Any objection to `brain`?
+
+## 10. Brain home v2 — DECIDED 2026-07-10: `tradelab` (private, family-wide)
+
+Operator (morning 07-10): the brain should serve the whole trading family — bhiksha,
+kamandal_v2, patv3, mala_v2 — from a repo that is **private from birth**, dissolving the
+constraint chain behind Q2-REVISED and Q3 (unpushable repo → dev-Mac steward → scp
+side-channel → memory_core partition). Investigation confirmed: three live trading apps
+(kamandal_v2 12 jobs, patv3 3 jobs, both committed 07-09); kamandal/patv3 have NO
+bootstrap contracts; predecessor `trade_lab` (activation layer, dead 2026-04-11,
+superseded by the Sheet/compile pipeline) archived 07-10 → GitHub read-only +
+`~/archives/trade_lab-abandoned-20260710-morning` (+ oldmac openclaw-archives); its three
+ghost agent files (scout/orchestrator/feedback) archived with it.
+
+**`tradelab` created (private, pushed):** github.com/skishore1676/tradelab — currently a
+pre-migration shell: VISION.md (what it is / is not, agent pre-flight reading list,
+migration sequence, acceptance criteria), README, AGENTS.md guard ("not canon yet —
+bootstrap in mala_v2"). Migration = one deliberate evening increment (target ~Monday
+07-13, session boundary): move docs/brain + scripts/brain, re-point 4 bootstrap
+contracts, steward → oldmac (headless token, operator mints), retire scp channel,
+re-point tower source, re-run the 4-repo clean-room acceptance quiz. Until it lands,
+THIS repo's brain remains canon.

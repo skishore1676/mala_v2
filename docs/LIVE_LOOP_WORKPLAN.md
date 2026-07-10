@@ -501,3 +501,16 @@ locally: fresh→armed, 50h-stale→stuck+stale_last_run, missing→stuck. OPERA
 one sanctioned steward write to oldmac (non-secret snapshot → ~/Documents/mala_v2/artifacts/brain/
 only). REMAINING (permission-gated, operator hands): first `tower_status.py --push`, oldmac lathi
 pull + tower kickstart, tower JSON readback.
+
+### 2026-07-10 (Fri, morning) — TRADELAB DECIDED: brain gets its own private repo; trade_lab v1 archived
+Morning-coffee architecture call, investigated then executed: the brain will move to `tradelab`
+(github.com/skishore1676/tradelab, PRIVATE from birth) as the family-wide brain for bhiksha +
+kamandal_v2 + patv3 + mala_v2 — privacy is the load-bearing property (pushable → oldmac checkout →
+steward on the always-on machine → tower reads locally → Q3 partition dissolvable). Old trade_lab
+(activation layer, dead 04-11, superseded by Sheet/compile) fully archived: GitHub read-only (was
+already private — earlier "public" claim corrected), dev checkout + 3 ghost agent defs →
+~/archives/trade_lab-abandoned-20260710-morning, oldmac checkout → openclaw-archives, manifests
+written, zero dangling refs validated. tradelab shell pushed: VISION.md (pre-flight reading list +
+migration sequence + acceptance bar), AGENTS.md guard so no agent bootstraps there prematurely.
+Migration = Monday-ish evening increment (RFC §10). mala_v2 brain remains canon until then; NOTE
+Friday = synthesis day, scorecard live debut 15:20 CT — no build increment today beyond this record.
