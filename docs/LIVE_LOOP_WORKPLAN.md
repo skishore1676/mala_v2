@@ -514,3 +514,13 @@ written, zero dangling refs validated. tradelab shell pushed: VISION.md (pre-fli
 migration sequence + acceptance bar), AGENTS.md guard so no agent bootstraps there prematurely.
 Migration = Monday-ish evening increment (RFC §10). mala_v2 brain remains canon until then; NOTE
 Friday = synthesis day, scorecard live debut 15:20 CT — no build increment today beyond this record.
+
+### 2026-07-10 (Fri, 10:58 late-morning watch — run manually; session crons had died, recreated)
+Quiet-ish morning: 23 signals, 4 trades all closed. **NOTABLE FIRST: SMH traded LIVE** (2-lot,
+no_progress cut −$44) — the lane that had 1,122/1,122 contracts rejected on 07-07 now converts
+under floor-50. Shadow: PLTR target_1_partial winner (1.52→2.09), SPY/IWM paper losers. Selector
+empties 0 for live; one shadow SMH lane starved once (now surfaces as runtime_issue category
+entry_selector_empty — the escalation path working). Live realized today −$44. Overnight: brain
+steward's first launchd run clean (com.mala.brain-steward exit 0, dd26502 committed 21:45).
+Cadence crons recreated (09:42/13:07/15:24, 7-day expiry, renewal step in close prompt). Today
+15:20 = scorecard live debut; 15:24 = weekly synthesis (no build).
