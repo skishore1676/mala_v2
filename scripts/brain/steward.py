@@ -271,9 +271,21 @@ def main() -> int:
     return 0
 
 
+def push_tower_status() -> None:
+    """Project status to the oldmac Control Tower drop (non-fatal, always attempted)."""
+    rc, out = run(["python3", str(REPO / "scripts" / "brain" / "tower_status.py"), "--push"],
+                  cwd=REPO, timeout=90)
+    log(f"tower status push rc={rc}" + (f": {out[-200:]}" if rc != 0 else ""))
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        code = main()
     except Exception as exc:  # fail closed, loudly, canon untouched
         log(f"STEWARD FAILED CLOSED: {exc}")
-        sys.exit(1)
+        code = 1
+    try:
+        push_tower_status()  # even after failure — the tower should see failed, not silence
+    except Exception as exc:
+        log(f"tower status push failed: {exc}")
+    sys.exit(code)

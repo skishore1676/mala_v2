@@ -29,7 +29,11 @@ deploys, no order-path anything. Reflection/watch jobs run read-only.
   checkout is `/Users/sunny/code/lathi-bus`.
 - **ssh to oldmac is read-only for agents.** Query state (sqlite, logs, git log); never
   write files, never run the trading-runtime jobs, from a watch/steward. Deploys are the
-  one deliberate exception, done by-hand at the session boundary (below).
+  one deliberate exception, done by-hand at the session boundary (below). **One narrow
+  sanctioned projection (operator-approved 2026-07-09):** the brain steward's
+  `tower_status.py --push` scp's a non-secret status snapshot + reader into the
+  mala-owned drop `oldmac:~/Documents/mala_v2/artifacts/brain/` so Control Tower can
+  observe the dev-Mac job — never the runtime, never bhiksha paths.
 
 ## Operating cadence (mala_v2, operator-agreed 2026-07-02, ~2 weeks)
 
@@ -134,6 +138,15 @@ bash scripts/brain/install_brain_steward.sh status  # job loaded? + log tail
 Curation: steward commits are reviewed via the Friday digest card (pointy-bracket
 comments prune/correct after the fact); `docs/brain/candidates/` holds drafts for
 DECISIONS/ARCHITECTURE — the steward never edits those files directly.
+
+**Control Tower tracking (like every bhiksha/mala launchd job):** each run ends with
+`tower_status.py --push` — a `mala.launchd.status.v1` snapshot + a stdlib-only reader
+scp'd to `oldmac:~/Documents/mala_v2/artifacts/brain/`. The oldmac tower's
+`[sources.mala]` (lathi `scripts/launchd/external_sources.oldmac.toml`, group C.4)
+runs the reader locally; it recomputes staleness at READ time, so a dead/asleep dev
+Mac renders the `com.mala.brain-steward` card as **stuck + stale_last_run** within
+27h — the tower is the brain's ≤48h-lag watchdog. Status-only (no tower actions);
+canon commits happen only on the dev Mac.
 
 ## Lathi bus (alerts + phone review)
 

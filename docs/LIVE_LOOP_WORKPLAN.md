@@ -488,3 +488,16 @@ deliberately unpushed (ADR-012), so oldmac can't host canon without a 2-way sync
 breaking the ssh-read-only rule + an interactive token mint. Friday digest → Lathi bus (doctor
 green). REMAINING: operator runs `bash scripts/brain/install_brain_steward.sh install` (launchd
 persistence needs operator's own hands — permission-gated, correctly).
+
+### 2026-07-09 (Thu, later night) — steward DEPLOYED (launchd loaded) + Control Tower wiring built
+Operator authorized deploy: `com.mala.brain-steward` installed + loaded on the dev Mac (launchctl
+verified, exit 0). Control Tower tracking built the established way (bhiksha pattern: owner emits
+status, Lathi projects): mala owns `scripts/brain/tower_status.py` (mala.launchd.status.v1 snapshot,
+derived from run dirs/receipts/git/lint) + `tower_status_reader.py` (stdlib-only, recomputes
+staleness at READ time on oldmac — dead Air renders stuck+stale_last_run in ≤27h, never frozen-
+healthy). steward.py now pushes status after EVERY run incl. failures. Lathi `[sources.mala]`
+(C.4, status-only) added to external_sources.oldmac.toml — verified against Lathi's REAL adapter
+locally: fresh→armed, 50h-stale→stuck+stale_last_run, missing→stuck. OPERATIONS updated with the
+one sanctioned steward write to oldmac (non-secret snapshot → ~/Documents/mala_v2/artifacts/brain/
+only). REMAINING (permission-gated, operator hands): first `tower_status.py --push`, oldmac lathi
+pull + tower kickstart, tower JSON readback.
