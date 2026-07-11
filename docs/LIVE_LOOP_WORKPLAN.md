@@ -287,8 +287,22 @@ breakdown is the finding: **FLASH 93%** (his flash entries genuinely fire the de
 flash feed), EXH 70% (fork-b), TREND 47% (T-C is one flavor of his trend entries), OTHER 0%
 (correct). **Take rate ≈3% = 1 fire in 33** — the selection gap as a rate, Phase B's target.
 `flywheel_take_skip.csv` = training set ready. LIVE daily scheduling is an oldmac launchd deploy
-(fresh bars/IV there) — teed up, not pushed (touches the live machine). Next: Phase B selection
-mining on the take/skip set + morning-bias merge; Phase C cost measurement + single-name habitat.
+(fresh bars/IV there) — teed up, not pushed (touches the live machine).
+
+### 2026-07-11 (Fri, later) — Phase B done; the selection finding redirects the program
+B1 mining: **time-of-day dominates his selection** (early-session fires; OOS scorer separates
+takes 8.6% vs skips 0.3% — clicks predictable). B1 economic (the crux): **selecting like him
+scores WORSE on the option path** — top-selection-q net −2.8%/trade vs bottom −1.3%, sep −1.5%
+(bar +2%); by playbook TREND +1.0% (helps), FLASH −0.7%, EXH −3.0%. **His fast-play edge is NOT
+which setup he picks — it's execution (better-than-mid) + a 28-min-scalp exit the fixed 90-min
+profile strips out; early option-buying also eats open-IV/theta a hold can't beat.** TREND (slow,
+already live) is the mechanizable exception. Negative result correctly kills the "autonomous
+flash/exhaustion lane" idea and redirects Phase C to MEASURE the human layer (entry-price alpha,
+exit-timing alpha vs profile) — which loops back to the original exit-profile calibration.
+Consultation-first validated. Wrote **`docs/PLAYBOOK_RESEARCH_FINDINGS.md`** (detailed narrative)
++ a visual artifact for the operator. Caught+fixed a real-IV-per-fire bar-reload perf bug
+(`fire_outcome` gained `use_real_iv`). Next: Phase C0 execution/exit-alpha measurement from his
+fills; oldmac deploy of the daily feed when operator green-lights the live surface.
 
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:

@@ -186,24 +186,34 @@ detector fires → consultation feed → operator takes/skips (inferred from his
   (93%), MISSED book-wide (61-70%) — the gap is a real finding (T-C detector is narrow; EXH is
   fork-b), fed forward to Phase B/C rather than papered over.
 
-### Phase B — selection-function research (weeks 1–3, parallel)
-- **B1**: mine the 48k historical fires vs his 1,465 entries: what separates taken from skipped?
-  Candidate features: tape regime (his bull/bear/tussle call), time-of-day, strength, event
-  proximity, day type. Deliverable: a **trader-readable rule card** (e.g. "fade sales only in
-  up-tape, strength ≥ p75, before 11:00"), not a black box.
-- **B2**: MERGE with workplan #4 (morning bias overlay) — the day-type call that conditions which
-  playbooks are on is the selection function's biggest feature; one build, two consumers.
-- **B3**: OOS test (fit ≤2024, test 2025–26; the honest version of the S2 experiment).
-- **Success**: top-quartile-scored fires beat bottom-quartile by ≥2%/trade gross OOS.
+### Phase B — selection-function research (DONE 2026-07-11 — REDIRECTED the program)
+- **B1 mining** (`flywheel_selection_mine.py`): time-of-day dominates — he takes early-session
+  fires (earliest-q 8% take, latest-q 1%), strength secondary; OOS scorer separates takes (8.6%)
+  from skips (0.3%). Clicks ARE predictable.
+- **B1 economic** (`flywheel_selection_economic.py`, the crux): does selecting like him improve
+  the option-path outcome? **NO — top-selection-q net −2.8%/trade vs bottom −1.3%, separation
+  −1.5% (bar was +2%).** By playbook: TREND +1.0% (helps), FLASH −0.7%, EXH −3.0% (hurt).
+- **Finding**: his fast-play edge is NOT setup-selection — it's execution (better-than-mid entry)
+  + live exit management (28-min median scalp vs the profile's 90-min R-ladder) + the open-IV/theta
+  headwind a hold can't beat. TREND (slowest, already live) is the mechanizable exception.
+- **B2 (morning bias, #4)**: still a valid Phase-C feature but no longer the selection linchpin.
+- **Result vs bar**: FAILED the +2% bar — correctly, and informatively. Redirects to Phase C
+  measuring the human layer; does NOT ship an autonomous flash/exhaustion lane. Full writeup:
+  `docs/PLAYBOOK_RESEARCH_FINDINGS.md`.
 
-### Phase C — execution + habitat (weeks 2–4, parallel)
-- **C1**: replace the 2%/4% cost GUESS with a measured number: bhiksha already has
-  passive/urgent entry-pricing modes — measure realized entry quality on shadow/live fills per
-  symbol × DTE; plus spread stats from option previews.
-- **C2**: habitat extension — rerun the P3 harness on his single-name universe (TSLA/NVDA/AMD/
-  SMH…, bar cache permitting): EXHAUSTION at his p85 spec ("any symbol as long as it's really
-  stretched") and RANGE on semis (its actual home, untested so far).
-- **Success**: a defensible per-symbol cost table; a symbol × playbook net-expectancy matrix.
+### Phase C — measure the human layer (NEXT — reweighted by the B finding)
+The 2–4% gap is execution + exit timing, not setup selection, so C leads with those:
+- **C0 (new lead)**: **entry-execution alpha** — his real fill price vs the bar mid/VWAP at his
+  entry minute (from his fills + bar cache; no new infra); and **exit-timing alpha** — his real
+  hold/exit vs the fixed profile on the same trade (does the 28-min scalp beat the 90-min ladder?).
+  This loops back to the ORIGINAL exit-profile program: the FLASH dials may be mis-calibrated to
+  his speed.
+- **C1**: replace the 2%/4% cost GUESS with bhiksha's measured passive/urgent fill quality per
+  symbol × DTE.
+- **C2**: habitat — EXHAUSTION on single names (p85 spec), RANGE on semis (untested).
+- **Success**: a quantified execution+exit alpha (where the gap really is); a defensible cost
+  table; and — the orig goal — a recalibrated fast-scalp profile that a slow play (trend first)
+  can carry into a shadow lane clearing the P3 bar OOS.
 
 ### Exit condition (P4 revisited)
 Any detector × selection-rule × measured-cost combination that clears the ORIGINAL P3 bar
