@@ -87,9 +87,12 @@ def sweep_day(sb: SymbolBars, day: date) -> list[dict]:
     return fires
 
 
-def fire_outcome(frame_hist: pl.DataFrame, fire: dict, symbol: str) -> tuple[float, str]:
-    """Native-profile option-path %-outcome for a single fire, real IV if
-    available. frame_hist = trailing sessions incl. the fire day (vol anchor)."""
+def fire_outcome(frame_hist: pl.DataFrame, fire: dict, symbol: str,
+                 use_real_iv: bool = True) -> tuple[float, str]:
+    """Native-profile option-path %-outcome for a single fire. frame_hist =
+    trailing sessions incl. the fire day (vol anchor). ``use_real_iv=False``
+    (modeled, constant) is far faster for bulk RELATIVE comparisons where the
+    IV level cancels — real IV reloads the bar cache per call."""
     direction = "long" if fire["dir"] > 0 else "short"
     marked = frame_hist.with_columns(
         (pl.col("timestamp") == fire["dt"]).alias("signal"),
@@ -98,7 +101,7 @@ def fire_outcome(frame_hist: pl.DataFrame, fire: dict, symbol: str) -> tuple[flo
     if not marked["signal"].any():
         return float("nan"), "none"
     res = score_profile_on_options(marked, direction, fire["profile"],
-                                   symbol=symbol, use_real_iv=True)
+                                   symbol=symbol, use_real_iv=use_real_iv)
     src = "real" if res.get("iv_premium_factor", 1.2) != 1.2 else "modeled"
     return (res["expectancy_pct"] if res["n"] else float("nan")), src
 
