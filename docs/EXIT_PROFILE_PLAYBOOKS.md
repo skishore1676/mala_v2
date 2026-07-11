@@ -250,12 +250,17 @@ feature/dial hypotheses:
 - **OTHER is real**: Fed-event and "boredom" trades ≈ 23% of commented cards — near the ≤25%
   unclassified target (partially answers X3).
 
-### Open confirmations (non-blocking)
+### Open confirmations — RESOLVED 2026-07-11 (P1 close)
 
-1. **R4 — is RANGE deliberately the overnight/multi-day play** (eod_flat No, 5-day max hold, the
-   only profile allowed to hold overnight)? Dials table says yes; operator hasn't said the word.
-   (Re-asked in adjudication round 2.)
-2. **X3 — operator's guess at the "none of the four" share** of his own trades (left blank);
-   ≤25% unclassified stays the working target. (Re-asked in adjudication round 2.)
-3. **FLASH↔EXHAUSTION boundary in the operator's words** when a sharp drop is also part of a
-   bigger run — asked directly in adjudication round 2.
+The operator answered through card labels only (header questions in both adjudication rounds were
+left blank three times — treat that as his stable preference; stop re-asking in packets):
+
+1. **R4 (RANGE overnight)** — unanswered in words. **Working spec: adopt the dials table** (RANGE
+   is the only eod_flat=No profile, 5-day max hold). Flagged as operator-unconfirmed; revisit only
+   if a RANGE candidate ever approaches promotion.
+2. **X3 (none-of-the-four share)** — **derived empirically ≈ 20–25%**: his OTHER labels ran 23% of
+   round-1 comments; the frozen corpus lands at 20.5% UNCLASSIFIED+OTHER. The ≤25% target held.
+3. **FLASH↔EXHAUSTION boundary** — resolved empirically rather than verbally: in round 2 the
+   operator ceded 10 of 13 disputed cards to the machine's v4 reading (thesis-aware flush;
+   multi-scale no-breath runs; strong-flush-before-trend). Residual failure mode is machine
+   ABSTENTION on plays he sees (3 cards), not mis-tagging (94% HIGH-tier agreement).

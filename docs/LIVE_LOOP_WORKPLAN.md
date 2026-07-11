@@ -203,6 +203,21 @@ FLASH↔EXH perceptual boundary that only the operator can settle. Spec amendmen
 surviving disagreements first + 2 direct questions: the boundary in his words; R4/X3 re-asked).
 His OTHER labels ≈23% of commented cards — near the ≤25% unclassified target.
 
+### 2026-07-11 (Sat, later) — GATE P1 CLOSED: corpus frozen at 94% HIGH-tier agreement
+Round-2 adjudication back same day: 6 comments on 31 cards, and **10 of the 13 previously-disputed
+cards ceded to the machine's v4 reading** — the round-1 labels weren't fixed truths; when the
+reason line argued its case, the operator accepted it. **Agreement 87% overall, 94% on HIGH
+(bar ≥85% ✓).** Residual misses: 3 machine abstentions (his label stands in gold) + 1
+boredom-trade that genuinely charts like exhaustion (irreducible). Corpus FROZEN:
+`data/personal_imports/tagged/round_trips_tagged_FROZEN.csv` — 390 episodes, FLASH 142 / EXH 117 /
+TREND 51 / UNCLASS+OTHER 20.5% (within-context 7.5%). The frozen distribution finally matches the
+operator's DNA (reversal-dominant, FLASH ≈ base mode) — v1's trend-heavy read was the machine's
+bias, not his. TREND at 51 misses the ≥100 gate criterion — accepted with rationale (TREND is the
+already-live arm; discovery targets are the reversal playbooks). Header questions went unanswered
+a third time → resolved empirically and STOPPED re-asking (X3 ≈ 20-25% derived; R4 = adopt dials
+table, flagged unconfirmed). **P2 (metric library, "fires where he fired") is next**: detectors
+per playbook scored on recall vs the frozen gold entries at ≥5× lift, on IWM/SPY first.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),
