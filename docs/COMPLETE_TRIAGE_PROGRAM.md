@@ -430,6 +430,15 @@ remaining step is the operator publish.** Adversarial disprove pass runs pre-pro
   quality gradient (thin-sample SNOW/BAC) is only "what to watch more closely," never what to withhold;
   the thin ones need the forward evidence most.
 
+**2026-07-11 — SHADOW LANES DEPLOYED (verified, weekend, no market-hours risk).**
+- Root cause of the earlier ingest block: `mala_handoff_version` was set to a string (`triage-2026-07-11`)
+  but bhiksha's catalog loader requires an integer → Pydantic dropped all 10 rows silently. Fixed to `1`.
+- Verified via temp-catalog dry compile (production untouched), then ran `sync_active_plan` on oldmac
+  (operator-authorized; backups taken). Production result: `google_promoted` 26→36, `active_plan.json`
+  rewritten, **all 10 triage lanes in the plan as `shadow_only=True, enabled=True`; 5–6 live lanes intact;
+  7 suppressed are pre-existing KILL-verdict rows.** bhiksha shadows the 10 at Monday open → weekly
+  shadow reports will track them. Deploy is DONE end-to-end.
+
 ## 10. Open items to resolve (driver-owned unless flagged OPERATOR)
 
 - Fix `RANGE_EXPANSION` single-session-vs-multi-day scorer contradiction (before trusting RANGE).

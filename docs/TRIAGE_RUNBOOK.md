@@ -98,6 +98,20 @@ ssh oldmac 'zsh -lc "cd ~/Documents/bhiksha && ./.venv/bin/python -m bhiksha.too
     kills the run. Use the tool's `run_in_background: true` for long runs.
 11. **`classify_explore_propose` is slow** (per-symbol bar enrichment) — >2min for ~8 symbols. Run in
     background; or reuse an existing classify INDEX that already covers the symbols.
+12. **`mala_handoff_version` is an INTEGER, not a string.** bhiksha's catalog loader validates the
+    evidence row with Pydantic; a string there (e.g. a date) raises `int_parsing` and the WHOLE row is
+    **silently dropped** (`google_strategy_catalog_count` stays at the old count, lanes suppressed as
+    "not present in Google strategy catalog"). Set it to the same integer the existing rows use (`1`).
+    General rule: hand-appending `Mala_Evidence_v1` rows is fragile — every typed field must match the
+    schema `mala_handoff` emits. Diagnose drops with `load_strategy_catalog_sheet_rows_with_report`,
+    which returns per-row validation errors.
+13. **Publishing to `active_strategy` alone does NOT deploy.** The runtime reads a compiled
+    `active_plan.json`, generated from the sheet by `bhiksha.tools.sync_active_plan` (which also syncs
+    `config/strategy_catalog/google_promoted/*.yaml` from promotable evidence rows). That sync runs at
+    market-open (live-start) and in the daily campaign. To deploy off-schedule: back up `active_plan.json`
+    + `google_promoted/`, run `sync_active_plan --strategy-catalog config/strategy_catalog --out
+    artifacts/playbook/active_plan.json --iterations 1` on oldmac, verify shadow_only lanes + live-lane
+    integrity. This is a production oldmac write — operator-gated.
 
 ## M7 signal-overlap, computed (the volume trap)
 Schwab vs Polygon: **price parity is ~perfect** (0–5 divergent bars/7800) but **raw volume diverges**
