@@ -246,6 +246,23 @@ hypothesis-driven. More EXH labels will accrue naturally when P3 shadow lanes tr
 next**: run F-C/F-A, T-C, E-C signal sets over the full 2021→2026 bar history, score on the S4
 option path with native profile exits, IV-banded, multi-regime, cost-haircut.
 
+### 2026-07-11 (Sat, overnight) — GATE P3 CLOSED: real-but-thin edge; the "selection gap" named
+Full-history option-path backtest (48k signal events, IWM/SPY 2021→2026, native profile exits,
+IV band, 3 regimes, cost haircut 4%/2%). **Headline: the detectors' gross edge is REAL and broad
+(+0.5..+3.4%/trade, 44/48 regime cells positive) but THIN — it dies under costs when every fire is
+taken (~12/day vs the operator's 1-2).** Selection experiments: hindsight best-of-day DOUBLES
+gross (edge concentrates in strong fires) but is lookahead — caught and discarded; the
+live-translatable selectors (first-of-day; absolute strength threshold fit on 2021-22 only, max
+2/day) recover only part of it; single marginal survivor = IWM T-C long +0.5% net@2%, 2/3 regimes
+— corroborates the live trend lanes but too thin to promote alone. **The named finding: a 2-4%/
+trade "selection gap" — the operator's discretionary choice of which fires to take is the
+unmechanized layer, now measured.** The yardstick was right this time (option-path, cost-aware,
+multi-regime — no M1 repeat); this is a terrain map, not a kill. P4 reframed to an operator
+decision gate: recommended = consultation-mode deployment (detector alerts feed the operator /
+morning-bias overlay; his take/skip decisions become labeled data to LEARN the selection function);
+alternatives: selection-function modeling offline, execution/cost attack, single-name habitat
+tests. Program paused here pending operator direction — deployment choices are his lane.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),
