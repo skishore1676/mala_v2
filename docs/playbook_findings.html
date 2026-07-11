@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playbook Discovery — Findings & Plan</title>
+<style>
+  :root {
+    --ground: #f7f6f2;
+    --panel: #ffffff;
+    --ink: #1a1f1d;
+    --ink-soft: #4a534f;
+    --ink-faint: #7b847f;
+    --rule: #e2e0d8;
+    --rule-strong: #cfccc0;
+    --accent: #0d6b60;
+    --accent-soft: #e0efec;
+    --up: #2f7d54;
+    --down: #b23a48;
+    --warn: #b8862f;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0e1412; --panel: #151c19; --ink: #e7ebe8; --ink-soft: #a7b0ab;
+      --ink-faint: #6f7a74; --rule: #24302b; --rule-strong: #33403a;
+      --accent: #4fd1c0; --accent-soft: #123029; --up: #5cc487; --down: #e8798a;
+      --warn: #d6a441;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f7f6f2; --panel: #ffffff; --ink: #1a1f1d; --ink-soft: #4a534f;
+    --ink-faint: #7b847f; --rule: #e2e0d8; --rule-strong: #cfccc0;
+    --accent: #0d6b60; --accent-soft: #e0efec; --up: #2f7d54; --down: #b23a48; --warn: #b8862f;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1412; --panel: #151c19; --ink: #e7ebe8; --ink-soft: #a7b0ab;
+    --ink-faint: #6f7a74; --rule: #24302b; --rule-strong: #33403a;
+    --accent: #4fd1c0; --accent-soft: #123029; --up: #5cc487; --down: #e8798a; --warn: #d6a441;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px 96px; }
+  .col { max-width: 660px; }
+
+  /* Masthead */
+  header.mast {
+    border-bottom: 2px solid var(--ink); margin-bottom: 8px;
+    padding: 40px 0 18px;
+  }
+  .kicker {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5.5vw, 46px);
+    line-height: 1.08; letter-spacing: -0.01em; margin: 14px 0 10px; text-wrap: balance;
+  }
+  .dek {
+    font-family: var(--serif); font-style: italic; font-size: clamp(16px, 2.4vw, 19px);
+    color: var(--ink-soft); max-width: 60ch; margin: 0;
+  }
+  .byline {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 18px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+    letter-spacing: .02em;
+  }
+  .byline b { color: var(--ink-soft); font-weight: 600; }
+
+  h2 {
+    font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 52px 0 4px; text-wrap: balance;
+  }
+  .h2num {
+    font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 600;
+    letter-spacing: .1em; display: block; margin-bottom: 2px;
+  }
+  h3 { font-family: var(--sans); font-size: 15.5px; font-weight: 700; margin: 26px 0 6px; letter-spacing: -.005em; }
+  p { margin: 12px 0; }
+  p.lead { font-size: 17px; }
+  .col p, .col li { max-width: 66ch; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+  a { color: var(--accent); }
+
+  /* Thesis stack */
+  .thesis {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 14px;
+    padding: 26px 28px; margin: 28px 0 8px;
+    box-shadow: 0 1px 0 var(--rule), 0 14px 40px -30px rgba(0,0,0,.4);
+  }
+  .stack {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+    gap: 10px; align-items: stretch; margin: 4px 0 2px;
+  }
+  .term {
+    text-align: center; padding: 16px 10px; border-radius: 10px;
+    background: var(--ground); border: 1px solid var(--rule);
+  }
+  .term .lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+  .term .name { font-family: var(--serif); font-size: 17px; font-weight: 600; margin: 4px 0 6px; }
+  .term .val { font-family: var(--mono); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .term.pos .val { color: var(--up); }
+  .term.neg .val { color: var(--down); }
+  .op { display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 26px; color: var(--ink-faint); }
+  .stack-note { text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); margin-top: 12px; }
+  @media (max-width: 620px) {
+    .stack { grid-template-columns: 1fr; }
+    .op { padding: 2px; font-size: 20px; }
+  }
+
+  /* Gate strip */
+  .gates { display: grid; gap: 10px; margin: 22px 0; }
+  .gate {
+    display: grid; grid-template-columns: 46px 1fr auto; gap: 14px; align-items: center;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .gate .id { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--accent); }
+  .gate .what { font-size: 14px; }
+  .gate .what b { display: block; font-size: 14.5px; }
+  .gate .what span { color: var(--ink-soft); font-size: 13px; }
+  .pill {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill.done { background: var(--accent-soft); color: var(--accent); }
+  .pill.turn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+
+  /* Callout */
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 16px 20px; border-radius: 0 10px 10px 0; margin: 22px 0;
+  }
+  .callout.turn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--accent); }
+  .callout.turn .tag { color: var(--warn); }
+  .callout p { margin: 6px 0 0; }
+
+  /* Data table */
+  .tablewrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600; background: var(--panel);
+  }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .up { color: var(--up); font-weight: 600; }
+  .down { color: var(--down); font-weight: 600; }
+  td b { font-weight: 700; }
+
+  /* Flywheel */
+  .flyfig { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 24px; margin: 22px 0; }
+  .phase-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 620px){ .phase-row { grid-template-columns: 1fr; } }
+  .phase { border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; background: var(--ground); }
+  .phase .ph { font-family: var(--mono); font-size: 11px; letter-spacing:.1em; color: var(--accent); font-weight: 700; }
+  .phase h4 { font-family: var(--serif); font-size: 16px; margin: 4px 0 8px; font-weight: 600; }
+  .phase ul { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-soft); }
+  .phase li { margin: 4px 0; }
+  .phase .st { display:inline-block; margin-top:10px; font-family: var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:999px; }
+  .st.built { background: var(--accent-soft); color: var(--accent); }
+  .st.next { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+  ul.clean { padding-left: 20px; }
+  ul.clean li { margin: 8px 0; }
+  .divider { height: 1px; background: var(--rule); margin: 40px 0; border: none; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+  .oneliner {
+    font-family: var(--serif); font-style: italic; font-size: 19px; line-height: 1.5;
+    color: var(--ink); border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    padding: 22px 0; margin: 30px 0; max-width: 62ch;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="kicker">Research Synthesis · mala_v2</div>
+    <h1>Distilling the operator's edge</h1>
+    <p class="dek">We taught a machine to see the four playbooks the way he trades them — then found out where his edge actually lives, and it wasn't where we expected.</p>
+    <div class="byline">
+      <span><b>Window</b> Jul 3 – Jul 11, 2026</span>
+      <span><b>Gates</b> P0–P3 closed · Flywheel A–B run</span>
+      <span><b>Universe</b> IWM / SPY · 5yr option-path</span>
+    </div>
+  </header>
+
+  <div class="col">
+    <p class="lead">The live book trades one of his four playbooks. Flash, exhaustion, and range — his real bread and butter — had no strategies in the loop at all. So instead of inventing strategies and hoping they matched him, we inverted it: <strong>start from four years of his own fills, learn what he does, teach a detector to see it, and test whether the mechanical version makes money.</strong></p>
+  </div>
+
+  <!-- THESIS STACK -->
+  <div class="thesis">
+    <div class="kicker" style="margin-bottom:14px;">What P3 measured — the P&amp;L stack</div>
+    <div class="stack">
+      <div class="term pos"><div class="lbl">Setup</div><div class="name">Detectors</div><div class="val">+1.5–3%</div></div>
+      <div class="op">×</div>
+      <div class="term pos"><div class="lbl">Selection</div><div class="name">His picking</div><div class="val">+2–4%</div></div>
+      <div class="op">−</div>
+      <div class="term neg"><div class="lbl">Execution</div><div class="name">Costs</div><div class="val">−2–4%</div></div>
+    </div>
+    <div class="stack-note">per trade · no single term clears the bar alone · they multiply</div>
+  </div>
+
+  <div class="col">
+    <h2><span class="h2num">FINDINGS</span>What we learned, gate by gate</h2>
+
+    <h3>P0 · His playbooks, made precise</h3>
+    <p>Prose became taggable rules, corrected by him directly. The corrections mattered: exhaustion is a symbol at its ~85–90th percentile stretch, <em>any symbol, any timeframe</em>; trend anchors on the <strong>10-VMA</strong>, not VWAP; range includes <strong>earnings-gap continuation</strong>; flash is explicitly counter-trend.</p>
+
+    <h3>P1 · He is a reversal trader</h3>
+    <p>1,443 timestamped fills → 390 trade episodes, labeled by playbook and corrected across two phone reviews until the machine matched his eye <strong>94% on confident calls</strong>. The distribution was the surprise:</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Playbook</th><th class="num">Episodes</th><th>Read</th></tr></thead>
+      <tbody>
+        <tr><td>Flash reversal</td><td class="num">142</td><td>his base mode</td></tr>
+        <tr><td>Exhaustion reversal</td><td class="num">117</td><td>his second instrument</td></tr>
+        <tr><td>Trend continuation</td><td class="num">51</td><td>the one already live</td></tr>
+        <tr><td>None of the four</td><td class="num">~80</td><td>"bored / Fed-event" — where losses cluster</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>The machine first read him as trend-heavy; his corrections revealed reversals dominate — and the losing trades are the ones fitting no playbook, echoing his own written rule: <em>"not worth it if you cannot follow rules."</em></p>
+
+    <h3>P2 · Two of three playbooks mechanize cleanly</h3>
+    <p>Can a rule fire <em>where he fired</em> without firing all day? Swept every 5 minutes of a year:</p>
+    <ul class="clean">
+      <li><strong>Flash — yes.</strong> A ≥0.15-ATR flush into a fresh extreme fires ~7× more at his entries than at random, ~4 alerts/day.</li>
+      <li><strong>Trend — yes.</strong> Established trend + an <em>active stalling</em> pullback: ~9× selectivity.</li>
+      <li><strong>Exhaustion — not yet (honest fork).</strong> The context is easy; his timing varies too much across 5 clean examples to pin. Logged as "eye not captured," never "no edge."</li>
+    </ul>
+
+    <h3>P3 · The edge is real, thin, and selection is the missing layer</h3>
+    <p>Five years, ~48k fires, traded as real options with his native exit profiles, IV-banded, cost-haircut, three regimes:</p>
+    <ul class="clean">
+      <li><strong>Gross edge is real and broad</strong> — positive in 44 of 48 regime cells (+0.5 to +3.4%/trade before costs).</li>
+      <li><strong>Taking every fire loses money</strong> — ~12 fires/day, he takes 1–2; the thin edge dies under costs.</li>
+      <li><strong>Best-of-day doubled the edge — but that's hindsight.</strong> Every live-executable filter gave most of it back.</li>
+    </ul>
+  </div>
+
+  <div class="callout">
+    <div class="tag">The named finding · the selection gap</div>
+    <p>There is a <strong>2–4%-per-trade gap</strong> between what the mechanical setups earn and what his real trading earns — and that gap is his discretionary choice of which fires to take. We measured the thing that was always folklore.</p>
+  </div>
+
+  <div class="col">
+    <h2><span class="h2num">THE TURN</span>Then Phase B changed our minds</h2>
+    <p>We started the Flywheel believing: <em>learn which fires he takes → filter the detector → mechanical profit.</em> The first two arrows held. The last one broke.</p>
+    <ul class="clean">
+      <li><strong>We CAN predict his clicks.</strong> He takes early-session fires (earliest quartile 8%, latest 1%). Out-of-sample a scorer separates his takes (8.6%) from his skips (0.3%).</li>
+      <li><strong>But predicting his clicks doesn't make money.</strong> Taking his high-score fires scored <em>worse</em> on the option path, not better:</li>
+    </ul>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Playbook</th><th class="num">OOS n</th><th class="num">Bottom-q net</th><th class="num">Top-q net</th><th class="num">Separation</th></tr></thead>
+      <tbody>
+        <tr><td>Trend continuation</td><td class="num">702</td><td class="num">−1.2%</td><td class="num">−0.2%</td><td class="num up">+1.0%</td></tr>
+        <tr><td>Flash reversal</td><td class="num">1,698</td><td class="num">−1.0%</td><td class="num">−1.8%</td><td class="num down">−0.7%</td></tr>
+        <tr><td>Exhaustion reversal</td><td class="num">718</td><td class="num">−2.0%</td><td class="num">−5.0%</td><td class="num down">−3.0%</td></tr>
+        <tr><td><b>All fires</b></td><td class="num">3,118</td><td class="num">−1.3%</td><td class="num">−2.8%</td><td class="num down">−1.5%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout turn">
+    <div class="tag">What it means</div>
+    <p>His edge on the fast plays is <strong>not in which setup he picks — it's in the parts the backtest strips out: entry execution and live exit management.</strong> He legs in better than mid; his real hold is a <strong>28-minute scalp</strong> while the mechanical profile runs an R-ladder out to 90 minutes; and early option-buying faces an IV/theta headwind a <em>hold</em> can't beat but a <em>fast scalp</em> does. Trend is the one that helped mechanically (+1.0%) — the slowest, least execution-sensitive play, and the one already live. That's the tell.</p>
+  </div>
+
+  <div class="col">
+    <p>The negative result is worth more than a marginal pass: it stops us shipping an autonomous flash/exhaustion lane that would have quietly lost money, and it redirects the build toward measuring the human layer. The yardstick was right — option-path, cost-aware, out-of-sample, lookahead-audited. No repeat of the old mis-kill.</p>
+
+    <h2><span class="h2num">THE PLAN</span>How we leverage it — the Flywheel</h2>
+    <p>Setup, selection, and execution are one P&amp;L stack; we run all three at once, wired so each feeds the next. The B finding shifted where the effort goes.</p>
+  </div>
+
+  <div class="flyfig">
+    <div class="phase-row">
+      <div class="phase">
+        <div class="ph">PHASE A</div>
+        <h4>Consultation feed</h4>
+        <ul>
+          <li>Daily Telegram card — signals only, his thresholds applied</li>
+          <li>Fire ledger with real-IV outcomes</li>
+          <li>Auto-labels his take/skip from fills — zero journaling</li>
+        </ul>
+        <span class="st built">Built · sample sent</span>
+      </div>
+      <div class="phase">
+        <div class="ph">PHASE B</div>
+        <h4>Learn his selection</h4>
+        <ul>
+          <li>Clicks predictable (8.6% vs 0.3%)…</li>
+          <li>…but selection ≠ mechanical profit (−1.5%)</li>
+          <li>Edge is execution + fast exits, not setup-pick</li>
+        </ul>
+        <span class="st built">Done · redirected</span>
+      </div>
+      <div class="phase">
+        <div class="ph">PHASE C</div>
+        <h4>Measure the human layer</h4>
+        <ul>
+          <li>Entry-execution alpha: fill vs mid</li>
+          <li>Exit-timing alpha: 28-min scalp vs 90-min profile</li>
+          <li>Real costs; habitat: single-names, semis</li>
+        </ul>
+        <span class="st next">Next</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>Two roads out — the evidence favors the first</h3>
+    <ul class="clean">
+      <li><strong>Consultation is the product.</strong> The detectors are a strong candidate surface (flash coverage 93%); the human supplies the alpha the backtest can't. The research wins by making his discretionary trading faster and better-armed — measured, not replaced.</li>
+      <li><strong>A mechanical lane still ships IF</strong> Phase C recalibrates a profile — e.g. a fast-scalp FLASH exit matched to his real 28-minute hold — that clears the bar out-of-sample. Trend's +1.0% says the slower plays mechanize first, carrying their native exit profile into a shadow lane. That closes the exact gap that started this program.</li>
+    </ul>
+  </div>
+
+  <div class="oneliner">
+    His setups are real and mechanizable — but his 2–4%/trade edge over them is execution and fast exits a fixed-profile backtest can't see. So the payoff is a consultation tool that arms his discretion, plus a measurement of his execution alpha that may recalibrate the exit profiles — slow plays first.
+  </div>
+
+  <footer>
+    mala_v2 · Playbook Discovery Program · canonical: docs/PLAYBOOK_RESEARCH_FINDINGS.md · gate board: docs/PLAYBOOK_DISCOVERY_PROGRAM.md<br>
+    Caveats on the record: n small (260 taken fires, IWM/SPY only) · modeled IV in backtests, real IV going forward · exhaustion an open fork · directional, not final.
+  </footer>
+</div>
+
+</body>
+</html>
