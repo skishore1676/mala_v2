@@ -49,7 +49,7 @@ FEATURE_COLS = [
     "range_width_90m_pctile", "gap_pct", "minutes_since_open",
     "leg_dir", "leg_atr", "leg_age_min", "leg_dur_min", "leg_speed",
     "fade_flush_atr", "fade_ext_age_min", "fade_flush_dur_min",
-    "fade_stall_min", "fade_retest_gap_atr", "ret_15_atr",
+    "fade_stall_min", "fade_retest_gap_atr", "fade_retest_event_age", "ret_15_atr",
     "day_move_atr", "ret_3d_atr", "ret_5d_atr", "edge_pos",
     "eff_30", "eff_60", "eff_120",
     "ret_30_atr", "ret_60_atr", "ret_120_atr",

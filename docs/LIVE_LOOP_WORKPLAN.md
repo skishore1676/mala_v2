@@ -233,6 +233,19 @@ extremes), not proximity-to-extreme at entry. RANGE: 0 gold on IWM/SPY (semis pl
 P3 hypothesis-driven. Corpus re-frozen with trigger features (tags verified byte-identical).
 Next build increment: event-based E-trigger, then P2 closes or EXH goes to P3 as fork(b).
 
+### 2026-07-11 (Sat, late) — GATE P2 CLOSED: 2 detectors pass, exhaustion is an honest fork
+Event-based E-trigger built and swept: WORSE (3% recall, 0.4× lift). Instead of a third blind
+iteration, dumped the trigger features on the 5 informative operator-labeled EXH cards: **his
+exhaustion timing is heterogeneous** — at-the-extreme with zero stall, touching-retest after an
+81m stall, 0.28-ATR below the extreme late-day, and once fading a counter-bounce INSIDE a bigger
+opposite run. n=5 spanning 4 geometries = further fitting is overfitting; fork (b) declared per
+the program's own rule (eye not captured ≠ no edge). **P2 closes**: FLASH F-C (59%/7.4×/4) and
+TREND T-C (50%/8.7×/4) PASS; EXHAUSTION goes to P3 with E-C (73%/2.5×/4) as a flagged SUB-BAR
+screen — the option-path expectancy test is the ultimate arbiter anyway; RANGE goes
+hypothesis-driven. More EXH labels will accrue naturally when P3 shadow lanes trade. **P3 is
+next**: run F-C/F-A, T-C, E-C signal sets over the full 2021→2026 bar history, score on the S4
+option path with native profile exits, IV-banded, multi-regime, cost-haircut.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),

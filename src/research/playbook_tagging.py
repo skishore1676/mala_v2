@@ -487,6 +487,45 @@ def extract_features(bars: SymbolBars, entry_dt: datetime, thesis_dir: int) -> d
     f["ret_15_atr"] = (
         f["ret_15"] / atr if math.isfinite(atr) and atr > 0 else float("nan")
     )
+    # Exhaustion trigger, EVENT form (P2 fork-b fix): the operator enters
+    # AFTER the failed retest + break of the last consolidation, so what
+    # matters is that a failed-retest EVENT happened recently — not that price
+    # is still near the extreme. Event at bar j (put case): a local high
+    # within 0.15 ATR of the reference extreme (max of today + prior 5
+    # sessions) that has NOT been exceeded since, with price now backed off
+    # ≥ 0.08 ATR from it and ≥ 10 minutes elapsed. Feature = minutes since the
+    # most recent qualifying event (else large).
+    f["fade_retest_event_age"] = 10**6
+    if math.isfinite(atr) and atr > 0:
+        di = bars._day_index.get(day)
+        if thesis_dir < 0:
+            prior_ext = max(
+                (float(bars.days[d2]["high"].max())
+                 for d2 in bars.day_list[max(0, di - 5) : di]),
+                default=float("-inf"),
+            ) if di else float("-inf")
+            ref = max(prior_ext, float(hi[: idx + 1].max()))
+            tol, back = 0.15 * atr * px, 0.08 * atr * px
+            j_lo = max(0, idx - 90)
+            for j in range(idx - 10, j_lo, -1):
+                if hi[j] >= ref - tol and float(hi[j + 1 : idx + 1].max()) <= hi[j] \
+                        and px <= hi[j] - back:
+                    f["fade_retest_event_age"] = int(mins[idx] - mins[j])
+                    break
+        else:
+            prior_ext = min(
+                (float(bars.days[d2]["low"].min())
+                 for d2 in bars.day_list[max(0, di - 5) : di]),
+                default=float("inf"),
+            ) if di else float("inf")
+            ref = min(prior_ext, float(lo[: idx + 1].min()))
+            tol, back = 0.15 * atr * px, 0.08 * atr * px
+            j_lo = max(0, idx - 90)
+            for j in range(idx - 10, j_lo, -1):
+                if lo[j] <= ref + tol and float(lo[j + 1 : idx + 1].min()) >= lo[j] \
+                        and px >= lo[j] + back:
+                    f["fade_retest_event_age"] = int(mins[idx] - mins[j])
+                    break
     # Base-edge positioning (R-spec a): where the entry sits inside the last
     # 120m range, signed toward the thesis direction (+1 = at the edge it
     # intends to break).

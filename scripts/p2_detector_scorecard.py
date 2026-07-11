@@ -124,6 +124,21 @@ def exh_E(f, d):  # trigger with wider stall window, 2-scale or stretch confirm
     )
 
 
+def exh_F(f, d):  # run + EVENT trigger: a failed retest happened recently
+    return (
+        _exh_hits(f, d) >= 1
+        and _fin(f.get("fade_retest_event_age")) <= 45
+    )
+
+
+def exh_G(f, d):  # event trigger with confirmation (2 scales or stretch)
+    return (
+        (_exh_hits(f, d) >= 2 or (_exh_hits(f, d) >= 1
+                                  and _fin(f.get("stretch_pctile")) >= 60))
+        and _fin(f.get("fade_retest_event_age")) <= 60
+    )
+
+
 def _with_trend(f, d):
     return (
         int(_fin(f.get("trend_dir")) or 0) == d
@@ -174,7 +189,8 @@ DETECTORS = {
                        "F-C(0.15ATR/15m)": flash_C},
     "EXHAUSTION_REVERSAL": {"E-A(any-scale)": exh_A, "E-B(HIGH-rule)": exh_B,
                             "E-C(scale+p50)": exh_C,
-                            "E-D(run+trigger)": exh_D, "E-E(2scale+trigger)": exh_E},
+                            "E-D(run+trigger)": exh_D, "E-E(2scale+trigger)": exh_E,
+                            "E-F(run+event)": exh_F, "E-G(event+confirm)": exh_G},
     "TREND_CONTINUATION": {"T-A(vma-touch)": trend_A, "T-B(HIGH-rule)": trend_B,
                            "T-C(active-pull)": trend_C},
     "RANGE_EXPANSION": {"R-A(compress-edge)": range_A, "R-B(gap-go)": range_B},
