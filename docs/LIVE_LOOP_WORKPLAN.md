@@ -188,6 +188,21 @@ the bus + Telegram nudge. Known iteration items for round 2: 55 early-open entri
 lack lookback context (FLASH-at-open blind spot); EXHAUSTION possibly under-counted (FLASH
 precedence). Awaiting operator adjudication → agreement metric → rule iteration.
 
+### 2026-07-11 (Sat) — round-1 adjudication in, tagger v4, round 2 out
+Operator returned 22 corrections on 43 cards (+21 silent agrees). **Round-1 agreement 56%
+(HIGH 44%) — well under the 85% bar**, and systematically wrong, which is the loop working:
+RANGE was a phantom (0/8 confirmed — compression fired on quiet drift), EXHAUSTION = his phrase
+"running in one direction without taking a breath" (persistence, incl. MULTI-DAY runs the intraday
+windows can't see), FLASH entries often print after the turn (thesis-aware flush needed) and live
+inside bigger runs. Three rule generations (v2 guessed thresholds — worse, 23% explicit; v3
+leg-based; v4 thesis-aware flush + multi-scale runs + strong-flush-before-TREND ordering), then
+STOPPED fitting: thresholds frozen from a grid fit on the gold set
+(`scripts/fit_tagger_thresholds.py`; explicit 3/22 → 9/22, silent 15/21), remaining misses are the
+FLASH↔EXH perceptual boundary that only the operator can settle. Spec amendments recorded in
+`EXIT_PROFILE_PLAYBOOKS.md`; gold set banked. **Round-2 packet on the bus** (31 cards: 13
+surviving disagreements first + 2 direct questions: the boundary in his words; R4/X3 re-asked).
+His OTHER labels ≈23% of commented cards — near the ≤25% unclassified target.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),

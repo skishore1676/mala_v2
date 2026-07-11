@@ -232,9 +232,30 @@ feature/dial hypotheses:
 - Unique days (2024-08-05 VIX-60 Nikkei crash reversal; 2025-04-09 tariff-pause SPX +10% in
   30 min): only anticipated/resting orders could work → scenario planning, not reaction.
 
+### Adjudication round-1 amendments (2026-07-11, operator's words from the card pass)
+
+- **EXHAUSTION (operator's phrase, used on 8 cards): "was running in one direction without taking
+  a breath."** The signature is run persistence at ANY scale — intraday leg, all-day grind, or the
+  prior 3–5 sessions (near-open exhaustion entries fade overnight/multi-day runs). This extends
+  E1' beyond the percentile-stretch framing.
+- **FLASH entries often print AFTER the turn starts** (consistent with P0 "reversals: wait for the
+  clear break") — so at entry the last leg may already point the operator's way; the faded flush
+  is the leg before it. Detection must be thesis-aware (a call fades the drop into a recent low).
+- **FLASH lives inside bigger runs**: several confirmed flash fades sat within multi-day slides —
+  a bigger-scale run does NOT automatically make the trade exhaustion.
+- **Known collision**: a small dip to the 10-VMA in a trend is feature-identical to a weak flash
+  fade; structure (established trend + shallow pullback) decides, and only OUTSIZED flushes
+  outrank trend structure. The precise FLASH↔EXHAUSTION boundary is round-2's targeted question.
+- **RANGE confirmed rare**: 0 of 8 machine-RANGE cards survived; compression alone never tags.
+- **OTHER is real**: Fed-event and "boredom" trades ≈ 23% of commented cards — near the ≤25%
+  unclassified target (partially answers X3).
+
 ### Open confirmations (non-blocking)
 
 1. **R4 — is RANGE deliberately the overnight/multi-day play** (eod_flat No, 5-day max hold, the
    only profile allowed to hold overnight)? Dials table says yes; operator hasn't said the word.
+   (Re-asked in adjudication round 2.)
 2. **X3 — operator's guess at the "none of the four" share** of his own trades (left blank);
-   ≤25% unclassified stays the working target.
+   ≤25% unclassified stays the working target. (Re-asked in adjudication round 2.)
+3. **FLASH↔EXHAUSTION boundary in the operator's words** when a sharp drop is also part of a
+   bigger run — asked directly in adjudication round 2.

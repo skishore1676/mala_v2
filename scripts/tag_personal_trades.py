@@ -45,8 +45,15 @@ DATA_DIR = REPO / "data"
 FEATURE_COLS = [
     "ret_15", "ret_60", "vwap_dist_atr", "stretch_pctile", "fresh_extreme_min",
     "run_len", "flash_mag", "vol_ratio_15", "trend_side_frac_60",
-    "vma10_dist_pct", "pullback_depth_frac", "range_width_90m_pctile",
-    "gap_pct", "minutes_since_open",
+    "vma10_dist_pct", "touched_vma10", "pullback_depth_frac",
+    "range_width_90m_pctile", "gap_pct", "minutes_since_open",
+    "leg_dir", "leg_atr", "leg_age_min", "leg_dur_min", "leg_speed",
+    "fade_flush_atr", "fade_ext_age_min", "fade_flush_dur_min",
+    "day_move_atr", "ret_3d_atr", "ret_5d_atr", "edge_pos",
+    "eff_30", "eff_60", "eff_120",
+    "ret_30_atr", "ret_60_atr", "ret_120_atr",
+    "run_dir_30", "run_dir_60", "run_dir_120",
+    "failed_retest", "trend_dir", "move_dir",
 ]
 
 
@@ -134,6 +141,11 @@ def kmeans_sidecar(episodes: list[Episode], k: int = 4, iters: int = 60) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample-per-tag", type=int, default=10)
+    ap.add_argument("--round", type=int, default=1, help="adjudication round number")
+    ap.add_argument(
+        "--focus-ids", type=Path, default=None,
+        help="CSV with episode_id column; those episodes lead the packet",
+    )
     args = ap.parse_args()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -226,18 +238,25 @@ def main() -> None:
     (OUT_DIR / "fingerprint_report.md").write_text("\n".join(rep))
     print(f"wrote {OUT_DIR / 'fingerprint_report.md'}")
 
-    # ── adjudication round-1 packet ──
-    rng = random.Random(11)
-    sample: list[Episode] = []
+    # ── adjudication packet ──
+    rng = random.Random(11 + args.round)
+    focus_ids: list[str] = []
+    if args.focus_ids and args.focus_ids.exists():
+        with open(args.focus_ids, newline="") as fh:
+            focus_ids = [r["episode_id"] for r in csv.DictReader(fh)]
+    by_id = {e.episode_id: e for e in ok}
+    sample: list[Episode] = [by_id[i] for i in focus_ids if i in by_id]
+    seen = {e.episode_id for e in sample}
     for tag in list(PLAYBOOKS) + ["UNCLASSIFIED"]:
-        pool = by_tag.get(tag, [])
+        pool = [e for e in by_tag.get(tag, []) if e.episode_id not in seen]
         highs = [e for e in pool if e.confidence == "HIGH"]
         others = [e for e in pool if e.confidence != "HIGH"]
         take = rng.sample(highs, min(len(highs), args.sample_per_tag // 2)) + \
             rng.sample(others, min(len(others), args.sample_per_tag - args.sample_per_tag // 2))
         sample += take
+        seen.update(e.episode_id for e in take)
     sample.sort(key=lambda e: e.entry_dt)
-    pk = ["# Adjudication round 1 — machine playbook tags vs your eye",
+    pk = [f"# Adjudication round {args.round} — machine playbook tags vs your eye",
           "",
           "For each episode: the chart shows 120m before / 60m after your entry "
           "(red line = your entry, blue = price, orange = session VWAP). The tag "
@@ -257,8 +276,9 @@ def main() -> None:
                if e.holding_minutes is not None else f"fills: {e.n_fills} · DTE {e.dte}",
                (f"![chart]({uri})" if uri else "_(no chart — bars missing)_"),
                "", ""]
-    (OUT_DIR / "adjudication_round1.md").write_text("\n".join(pk))
-    print(f"wrote {OUT_DIR / 'adjudication_round1.md'} ({len(sample)} episodes)")
+    packet = OUT_DIR / f"adjudication_round{args.round}.md"
+    packet.write_text("\n".join(pk))
+    print(f"wrote {packet} ({len(sample)} episodes)")
 
 
 if __name__ == "__main__":

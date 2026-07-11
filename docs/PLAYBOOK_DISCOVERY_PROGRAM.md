@@ -58,7 +58,7 @@ never an ambiguous KILL.
 | Gate | Name | Owner / effort | Status | Success = |
 |---|---|---|---|---|
 | P0 | Spec-lock: taggable playbook definitions | operator ~1 sitting + Claude prep | **DONE 2026-07-04** — spec section in `EXIT_PROFILE_PLAYBOOKS.md`; 2 open confirmations (R4 overnight intent, X3 unclassified share), non-blocking | see §P0 |
-| P1 | Tagged corpus + fingerprints | Claude ~3 days + operator 2 phone sessions | **IN PROGRESS** — tagger built (`src/research/playbook_tagging.py` + `scripts/tag_personal_trades.py`, 7 tests); 1,443 fills → 390 episodes; machine round-1: FLASH 104 / TREND 84 / EXH 21 / RANGE 18 / UNCLASS 31% (target ≤25%); round-1 adjudication packet (43 charted episodes) on the bus 2026-07-04; known gap: 55 early-open entries lack lookback context | see §P1 |
+| P1 | Tagged corpus + fingerprints | Claude ~3 days + operator 2 phone sessions | **IN PROGRESS, round 2 out 2026-07-11** — round-1 adjudication: 22 corrections on 43 cards (agreement 56%, HIGH 44% — below the 85% bar); drove tagger v4 (thesis-aware flush, multi-day no-breath runs, RANGE demoted; thresholds FIT to gold via `scripts/fit_tagger_thresholds.py`: explicit 3/22→9/22, silent 15/21); round-2 packet (31 cards, 13 = surviving disagreements + 2 boundary questions) on the bus; gold set banked (`gold_round1.csv`); known gaps: FLASH↔EXH boundary needs operator's words, 55 early-open entries lack lookback context | see §P1 |
 | P2 | Metric library ("fires where he fired") | Claude ~1 week | TODO | see §P2 |
 | P3 | Mechanical validation (option-path, native exits) | Claude ~1 week | TODO | see §P3 |
 | P4 | Promotion to shadow lanes | existing funnel | TODO | see §P4 |

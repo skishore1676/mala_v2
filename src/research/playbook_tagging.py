@@ -220,6 +220,17 @@ class SymbolBars:
             return None
         return float(self.days[self.day_list[idx - 1]]["close"][-1])
 
+    def prior_run_atr(self, day: date, k: int) -> float:
+        """Net close-to-close move over the k sessions BEFORE `day`, in
+        day-ATR units (multi-day run context for the E-spec)."""
+        idx = self._day_index.get(day)
+        atr = self.atr14_pct(day)
+        if idx is None or idx < k + 1 or not math.isfinite(atr) or atr <= 0:
+            return float("nan")
+        c_end = float(self.days[self.day_list[idx - 1]]["close"][-1])
+        c_start = float(self.days[self.day_list[idx - 1 - k]]["close"][-1])
+        return (c_end / c_start - 1.0) / atr if c_start > 0 else float("nan")
+
     def _build_baselines(self) -> None:
         """Pooled, per-symbol baselines sampled every 5 minutes across all
         cached sessions. stretch = (close - session_vwap) / (atr14_pct*close);
@@ -383,6 +394,85 @@ def extract_features(bars: SymbolBars, entry_dt: datetime, thesis_dir: int) -> d
     # Gap (R-spec b): today's open vs prior session close.
     pc = bars.prior_close(day)
     f["gap_pct"] = (float(b["open"][0]) / pc - 1.0) if pc else float("nan")
+    # Run persistence — the operator's EXHAUSTION signature ("running in one
+    # direction without taking a breath", adjudication round 1): efficiency =
+    # |net move| / path length over trailing windows.
+    for win in (30, 60, 120):
+        j = max(0, min(int(np.searchsorted(mins, mins[idx] - win)), idx))
+        if idx - j >= 10:
+            seg = close[j : idx + 1]
+            steps = float(np.abs(np.diff(seg)).sum())
+            f[f"eff_{win}"] = abs(float(seg[-1] - seg[0])) / steps if steps > 0 else 0.0
+            f[f"run_dir_{win}"] = 1 if seg[-1] >= seg[0] else -1
+            f[f"ret_{win}_atr"] = (
+                (float(seg[-1]) / float(seg[0]) - 1.0) / atr
+                if math.isfinite(atr) and atr > 0
+                else float("nan")
+            )
+        else:
+            f[f"eff_{win}"] = float("nan")
+            f[f"run_dir_{win}"] = 0
+            f[f"ret_{win}_atr"] = float("nan")
+    # Last-leg flush (FLASH signature, v3): within the last 45m, the leg INTO
+    # the most recent extreme — direction = whichever extreme printed last,
+    # magnitude = the move from the opposite extreme, in day-ATR fractions.
+    # (v2 measured from a 90m baseline and often picked the trend side, not
+    # the counter-leg the operator fades — gold-set finding 2026-07-11.)
+    w = max(0, int(np.searchsorted(mins, mins[idx] - 45)))
+    if idx > w + 3 and math.isfinite(atr) and atr > 0:
+        hi_rel = w + int(np.argmax(hi[w : idx + 1]))
+        lo_rel = w + int(np.argmin(lo[w : idx + 1]))
+        mag = (float(hi[hi_rel]) - float(lo[lo_rel])) / px / atr
+        if hi_rel >= lo_rel:
+            f["leg_dir"], f["leg_age_min"] = 1, int(mins[idx] - mins[hi_rel])
+        else:
+            f["leg_dir"], f["leg_age_min"] = -1, int(mins[idx] - mins[lo_rel])
+        f["leg_atr"] = mag
+        f["leg_dur_min"] = int(abs(mins[hi_rel] - mins[lo_rel])) or 1
+        f["leg_speed"] = mag / f["leg_dur_min"]
+    else:
+        f["leg_dir"], f["leg_atr"] = 0, float("nan")
+        f["leg_age_min"], f["leg_dur_min"], f["leg_speed"] = 10**6, 0, float("nan")
+    # Thesis-aware faded flush (v4): a call fades the drop into a recent LOW,
+    # a put fades the rise into a recent HIGH — and the operator often enters
+    # AFTER the turn begins ("wait for the clear break"), so the last leg may
+    # already point his way. Measure the flush INTO the thesis-opposite
+    # extreme of the last 60m, its age, and its duration.
+    w60 = max(0, int(np.searchsorted(mins, mins[idx] - 60)))
+    if idx > w60 + 3 and math.isfinite(atr) and atr > 0:
+        if thesis_dir > 0:
+            fx = w60 + int(np.argmin(lo[w60 : idx + 1]))
+            px_fx = float(lo[fx])
+            pre = w60 + int(np.argmax(hi[w60 : fx + 1])) if fx > w60 else fx
+            mag = (float(hi[pre]) - px_fx) / px / atr
+        else:
+            fx = w60 + int(np.argmax(hi[w60 : idx + 1]))
+            px_fx = float(hi[fx])
+            pre = w60 + int(np.argmin(lo[w60 : fx + 1])) if fx > w60 else fx
+            mag = (px_fx - float(lo[pre])) / px / atr
+        f["fade_flush_atr"] = mag
+        f["fade_ext_age_min"] = int(mins[idx] - mins[fx])
+        f["fade_flush_dur_min"] = max(1, int(mins[fx] - mins[pre]))
+    else:
+        f["fade_flush_atr"] = float("nan")
+        f["fade_ext_age_min"], f["fade_flush_dur_min"] = 10**6, 10**6
+    # Multi-day run context (operator: exhaustion "works on multi-day bars" —
+    # near-open entries fade overnight/multi-session runs the intraday windows
+    # cannot see). Net move over prior k sessions, in day-ATRs.
+    f["day_move_atr"] = (
+        (px / pc - 1.0) / atr if pc and math.isfinite(atr) and atr > 0 else float("nan")
+    )
+    for k in (3, 5):
+        f[f"ret_{k}d_atr"] = bars.prior_run_atr(day, k)
+    # Base-edge positioning (R-spec a): where the entry sits inside the last
+    # 120m range, signed toward the thesis direction (+1 = at the edge it
+    # intends to break).
+    base_j = max(0, int(np.searchsorted(mins, mins[idx] - 120)))
+    b_hi, b_lo = float(hi[base_j : idx + 1].max()), float(lo[base_j : idx + 1].min())
+    if b_hi > b_lo:
+        f["edge_pos"] = (px - (b_hi + b_lo) / 2.0) / ((b_hi - b_lo) / 2.0) * thesis_dir
+    else:
+        f["edge_pos"] = float("nan")
     return f
 
 
@@ -396,96 +486,165 @@ PLAYBOOKS = (
 )
 
 
-def tag_episode(f: dict, thesis_dir: int) -> tuple[str, str, str]:
-    """Deterministic spec-citing tagger. Returns (tag, confidence, reason).
+# v3 thresholds — FIT to the round-1 gold set (22 operator labels), see
+# scripts/fit_tagger_thresholds.py. Round-2 adjudication validates these
+# out-of-sample; they are calibration, not spec.
+DEFAULT_THRESHOLDS: dict[str, float] = {
+    # FROZEN 2026-07-11 from scripts/fit_tagger_thresholds.py on the round-1
+    # gold set (10/22 explicit, 15/21 silent). Round 2 validates out-of-sample.
+    "leg_atr_strong": 0.25, # outsized flush → FLASH HIGH before anything else
+    "leg_atr_high": 0.12,   # min faded-flush size (day-ATR frac); FLASH MEDIUM
+    "leg_age_max": 30,      # max minutes since the flush extreme
+    "leg_dur_max": 35,      # max flush duration in minutes (a flash is FAST)
+    "run_120_atr": 0.40,    # intraday 120m run, in day-ATRs
+    "run_day_atr": 0.60,    # today-so-far vs prior close, in day-ATRs
+    "run_3d_atr": 0.80,     # prior-3-session net run
+    "run_5d_atr": 1.00,     # prior-5-session net run
+    "stretch_hi": 70,       # stretch percentile that upgrades EXH to HIGH
+}
 
-    Precedence when several playbooks match: FLASH beats EXHAUSTION only when
-    the flush is fresh AND violent (P0 boundary rule); reversal tags beat
-    TREND/RANGE (a counter-move thesis cannot be continuation); TREND beats
-    RANGE when a same-session trend is established (T5 default)."""
+
+def tag_episode(
+    f: dict, thesis_dir: int, th: dict[str, float] | None = None
+) -> tuple[str, str, str]:
+    """Deterministic spec-citing tagger, v3 (thresholds fit to the round-1
+    gold set, 2026-07-11). Returns (tag, confidence, reason).
+
+    Gold-set lessons encoded:
+    - FLASH = the operator fades the LAST LEG into a fresh extreme; his real
+      flashes are small in day-ATR terms (median ~0.2), so magnitude bars are
+      fit, not assumed — speed (leg duration) matters more than size.
+    - EXHAUSTION = a run against the thesis at ANY scale — intraday 120m,
+      today-so-far, or the prior 3/5 sessions (near-open entries fade
+      multi-day runs the intraday windows cannot see).
+    - Boundary: if both fire and the leg points the SAME way as a bigger-scale
+      run, the leg is just that run's latest push → EXHAUSTION; a leg with no
+      bigger run behind it → FLASH.
+    - RANGE: compression alone never tags (round 1: 0/8); needs edge
+      positioning toward the break; caps at MEDIUM.
+    """
     if not f:
         return "UNCLASSIFIED", "NONE", "no bar context (missing day or pre-open entry)"
+    t = dict(DEFAULT_THRESHOLDS)
+    if th:
+        t.update(th)
 
-    counter_move = f["move_dir"] == -thesis_dir and abs(f["ret_15"]) > 0
-    against_stretch = (
-        math.isfinite(f["vwap_dist_atr"]) and np.sign(f["vwap_dist_atr"]) == -thesis_dir
-    )
-    fresh = f["fresh_extreme_min"] <= 15
-    violent = (f.get("flash_mag") or 0) >= 2.5 or (
-        f["run_len"] >= 4 and (f.get("vol_ratio_15") or 0) >= 2.5
-    )
     stretch_p = f.get("stretch_pctile", float("nan"))
+    flush = f.get("fade_flush_atr", float("nan"))
+    flush_age = f.get("fade_ext_age_min", 10**6)
+    flush_dur = f.get("fade_flush_dur_min", 10**6)
 
-    # FLASH_REVERSAL — F1/F5 + operator: flash is AGAINST the recent trend,
-    # faded fresh (extreme ≤ ~15 min old, ≥ ~2.5× normal 15-min range).
-    if counter_move and fresh and violent:
+    # Strong flash first (v4): the operator's flash plays often sit INSIDE
+    # multi-day runs (he flash-buys a violent flush within a multi-day slide),
+    # so a bigger run must NOT steal a fresh-and-fast OUTSIZED flush fade.
+    # Weak flushes are checked LAST — a small dip to the 10-VMA in a trend is
+    # his TREND pullback entry, not a flash (the two are feature-identical at
+    # small magnitudes; structure decides).
+    flash_strong = (
+        math.isfinite(flush)
+        and flush >= t["leg_atr_strong"]
+        and flush_age <= t["leg_age_max"]
+        and flush_dur <= t["leg_dur_max"]
+    )
+    flash_weak = (
+        math.isfinite(flush)
+        and flush >= t["leg_atr_high"]
+        and flush_age <= t["leg_age_max"]
+        and flush_dur <= t["leg_dur_max"]
+    )
+    if flash_strong:
         return (
             "FLASH_REVERSAL",
             "HIGH",
-            f"F1/F5: fades a fresh violent flush ({f['flash_mag']:.1f}x typical 15m move, "
-            f"extreme {f['fresh_extreme_min']}m ago, run {f['run_len']})",
+            f"F1'': fades a {flush:.2f}-ATR flush into the extreme {flush_age}m ago "
+            f"({flush_dur}m leg)",
         )
-    # EXHAUSTION_REVERSAL — operator reframe: stretch at the ~85–90th pctile
-    # (any symbol), entry = inability to cross the prior extreme.
-    if against_stretch and math.isfinite(stretch_p) and stretch_p >= 88 and (
-        f["failed_retest"] or not fresh
-    ):
-        return (
-            "EXHAUSTION_REVERSAL",
-            "HIGH",
-            f"E1': stretch at p{stretch_p:.0f} vs own history"
-            + (", failed retest of extreme" if f["failed_retest"] else
-               f", extreme {f['fresh_extreme_min']}m old (mature)"),
+    # Multi-scale runs against the thesis (E-signature).
+    scales = [
+        ("120m", f.get("ret_120_atr", float("nan")), t["run_120_atr"]),
+        ("day", f.get("day_move_atr", float("nan")), t["run_day_atr"]),
+        ("3d", f.get("ret_3d_atr", float("nan")), t["run_3d_atr"]),
+        ("5d", f.get("ret_5d_atr", float("nan")), t["run_5d_atr"]),
+    ]
+    exh_hits = [
+        name
+        for name, val, bar in scales
+        if math.isfinite(val) and abs(val) >= bar and np.sign(val) == -thesis_dir
+    ]
+    if exh_hits:
+        strong = (
+            len(exh_hits) >= 2
+            or (math.isfinite(stretch_p) and stretch_p >= t["stretch_hi"])
+            or bool(f.get("failed_retest"))
         )
-    if counter_move and fresh and (f.get("flash_mag") or 0) >= 1.8:
-        return (
-            "FLASH_REVERSAL",
-            "MEDIUM",
-            f"F1 partial: fresh counter-move fade at {f['flash_mag']:.1f}x typical "
-            f"(below the 2.5x bar)",
+        why = (
+            f"E1''': fades a no-breath run at scale(s) {'+'.join(exh_hits)}"
+            + (f", stretch p{stretch_p:.0f}" if math.isfinite(stretch_p) else "")
+            + (", failed retest" if f.get("failed_retest") else "")
         )
-    if against_stretch and math.isfinite(stretch_p) and stretch_p >= 80:
-        return (
-            "EXHAUSTION_REVERSAL",
-            "MEDIUM",
-            f"E1' partial: stretch p{stretch_p:.0f} (below the p88 bar)",
-        )
-    # TREND_CONTINUATION — T1/T2 + operator anchor: with-trend thesis, 10 VMA
-    # touch (or shallow pullback) in an established same-session trend.
-    with_trend = f["trend_dir"] == thesis_dir and f["trend_side_frac_60"] >= 0.75
+        return "EXHAUSTION_REVERSAL", "HIGH" if strong else "MEDIUM", why
+    # TREND_CONTINUATION — with-trend thesis, 10-VMA touch or shallow pullback
+    # in an established same-session trend. Runs BEFORE weak flashes: a small
+    # dip to the 10-VMA in a trend is his TREND entry, not a flash.
+    with_trend = (
+        f.get("trend_dir", 0) == thesis_dir and f.get("trend_side_frac_60", 0) >= 0.75
+    )
     pull = f.get("pullback_depth_frac", float("nan"))
-    if with_trend and (f["touched_vma10"] or (math.isfinite(pull) and 0.1 <= pull <= 0.6)):
-        anchor = "10-VMA touch" if f["touched_vma10"] else f"pullback {pull:.0%} of leg"
+    if with_trend and (
+        f.get("touched_vma10") or (math.isfinite(pull) and 0.1 <= pull <= 0.6)
+    ):
+        anchor = "10-VMA touch" if f.get("touched_vma10") else f"pullback {pull:.0%} of leg"
         return (
             "TREND_CONTINUATION",
             "HIGH",
             f"T1/T2': with-trend ({f['trend_side_frac_60']:.0%} of last 60m one side of "
             f"VWAP), {anchor}",
         )
-    # RANGE_EXPANSION — R1/R2 compression breakout, or operator's earnings-gap
-    # continuation sub-case.
-    width_p = f.get("range_width_90m_pctile", float("nan"))
-    if (
-        math.isfinite(width_p)
-        and width_p <= 30
-        and f["minutes_since_open"] >= 90
-    ):
+    if flash_weak:
         return (
-            "RANGE_EXPANSION",
-            "HIGH",
-            f"R1: 90m range width at p{width_p:.0f} (compressed base), positioned for expansion",
+            "FLASH_REVERSAL",
+            "MEDIUM",
+            f"F1'' partial: fades a {flush:.2f}-ATR flush, extreme {flush_age}m ago "
+            f"(below the {t['leg_atr_strong']:.2f}-ATR strong bar)",
         )
+    against_stretch = (
+        math.isfinite(f.get("vwap_dist_atr", float("nan")))
+        and np.sign(f["vwap_dist_atr"]) == -thesis_dir
+    )
+    if against_stretch and math.isfinite(stretch_p) and stretch_p >= 88:
+        return (
+            "EXHAUSTION_REVERSAL",
+            "MEDIUM",
+            f"E1': stretch p{stretch_p:.0f} vs own history, no run detected at any scale",
+        )
+    # RANGE_EXPANSION — gap continuation (operator sub-case), or compressed
+    # base with edge positioning toward the break. MEDIUM cap (round 1: 0/8).
     gap = f.get("gap_pct", float("nan"))
     if (
         math.isfinite(gap)
         and abs(gap) >= 0.015
         and np.sign(gap) == thesis_dir
-        and f["minutes_since_open"] <= 120
+        and f.get("minutes_since_open", 0) <= 120
     ):
         return (
             "RANGE_EXPANSION",
             "MEDIUM",
             f"R-gap (operator): {gap:+.1%} gap continuation within first 2h",
+        )
+    width_p = f.get("range_width_90m_pctile", float("nan"))
+    edge = f.get("edge_pos", float("nan"))
+    if (
+        math.isfinite(width_p)
+        and width_p <= 25
+        and f.get("minutes_since_open", 0) >= 90
+        and math.isfinite(edge)
+        and edge >= 0.4
+    ):
+        return (
+            "RANGE_EXPANSION",
+            "MEDIUM",
+            f"R1': compressed base (width p{width_p:.0f}) entered at the break-side edge "
+            f"(pos {edge:+.2f})",
         )
     if with_trend:
         return (
@@ -497,8 +656,7 @@ def tag_episode(f: dict, thesis_dir: int) -> tuple[str, str, str]:
     return (
         "UNCLASSIFIED",
         "NONE",
-        f"no rule met: move_dir={f['move_dir']:+d} vs thesis {thesis_dir:+d}, "
-        f"stretch p{stretch_p:.0f}, trend {f['trend_side_frac_60']:.0%}, "
-        f"width p{width_p:.0f}" if math.isfinite(width_p) else
-        f"no rule met: stretch p{stretch_p:.0f}, trend {f['trend_side_frac_60']:.0%}",
+        f"no rule met: flush {flush:.2f}ATR/{flush_age}m, "
+        f"runs none@{{120m,day,3d,5d}}, stretch p{stretch_p:.0f}, trend "
+        f"{f.get('trend_side_frac_60', 0):.0%}",
     )
