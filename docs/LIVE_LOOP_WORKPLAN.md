@@ -263,6 +263,20 @@ morning-bias overlay; his take/skip decisions become labeled data to LEARN the s
 alternatives: selection-function modeling offline, execution/cost attack, single-name habitat
 tests. Program paused here pending operator direction — deployment choices are his lane.
 
+### 2026-07-11 (Fri) — operator directive: combine all three; the Flywheel plan
+Operator (correctly) pushed back on picking one road: as a trader, setup + selection + execution
+are one P&L stack — attack all three concurrently. Plan written into
+`PLAYBOOK_DISCOVERY_PROGRAM.md` § "The Flywheel": **Phase A** (wk 1) consultation feed (signals
+only) + fire ledger with real-IV EOD outcomes + ZERO-EFFORT take/skip labeling by matching his
+manual fills to fires; **Phase B** (wks 1–3) selection-function research on 48k fires × his 1,465
+entries → trader-readable rule card, MERGED with workplan #4 morning-bias (same day-type feature,
+one build two consumers), OOS-tested; **Phase C** (wks 2–4) measured costs via bhiksha
+passive/urgent fill quality (replace the 2%/4% guess) + habitat extension (EXH p85 any-symbol,
+RANGE on semis). Exit condition: any detector×selection×cost combo clearing the original P3 bar
+OOS → shadow lane with native profile via the normal funnel. Operator picks: alert surface
+(recommended Telegram/lathi). Next build: A2 fire ledger + A3 fill-matching (no operator gate),
+then A1 feed on his surface choice.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),

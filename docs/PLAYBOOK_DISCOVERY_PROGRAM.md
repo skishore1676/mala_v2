@@ -150,6 +150,60 @@ with kamandal real-IV calibration where snapshots exist, cost/spread haircut app
   yardstick — the terrain map is the deliverable, not a bare verdict.
 - Output cap: **2–3 ranked candidates per playbook** enter P4; the rest stay on the map.
 
+## The Flywheel — combined plan after P3 (operator-directed, 2026-07-11)
+
+P3 measured the P&L stack: **setup** (detectors, +1.5–3% gross/trade) + **selection** (the
+operator's fire-picking, worth +2–4%) − **execution** (costs, −2–4%). No single lever clears the
+bar; run all three concurrently — they multiply, and each feeds the next:
+
+```
+detector fires → consultation feed → operator takes/skips (inferred from his fills)
+      ↑                                            ↓
+  habitat extension                     selection-function research
+      ↑                                            ↓
+  measured real costs  ←  execution study  ←  filtered feed (OOS-tested)
+      → any combo clearing the P3 bar OOS → shadow lane via the normal funnel
+```
+
+### Phase A — consultation feed + selection-data capture (week 1)
+- **A1**: daily detector feed: FLASH/EXH/TREND fires on IWM/SPY with strength, tape context, and
+  the fire's features; delivered via the existing operator surface (recommended: Telegram via
+  lathi-bus; alternatives: kamandal advisory, Sheet tab — operator picks). Signals only, no
+  order suggestions, no live-money surface.
+- **A2**: fire ledger — every fire logged with full features; each evening a deterministic job
+  computes the fire's realized option-path outcome using **real same-day IV** (kamandal snapshots,
+  accruing since 2026-06-15) — live evidence replaces modeled-IV backtests going forward.
+- **A3**: take/skip labeling WITHOUT operator effort — cross-reference his manual fills
+  (public_api_trading_v3 exports) against the fire ledger; a fill within ±10 min of a matching
+  fire = TAKE, else SKIP. His normal trading becomes the training data.
+- **Success**: feed live; ≥90% of his manual IWM/SPY entries match a ledger fire (coverage
+  check — if his entries DON'T match fires, P2 recall was overstated and we learn that too).
+
+### Phase B — selection-function research (weeks 1–3, parallel)
+- **B1**: mine the 48k historical fires vs his 1,465 entries: what separates taken from skipped?
+  Candidate features: tape regime (his bull/bear/tussle call), time-of-day, strength, event
+  proximity, day type. Deliverable: a **trader-readable rule card** (e.g. "fade sales only in
+  up-tape, strength ≥ p75, before 11:00"), not a black box.
+- **B2**: MERGE with workplan #4 (morning bias overlay) — the day-type call that conditions which
+  playbooks are on is the selection function's biggest feature; one build, two consumers.
+- **B3**: OOS test (fit ≤2024, test 2025–26; the honest version of the S2 experiment).
+- **Success**: top-quartile-scored fires beat bottom-quartile by ≥2%/trade gross OOS.
+
+### Phase C — execution + habitat (weeks 2–4, parallel)
+- **C1**: replace the 2%/4% cost GUESS with a measured number: bhiksha already has
+  passive/urgent entry-pricing modes — measure realized entry quality on shadow/live fills per
+  symbol × DTE; plus spread stats from option previews.
+- **C2**: habitat extension — rerun the P3 harness on his single-name universe (TSLA/NVDA/AMD/
+  SMH…, bar cache permitting): EXHAUSTION at his p85 spec ("any symbol as long as it's really
+  stretched") and RANGE on semis (its actual home, untested so far).
+- **Success**: a defensible per-symbol cost table; a symbol × playbook net-expectancy matrix.
+
+### Exit condition (P4 revisited)
+Any detector × selection-rule × measured-cost combination that clears the ORIGINAL P3 bar
+out-of-sample → promoted to a bhiksha shadow lane through the normal Sheet funnel — with its
+native profile, which finally puts FLASH/EXHAUSTION exits live in the loop. Until then, the
+consultation feed is the live surface and the flywheel keeps banking data.
+
 ## §P4 — Promotion to shadow
 
 Candidates flow through the existing funnel: Mala_Evidence Sheet rows with the profile identity in
