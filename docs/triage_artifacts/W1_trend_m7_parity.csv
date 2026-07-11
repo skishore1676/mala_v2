@@ -1,0 +1,9 @@
+family,symbol,direction,provider_signal_overlap,provider_validation_status,method
+market_impulse,QQQ,short,0.9522,provider_pass,vwma_stack
+market_impulse,PDD,long,0.9646,provider_pass,vwma_stack
+market_impulse,WFC,long,0.9788,provider_pass,vwma_stack
+market_impulse,RBLX,long,0.9787,provider_pass,vwma_stack
+market_impulse,XOM,long,0.9715,provider_pass,vwma_stack
+market_impulse,AXP,long,0.9713,provider_pass,vwma_stack
+opening_drive,SNOW,short,0.9999,provider_pass,price_ema_stack
+opening_drive,BAC,short,0.9994,provider_pass,price_ema_stack

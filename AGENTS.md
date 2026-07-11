@@ -51,3 +51,7 @@ For research work, read `agent.md` first, then follow the relevant skill:
 - `skills/playbook-builder/SKILL.md` for creating or extending Mala 2.2 playbooks.
 - `skills/catalog-steward/SKILL.md` for Mala/Bhiksha evidence and active-strategy review.
 - `skills/playbook-replay-consultation/SKILL.md` for chart-first manual replay review of playbook consultation rows.
+
+For **triage work** (sweeping new symbols / an existing family into shadow-ready candidates), read
+`docs/TRIAGE_RUNBOOK.md` first — the repeatable pipeline, gate definitions, and the landmines
+(direction-consistency, funnel-authoritative pass, M7 volume trap, IV-is-not-a-gate).

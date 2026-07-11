@@ -1,0 +1,3 @@
+family,symbol,direction,provider_signal_overlap,provider_validation_status,method
+elastic_band,SNOW,short,0.9848,provider_pass,stretch_sign
+elastic_band,BA,long,0.9903,provider_pass,stretch_sign
