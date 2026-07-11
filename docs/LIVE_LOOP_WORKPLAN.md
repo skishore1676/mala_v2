@@ -277,6 +277,19 @@ OOS → shadow lane with native profile via the normal funnel. Operator picks: a
 (recommended Telegram/lathi). Next build: A2 fire ledger + A3 fill-matching (no operator gate),
 then A1 feed on his surface choice.
 
+### 2026-07-11 (Fri) — Flywheel Phase A BUILT; coverage honest at 61-70%, FLASH strong
+Operator picked Telegram. Built + ran all of Phase A: **A1** `scripts/flywheel_daily.py` daily card
+(ledger logs all fires; card applies HIS thresholds — exh≥p85, flash≥0.20ATR, drop whipsaw pairs;
+Jun-15 sample = 5 of 14 shown), sample sent to his Telegram, 4 tests green; **A2** fire ledger with
+real-kamandal-IV per-fire option outcomes (Jun-15: FLASH +11.4% / EXH −2.7% / TREND −2.6% gross);
+**A3** fill↔fire matcher RUN — **coverage 61% sweep / 70% at-entry-bar, below the 90% bar** but the
+breakdown is the finding: **FLASH 93%** (his flash entries genuinely fire the detector — trust the
+flash feed), EXH 70% (fork-b), TREND 47% (T-C is one flavor of his trend entries), OTHER 0%
+(correct). **Take rate ≈3% = 1 fire in 33** — the selection gap as a rate, Phase B's target.
+`flywheel_take_skip.csv` = training set ready. LIVE daily scheduling is an oldmac launchd deploy
+(fresh bars/IV there) — teed up, not pushed (touches the live machine). Next: Phase B selection
+mining on the take/skip set + morning-bias merge; Phase C cost measurement + single-name habitat.
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),

@@ -165,19 +165,26 @@ detector fires → consultation feed → operator takes/skips (inferred from his
       → any combo clearing the P3 bar OOS → shadow lane via the normal funnel
 ```
 
-### Phase A — consultation feed + selection-data capture (week 1)
-- **A1**: daily detector feed: FLASH/EXH/TREND fires on IWM/SPY with strength, tape context, and
-  the fire's features; delivered via the existing operator surface (recommended: Telegram via
-  lathi-bus; alternatives: kamandal advisory, Sheet tab — operator picks). Signals only, no
-  order suggestions, no live-money surface.
-- **A2**: fire ledger — every fire logged with full features; each evening a deterministic job
-  computes the fire's realized option-path outcome using **real same-day IV** (kamandal snapshots,
-  accruing since 2026-06-15) — live evidence replaces modeled-IV backtests going forward.
-- **A3**: take/skip labeling WITHOUT operator effort — cross-reference his manual fills
-  (public_api_trading_v3 exports) against the fire ledger; a fill within ±10 min of a matching
-  fire = TAKE, else SKIP. His normal trading becomes the training data.
-- **Success**: feed live; ≥90% of his manual IWM/SPY entries match a ledger fire (coverage
-  check — if his entries DON'T match fires, P2 recall was overstated and we learn that too).
+### Phase A — consultation feed + selection-data capture (week 1) — BUILT 2026-07-11
+- **A1 (Telegram chosen)**: `scripts/flywheel_daily.py` → daily card via lathi-bus (operator DM).
+  Ledger logs ALL fires; the CARD applies the operator's own thresholds (exhaustion ≥ p85 stretch,
+  flash ≥ 0.20 ATR, drop same-bar opposite-direction whipsaw pairs) so it's trader-credible — on
+  the Jun-15 backfill sample, 5 of 14 swept fires cleared. Signals only, no order surface. Sample
+  sent + tests green (`tests/test_flywheel_daily.py`). LIVE daily scheduling = an oldmac launchd
+  step (fresh bars + fresh kamandal IV live there; local caches stale) — deploy pending.
+- **A2**: fire ledger (`flywheel_fire_ledger.csv`, gitignored) — every fire with features + its
+  native-profile option-path outcome using **real kamandal IV**. Jun-15 sanity: FLASH +11.4%,
+  EXH −2.7%, TREND −2.6% gross (n small) — flash carries, matching P3's regime signal.
+- **A3 (RUN 2026-07-11)**: `scripts/flywheel_fill_match.py` matched his 275 IWM/SPY episodes to
+  the 8,614 in-window fires. **Coverage 61% sweep-match / 70% at his exact entry bar** — BELOW the
+  90% bar, and the honest breakdown (recorded, not smoothed): FLASH **93%** (his flash entries DO
+  land on fires — the strong signal), EXHAUSTION 70% (the known fork-b), TREND 47% (the T-C
+  "active pullback" rule is one flavor of his trend entries; he enters trends other ways too),
+  OTHER/UNCLASSIFIED 0% (correct — not playbook trades). **Take rate ≈ 3% (1 fire in 33)** — the
+  selection gap quantified as a rate; Phase B's target. `flywheel_take_skip.csv` = the training set.
+- **Success (revised, honest)**: feed built + sample delivered ✓; coverage bar MET for FLASH
+  (93%), MISSED book-wide (61-70%) — the gap is a real finding (T-C detector is narrow; EXH is
+  fork-b), fed forward to Phase B/C rather than papered over.
 
 ### Phase B — selection-function research (weeks 1–3, parallel)
 - **B1**: mine the 48k historical fires vs his 1,465 entries: what separates taken from skipped?
