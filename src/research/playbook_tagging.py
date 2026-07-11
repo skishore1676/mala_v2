@@ -464,6 +464,29 @@ def extract_features(bars: SymbolBars, entry_dt: datetime, thesis_dir: int) -> d
     )
     for k in (3, 5):
         f[f"ret_{k}d_atr"] = bars.prior_run_atr(day, k)
+    # Exhaustion TRIGGER (operator's entry signal: the move is "met with jerk"
+    # and cannot cross the previous high/low easily). Thesis-aware: a put
+    # fades an up-run, so the reference extreme is the day HIGH; measure how
+    # long since a new extreme printed (stall) and how far the last 20m retest
+    # fell short of it (in day-ATRs).
+    if math.isfinite(atr) and atr > 0:
+        if thesis_dir < 0:
+            ref_i = int(np.argmax(hi[: idx + 1]))
+            ref_px = float(hi[ref_i])
+            recent = float(hi[max(0, idx - 20) : idx + 1].max())
+            gap = (ref_px - recent) / px / atr
+        else:
+            ref_i = int(np.argmin(lo[: idx + 1]))
+            ref_px = float(lo[ref_i])
+            recent = float(lo[max(0, idx - 20) : idx + 1].min())
+            gap = (recent - ref_px) / px / atr
+        f["fade_stall_min"] = int(mins[idx] - mins[ref_i])
+        f["fade_retest_gap_atr"] = gap
+    else:
+        f["fade_stall_min"], f["fade_retest_gap_atr"] = 10**6, float("nan")
+    f["ret_15_atr"] = (
+        f["ret_15"] / atr if math.isfinite(atr) and atr > 0 else float("nan")
+    )
     # Base-edge positioning (R-spec a): where the entry sits inside the last
     # 120m range, signed toward the thesis direction (+1 = at the edge it
     # intends to break).

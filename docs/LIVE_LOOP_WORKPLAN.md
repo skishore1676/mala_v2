@@ -218,6 +218,21 @@ a third time → resolved empirically and STOPPED re-asking (X3 ≈ 20-25% deriv
 table, flagged unconfirmed). **P2 (metric library, "fires where he fired") is next**: detectors
 per playbook scored on recall vs the frozen gold entries at ≥5× lift, on IWM/SPY first.
 
+### 2026-07-11 (Sat, night) — P2 first sweeps: FLASH and TREND detectors PASS, EXHAUSTION forks
+Detector harness shipped (`scripts/p2_detector_scorecard.py`): recall from stored at-entry
+features, lift/fires-day from a 5-min full-session sweep (IWM/SPY, 2025-05→2026-04, 73.8k
+bar-direction evals). **FLASH PASS**: F-C (≥0.15-ATR flush into an extreme ≤15m old) = 59% HIGH
+recall, 7.4× lift, 4 fires/day. **TREND PASS**: T-C (established trend + ACTIVE stalling pullback
+≥0.08 ATR against trend) = 50% recall, 8.7× lift — the plain "in-trend near VMA" fired on 37% of
+all bars (2.7×); requiring the pull to be active and recent bought the selectivity. **EXHAUSTION
+= fork (b)**: run-context recalls 97% at 1.9× lift (some multi-scale run always exists to fade);
+my stall+retest-gap trigger got selectivity but 17% recall — wrong framing: per the operator's E2
+spec he enters AFTER the failed retest + break of the last consolidation, so the trigger must be
+an EVENT in the lookback (failed retest occurred within last N min, vs multi-day reference
+extremes), not proximity-to-extreme at entry. RANGE: 0 gold on IWM/SPY (semis play) — defers to
+P3 hypothesis-driven. Corpus re-frozen with trigger features (tags verified byte-identical).
+Next build increment: event-based E-trigger, then P2 closes or EXH goes to P3 as fork(b).
+
 ### 2026-07-06 (Mon, morning) — sprint machinery confirmed live; routine morning
 First trading day after the evening-sprint deploy chain (oldmac @ 0763258). Session started clean:
 budget prefetched (1 row, **zero** no_cash_budget_day / budget_unavailable events — P2 fix holding),
