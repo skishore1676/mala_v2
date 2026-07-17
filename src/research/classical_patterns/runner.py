@@ -32,9 +32,13 @@ from .lifecycle import derive_lifecycle
 from .readiness import audit_local_cache, load_readiness_report, write_readiness_report
 from .rectangle import EnumerationResult, enumerate_rectangles
 from .review import (
+    build_semantic_calibration_batch_v2,
     build_semantic_review_batch,
+    ingest_calibration_review_responses_v2,
     ingest_review_responses,
+    render_calibration_obsidian_gate_v2,
     render_obsidian_review_card,
+    verify_semantic_calibration_batch_v2,
     verify_semantic_batch,
 )
 
@@ -478,9 +482,40 @@ def build_parser() -> argparse.ArgumentParser:
     semantic.add_argument("--eligibility-end", type=_parse_date)
     semantic.add_argument("--output-dir", type=Path, required=True)
 
+    calibration_v2 = subparsers.add_parser("semantic-calibration-batch-v2")
+    calibration_v2.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    calibration_v2.add_argument("--symbols", required=True)
+    calibration_v2.add_argument("--start", required=True, type=_parse_date)
+    calibration_v2.add_argument("--end", required=True, type=_parse_date)
+    calibration_v2.add_argument("--data-dir", type=Path)
+    calibration_v2.add_argument("--readiness-json", type=Path, required=True)
+    calibration_v2.add_argument("--batch-id", required=True)
+    calibration_v2.add_argument("--confirmed-signal-count", type=int, default=6)
+    calibration_v2.add_argument("--qualified-no-trigger-count", type=int, default=6)
+    calibration_v2.add_argument("--rejected-geometry-count", type=int, default=6)
+    calibration_v2.add_argument("--eligibility-start", type=_parse_date)
+    calibration_v2.add_argument("--eligibility-end", type=_parse_date)
+    calibration_v2.add_argument("--exclude-manifest", type=Path, action="append", default=[])
+    calibration_v2.add_argument("--output-dir", type=Path, required=True)
+
     verify = subparsers.add_parser("verify-semantic-batch")
     verify.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     verify.add_argument("--batch-dir", type=Path, required=True)
+
+    verify_calibration_v2 = subparsers.add_parser("verify-semantic-calibration-batch-v2")
+    verify_calibration_v2.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    verify_calibration_v2.add_argument("--batch-dir", type=Path, required=True)
+
+    ingest_calibration_v2 = subparsers.add_parser("ingest-semantic-calibration-responses-v2")
+    ingest_calibration_v2.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    ingest_calibration_v2.add_argument("--batch-dir", type=Path, required=True)
+    ingest_calibration_v2.add_argument("--responses-csv", type=Path)
+
+    render_calibration_gate_v2 = subparsers.add_parser("render-semantic-calibration-gate-v2")
+    render_calibration_gate_v2.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    render_calibration_gate_v2.add_argument("--batch-dir", type=Path, required=True)
+    render_calibration_gate_v2.add_argument("--card-id", action="append", required=True)
+    render_calibration_gate_v2.add_argument("--output", type=Path, required=True)
 
     ingest = subparsers.add_parser("ingest-semantic-responses")
     ingest.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -540,6 +575,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"BATCH_ID={receipt['batch_id']}")
         print(f"CANONICAL_HASH={receipt['canonical_hash']}")
         return 0
+    if args.command == "verify-semantic-calibration-batch-v2":
+        receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic calibration batch uses a stale config hash.")
+        print("STATUS=valid")
+        print(f"BATCH_ID={receipt['batch_id']}")
+        print(f"CANONICAL_HASH={receipt['canonical_hash']}")
+        return 0
+    if args.command == "ingest-semantic-calibration-responses-v2":
+        receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic calibration batch uses a stale config hash.")
+        result = ingest_calibration_review_responses_v2(
+            batch_dir=args.batch_dir,
+            responses_csv=args.responses_csv,
+        )
+        print(f"STATUS={result.status}")
+        print(f"REVIEWED={result.reviewed_count}")
+        print(f"SCORECARD={result.scorecard_path}")
+        return 0
+    if args.command == "render-semantic-calibration-gate-v2":
+        receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic calibration batch uses a stale config hash.")
+        output = render_calibration_obsidian_gate_v2(
+            batch_dir=args.batch_dir,
+            output_path=args.output,
+            card_ids=args.card_id,
+        )
+        print("STATUS=complete")
+        print(f"OUTPUT={output}")
+        return 0
     if args.command == "ingest-semantic-responses":
         receipt = verify_semantic_batch(args.batch_dir)
         if receipt.get("config_hash") != config.source_hash:
@@ -588,6 +655,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("READINESS=semantic_pilot")
         print(f"BATCH_ID={result.batch_id}")
         print(f"SELECTED={result.selected_signal_count}")
+        print(f"CANONICAL_HASH={result.canonical_hash}")
+        print(f"REVIEW_INDEX={result.review_index_path}")
+        return 0
+    if args.command == "semantic-calibration-batch-v2":
+        symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]
+        daily = _load_cache(
+            symbols,
+            start=args.start,
+            end=args.end,
+            data_dir=args.data_dir,
+            config=config,
+        )
+        result = build_semantic_calibration_batch_v2(
+            daily,
+            config=config,
+            readiness=load_readiness_report(args.readiness_json),
+            output_dir=args.output_dir,
+            batch_id=args.batch_id,
+            confirmed_signal_count=args.confirmed_signal_count,
+            qualified_no_trigger_count=args.qualified_no_trigger_count,
+            rejected_geometry_count=args.rejected_geometry_count,
+            eligibility_start=args.eligibility_start,
+            eligibility_end=args.eligibility_end,
+            exclude_manifests=args.exclude_manifest,
+        )
+        print("STATUS=complete")
+        print("READINESS=semantic_calibration")
+        print(f"BATCH_ID={result.batch_id}")
+        print(f"SELECTED={result.selected_count}")
         print(f"CANONICAL_HASH={result.canonical_hash}")
         print(f"REVIEW_INDEX={result.review_index_path}")
         return 0

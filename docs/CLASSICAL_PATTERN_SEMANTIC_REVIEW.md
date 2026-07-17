@@ -159,3 +159,83 @@ no economic fields.
   and config under version 2, then create a new untouched semantic round.
 - Do not run an economic holdout until semantic rules and a licensed
   point-in-time data manifest are frozen.
+
+## Round 2 — Class-Hidden Calibration Packet
+
+Round 2 is a separate, non-executable projection schema
+(`ClassicalPatternSemanticCalibrationBatchV2`). It keeps the frozen
+`classical-rectangle-breakout-daily@1` detector and every Round 1 artifact
+unchanged. The new packet asks whether a reviewer can distinguish genuine
+rectangles from close-but-not-tradeable and clearly non-rectangle as-of cases
+without being told the detector's prior conclusion.
+
+The private, hashed manifest contains three exact causal cohorts:
+
+- `confirmed_signal`: one representative close-confirmed detector signal;
+- `qualified_no_trigger`: a qualified base without a close-confirmed trigger;
+- `rejected_geometry`: a case rejected for insufficient confirmed boundary
+  touches.
+
+The public cards and SVGs do not contain those labels, direction, boundaries,
+rejection reasons, overlays, or a machine verdict. They show neutral raw daily
+OHLC bars for the exact causal candidate window through the evaluation cutoff
+and report its actual 21/41/61 displayed bars. This keeps the review target
+aligned with the hidden detector case without claiming that the fixed window is
+a natural base. The final pale band means
+**evaluation cutoff**, not necessarily a breakout. Each response independently
+records `strict_rectangle_validity` (`valid|invalid|ambiguous`) and
+`as_of_trade_worthiness` (`trade|watch|no_trade|ambiguous`), keyed by batch,
+card, reviewer ID, and review pass.
+
+Cards use only current/past bars. The manifest retains source-slice hashes,
+exact class counts, causal diagnostics for confirmed signals, and explicit
+null diagnostics for geometry-rejected cases. It never reads lifecycle,
+outcomes, trades, P&L, or backtest receipts. V2 refuses a class shortage rather
+than silently substituting a different class or split.
+
+Confirmed-signal diagnostics define anchor span as inclusive sessions and keep
+two distinct prior-close counts: `prior_central_rail_excursion_count` is a
+same-direction close beyond the central boundary, while
+`prior_full_trigger_close_count` requires the exact directional confirmation
+threshold (tolerance edge plus configured breakout buffer). A central-rail
+excursion is therefore not retroactively called a trigger.
+
+Example regeneration (the defaults request 6/6/6 cards):
+
+```bash
+uv run --frozen python -m src.research.classical_patterns.runner semantic-calibration-batch-v2 \
+  --symbols "$symbols" \
+  --start 2021-09-01 \
+  --end 2022-12-31 \
+  --eligibility-start 2022-01-01 \
+  --eligibility-end 2022-12-31 \
+  --readiness-json research/results/playbooks/classical_pattern_lab/semantic_round_1/readiness/data_readiness.json \
+  --exclude-manifest research/results/playbooks/classical_pattern_lab/semantic_round_1/review_batch_2022_v1/batch_manifest.json \
+  --batch-id rectangle-semantic-calibration-v2-r1 \
+  --output-dir research/results/playbooks/classical_pattern_lab/semantic_round_2/review_batch_v2
+
+uv run --frozen python -m src.research.classical_patterns.runner verify-semantic-calibration-batch-v2 \
+  --batch-dir research/results/playbooks/classical_pattern_lab/semantic_round_2/review_batch_v2
+
+uv run --frozen python -m src.research.classical_patterns.runner ingest-semantic-calibration-responses-v2 \
+  --batch-dir research/results/playbooks/classical_pattern_lab/semantic_round_2/review_batch_v2
+```
+
+The generator permits configurable class counts with
+`--confirmed-signal-count`, `--qualified-no-trigger-count`, and
+`--rejected-geometry-count`; all three must be positive and each requested
+count must be available after deterministic symbol/date/lookback de-duplication.
+Use a fresh batch root for every round.
+
+V2 ingestion is append-only and idempotent. Its identity is
+`batch_id + card_id + reviewer_id + review_pass`, allowing independent second
+passes without overwriting a prior reviewer/pass response. The resulting
+scorecard remains semantic-only.
+
+`--exclude-manifest` may be supplied again for each prior Round 1 or Round 2
+manifest. V2 loads `signal_id` values from V1 and `source_id` values from V2
+before sampling, then records manifest content hashes plus excluded source
+identities and their hashes in its private exclusion contract—never an absolute
+input path. Verification rejects an
+unsupported or malformed prior manifest and proves selected public cards have
+zero overlap with the exclusion set.

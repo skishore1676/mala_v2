@@ -19,7 +19,7 @@ import polars as pl
 
 from src.trading_calendar import trading_dates
 
-from .contracts import RectangleResearchConfig, RectangleSignal
+from .contracts import EnumerationRecord, RectangleResearchConfig, RectangleSignal
 from .daily_bars import hash_daily_bars
 from .readiness import DataReadinessReport, validate_readiness_report
 from .rectangle import enumerate_rectangles
@@ -83,6 +83,24 @@ REVIEW_REASON_CODES = frozenset(
         "other",
     }
 )
+CALIBRATION_RESPONSE_FIELDS = frozenset(
+    {
+        "batch_id",
+        "card_id",
+        "config_hash",
+        "card_hash",
+        "reviewer_id",
+        "review_pass",
+        "strict_rectangle_validity",
+        "as_of_trade_worthiness",
+        "note",
+        "reviewed_at",
+        "outcome_hidden_attestation",
+        "no_future_consulted_attestation",
+    }
+)
+STRICT_RECTANGLE_VALIDITY = frozenset({"valid", "invalid", "ambiguous"})
+AS_OF_TRADE_WORTHINESS = frozenset({"trade", "watch", "no_trade", "ambiguous"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +151,66 @@ class SemanticIngestionResult:
     total_count: int
     decision_log_path: Path
     scorecard_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationCardRecordV2:
+    """Public card identity.  Its hidden class is kept only in the manifest's private case map."""
+
+    schema_version: str
+    batch_id: str
+    card_id: str
+    source_id: str
+    config_hash: str
+    symbol: str
+    evaluation_date: str
+    visible_as_of: str
+    lookback_sessions: int
+    displayed_bar_count: int
+    source_slice_hash: str
+    chart_path: str
+    chart_hash: str
+    card_path: str
+    card_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticCalibrationBatchResultV2:
+    batch_id: str
+    output_dir: Path
+    selected_count: int
+    manifest_path: Path
+    receipt_path: Path
+    review_index_path: Path
+    response_template_path: Path
+    canonical_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationIngestionResultV2:
+    batch_id: str
+    status: str
+    reviewed_count: int
+    decision_log_path: Path
+    scorecard_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _CalibrationCase:
+    hidden_class: str
+    source_id: str
+    symbol: str
+    evaluation_index: int
+    evaluation_date: date
+    visible_as_of: datetime
+    lookback_sessions: int
+    hidden_reason: str | None
+    signal: RectangleSignal | None
+    record: EnumerationRecord | None
+
+    @property
+    def correlation_key(self) -> tuple[str, date, int]:
+        return (self.symbol, self.evaluation_date, self.lookback_sessions)
 
 
 def render_obsidian_review_card(*, batch_dir: Path, output_path: Path) -> Path:
@@ -207,6 +285,83 @@ def render_obsidian_review_card(*, batch_dir: Path, output_path: Path) -> Path:
             "Mala will bind collected comments to the hidden card IDs above, retain",
             "accepted charts, and prepare only the corrected or next calibration cases.",
             "Economic outcomes remain hidden until the semantic definition is frozen.",
+            "",
+        ]
+    )
+    output_path = output_path.expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def render_calibration_obsidian_gate_v2(
+    *, batch_dir: Path, output_path: Path, card_ids: Sequence[str]
+) -> Path:
+    """Render a small self-contained, outcome-hidden V2 doctrine gate."""
+
+    batch_dir = batch_dir.expanduser().resolve()
+    receipt = verify_semantic_calibration_batch_v2(batch_dir)
+    manifest = json.loads((batch_dir / "batch_manifest.json").read_text(encoding="utf-8"))
+    requested = [card_id.strip() for card_id in card_ids if card_id.strip()]
+    if not requested:
+        raise ValueError("At least one calibration card_id is required.")
+    if len(requested) != len(set(requested)):
+        raise ValueError("Calibration doctrine gate contains duplicate card identifiers.")
+    if len(requested) > 6:
+        raise ValueError("Calibration doctrine gate is capped at six cards.")
+    cards_by_id = {card["card_id"]: card for card in manifest["cards"]}
+    missing = [card_id for card_id in requested if card_id not in cards_by_id]
+    if missing:
+        raise ValueError(f"Unknown calibration card_id: {missing[0]}")
+
+    lines = [
+        "# Classical Rectangle Doctrine Gate — Round 2",
+        "",
+        "Two independent blind reviewers disagreed on these exact causal windows.",
+        "No future bars, outcomes, trades, or P&L are shown. This is the only",
+        "semantic input needed before the autonomous calibration loop continues.",
+        "",
+        "## How to review",
+        "",
+        "- Add one pointy comment on every chart's `Your call` line.",
+        "- Put two labels in the comment: strict rectangle validity, then as-of action.",
+        "- Validity labels: `valid`, `invalid`, or `ambiguous`.",
+        "- Action labels: `trade`, `watch`, `no_trade`, or `ambiguous`.",
+        "- Example comment content: `valid; watch`.",
+        "- Add a short reason only when the labels do not capture your doctrine.",
+        "- Choose **Revise** after all charts have a call; Mala will collect the comments.",
+        "",
+        f"Batch hash: `{receipt['canonical_hash']}`",
+        "",
+        "---",
+        "",
+    ]
+    for sequence, card_id in enumerate(requested, start=1):
+        card = cards_by_id[card_id]
+        chart_relative = _safe_batch_relative_path(card["chart_path"], "chart_path")
+        encoded = base64.b64encode((batch_dir / chart_relative).read_bytes()).decode("ascii")
+        lines.extend(
+            [
+                f"### {sequence:02d} · {card['symbol']} · {card['evaluation_date']}",
+                f"<!-- classical-pattern-calibration-card:{card_id} -->",
+                "",
+                f"**Candidate window:** {card['displayed_bar_count']} sessions through the evaluation cutoff.",
+                "",
+                f"![{card['symbol']} causal candidate](data:image/svg+xml;base64,{encoded})",
+                "",
+                "**Your call (add one pointy comment):**",
+                "",
+                "---",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## What happens next",
+            "",
+            "Mala will bind each collected call to the stable hidden card ID, freeze the",
+            "human-owned doctrine, and continue the next semantic round autonomously.",
+            "Economic testing remains blocked until that semantic definition is stable.",
             "",
         ]
     )
@@ -556,6 +711,572 @@ def verify_semantic_batch(output_dir: Path) -> dict[str, Any]:
         raise ValueError("Semantic batch canonical hash mismatch.")
     _assert_outcome_hidden(manifest)
     return receipt
+
+
+def build_semantic_calibration_batch_v2(
+    daily_by_symbol: dict[str, pl.DataFrame],
+    *,
+    config: RectangleResearchConfig,
+    readiness: DataReadinessReport,
+    output_dir: Path,
+    batch_id: str,
+    confirmed_signal_count: int = 6,
+    qualified_no_trigger_count: int = 6,
+    rejected_geometry_count: int = 6,
+    sampling_seed: str = "classical-rectangle-semantic-calibration-v2",
+    eligibility_start: date | None = None,
+    eligibility_end: date | None = None,
+    exclude_manifests: Sequence[Path] = (),
+) -> SemanticCalibrationBatchResultV2:
+    """Build a class-hidden, outcome-hidden mixed calibration packet.
+
+    This is deliberately a new projection schema, not a change to v1 detector
+    contracts or v1 semantic-review artifacts.
+    """
+
+    requested_counts = {
+        "confirmed_signal": confirmed_signal_count,
+        "qualified_no_trigger": qualified_no_trigger_count,
+        "rejected_geometry": rejected_geometry_count,
+    }
+    if not batch_id.strip():
+        raise ValueError("batch_id is required.")
+    if any(not isinstance(value, int) or value <= 0 for value in requested_counts.values()):
+        raise ValueError("Every v2 calibration class count must be a positive integer.")
+    if readiness.semantic_review_status != "ready":
+        raise ValueError("Readiness report does not authorize a semantic review pilot.")
+    validate_readiness_report(readiness)
+    if readiness.config_hash != config.source_hash:
+        raise ValueError("Readiness/config hash mismatch.")
+
+    output_dir = output_dir.expanduser().resolve()
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise ValueError("Semantic calibration output_dir must be absent or empty; use a new batch root.")
+    _validate_readiness_alignment(
+        readiness,
+        daily_by_symbol,
+        eligibility_start=eligibility_start,
+        eligibility_end=eligibility_end,
+    )
+    excluded_source_ids, exclusion_contract = _load_calibration_exclusions_v2(
+        exclude_manifests
+    )
+
+    pools: dict[str, list[_CalibrationCase]] = {name: [] for name in requested_counts}
+    source_hashes: dict[str, str] = {}
+    enumerated_counts: dict[str, dict[str, int]] = {}
+    frames: dict[str, pl.DataFrame] = {}
+    ineligible = Counter[str]()
+    for symbol in sorted(daily_by_symbol):
+        daily = daily_by_symbol[symbol].sort("session_date")
+        frames[symbol] = daily
+        source_hashes[symbol] = hash_daily_bars(daily)
+        result = enumerate_rectangles(daily, config)
+        enumerated_counts[symbol] = {
+            "signals": len(result.signals),
+            "valid_no_breakout": sum(record.status == "valid_no_breakout" for record in result.records),
+            "insufficient_confirmed_boundary_touches": sum(
+                record.status == "rejected" and record.reason == "insufficient_confirmed_boundary_touches"
+                for record in result.records
+            ),
+        }
+        for signal in result.signals:
+            candidate = signal.candidate
+            if signal.signal_id in excluded_source_ids:
+                ineligible["excluded_prior_manifest_identity"] += 1
+                continue
+            reason = _calibration_case_eligibility_reason(
+                daily, candidate.breakout_index, candidate.lookback_sessions,
+                candidate.breakout_date, config, eligibility_start, eligibility_end,
+            )
+            if reason:
+                ineligible[reason] += 1
+                continue
+            pools["confirmed_signal"].append(
+                _CalibrationCase(
+                    hidden_class="confirmed_signal",
+                    source_id=signal.signal_id,
+                    symbol=candidate.symbol,
+                    evaluation_index=candidate.breakout_index,
+                    evaluation_date=candidate.breakout_date,
+                    visible_as_of=candidate.breakout_time,
+                    lookback_sessions=candidate.lookback_sessions,
+                    hidden_reason="close_confirmed_breakout",
+                    signal=signal,
+                    record=None,
+                )
+            )
+        for record in result.records:
+            if record.status == "valid_no_breakout":
+                hidden_class = "qualified_no_trigger"
+            elif (
+                record.status == "rejected"
+                and record.reason == "insufficient_confirmed_boundary_touches"
+            ):
+                hidden_class = "rejected_geometry"
+            else:
+                continue
+            if record.record_id in excluded_source_ids:
+                ineligible["excluded_prior_manifest_identity"] += 1
+                continue
+            reason = _calibration_case_eligibility_reason(
+                daily, record.breakout_index, record.lookback_sessions,
+                record.breakout_date, config, eligibility_start, eligibility_end,
+            )
+            if reason:
+                ineligible[reason] += 1
+                continue
+            visible_at = daily.row(record.breakout_index, named=True)["visible_at"]
+            if not isinstance(visible_at, datetime):
+                visible_at = datetime.fromisoformat(str(visible_at))
+            pools[hidden_class].append(
+                _CalibrationCase(
+                    hidden_class=hidden_class,
+                    source_id=record.record_id,
+                    symbol=record.symbol,
+                    evaluation_index=record.breakout_index,
+                    evaluation_date=record.breakout_date,
+                    visible_as_of=visible_at,
+                    lookback_sessions=record.lookback_sessions,
+                    hidden_reason=record.reason,
+                    signal=None,
+                    record=record,
+                )
+            )
+
+    selected = _select_calibration_cases_v2(
+        pools, requested_counts=requested_counts, sampling_seed=sampling_seed
+    )
+    selected_source_ids = {case.source_id for case in selected}
+    overlap = selected_source_ids & excluded_source_ids
+    if overlap:
+        raise RuntimeError("Excluded prior-manifest source identities reached v2 selection.")
+    exclusion_contract["excluded_selected_overlap"] = len(overlap)
+    charts_dir = output_dir / "charts"
+    cards_dir = output_dir / "cards"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    records: list[CalibrationCardRecordV2] = []
+    private_cases: list[dict[str, Any]] = []
+    for case in selected:
+        daily = frames[case.symbol]
+        # Reviewers must judge the same causal window that produced the hidden
+        # detector class. Showing a longer generic context lets them select a
+        # different structure, which makes the blind label comparison invalid.
+        start_index = case.evaluation_index - case.lookback_sessions
+        as_of_slice = daily.slice(start_index, case.evaluation_index - start_index + 1)
+        if _as_date(as_of_slice.get_column("session_date").max()) != case.evaluation_date:
+            raise RuntimeError(f"As-of slice failed for {case.source_id}")
+        card_id = hashlib.sha256(
+            f"{batch_id}|{config.source_hash}|{case.hidden_class}|{case.source_id}".encode("utf-8")
+        ).hexdigest()[:16]
+        source_slice_hash = hash_daily_bars(as_of_slice)
+        chart_path = charts_dir / f"{card_id}.svg"
+        chart_path.write_text(
+            _render_neutral_ohlc_svg(
+                as_of_slice,
+                card_id=card_id,
+                definition_hash=config.source_hash,
+                source_slice_hash=source_slice_hash,
+            ),
+            encoding="utf-8",
+        )
+        chart_hash = _sha256_path(chart_path)
+        card_payload = {
+            "schema_version": "ClassicalPatternSemanticCalibrationCardV2",
+            "batch_id": batch_id,
+            "card_id": card_id,
+            "source_id": case.source_id,
+            "config_hash": config.source_hash,
+            "symbol": case.symbol,
+            "evaluation_date": case.evaluation_date.isoformat(),
+            "visible_as_of": case.visible_as_of.isoformat(),
+            "lookback_sessions": case.lookback_sessions,
+            "displayed_bar_count": len(as_of_slice),
+            "source_slice_hash": source_slice_hash,
+            "chart_path": f"charts/{card_id}.svg",
+            "chart_hash": chart_hash,
+        }
+        _assert_outcome_hidden(card_payload)
+        card_path = cards_dir / f"{card_id}.md"
+        card_path.write_text(_render_calibration_card_v2(card_payload), encoding="utf-8")
+        card_hash = _sha256_path(card_path)
+        records.append(
+            CalibrationCardRecordV2(
+                **card_payload,
+                card_path=f"cards/{card_id}.md",
+                card_hash=card_hash,
+            )
+        )
+        private_cases.append(
+            {
+                "card_id": card_id,
+                "hidden_class": case.hidden_class,
+                "hidden_reason": case.hidden_reason,
+                "causal_attempt_direction": (
+                    case.signal.candidate.direction.value if case.signal is not None else None
+                ),
+                "causal_diagnostics": _calibration_diagnostics(case, daily, config),
+            }
+        )
+
+    records.sort(key=lambda record: record.card_id)
+    private_cases.sort(key=lambda item: item["card_id"])
+    manifest = {
+        "schema_version": "ClassicalPatternSemanticCalibrationBatchV2",
+        "batch_id": batch_id,
+        "playbook_id": config.playbook_id,
+        "config_hash": config.source_hash,
+        "readiness_report_hash": readiness.report_hash,
+        "sampling": {
+            "version": "class_hidden_fixed_counts_v2",
+            "seed": sampling_seed,
+            "requested_counts": requested_counts,
+            "selected_counts": dict(sorted(Counter(case.hidden_class for case in selected).items())),
+            "dedupe_key": "symbol_evaluation_date_lookback_sessions",
+        },
+        "cutoff": {
+            "eligibility_start": eligibility_start.isoformat() if eligibility_start else None,
+            "eligibility_end": eligibility_end.isoformat() if eligibility_end else None,
+            "chart_end": "evaluation_close_only",
+        },
+        "source_daily_hashes": source_hashes,
+        "enumerated_counts": enumerated_counts,
+        "ineligible_reasons": dict(sorted(ineligible.items())),
+        "exclusions": exclusion_contract,
+        "cards": [asdict(record) for record in records],
+        "private_cases": private_cases,
+    }
+    _assert_outcome_hidden(manifest)
+    manifest_path = output_dir / "batch_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    response_template_path = output_dir / "calibration_responses.template.csv"
+    response_path = output_dir / "calibration_responses.csv"
+    _write_calibration_response_template_v2(records, response_template_path)
+    _write_calibration_response_template_v2(records, response_path)
+    index_path = output_dir / "REVIEW_INDEX.md"
+    index_path.write_text(_render_calibration_index_v2(batch_id, records), encoding="utf-8")
+    artifacts = {
+        path.relative_to(output_dir).as_posix(): _sha256_path(path)
+        for path in sorted(
+            [manifest_path, response_template_path, index_path, *charts_dir.glob("*.svg"), *cards_dir.glob("*.md")]
+        )
+    }
+    canonical_payload = {
+        "batch_id": batch_id,
+        "config_hash": config.source_hash,
+        "readiness_report_hash": readiness.report_hash,
+        "artifacts": artifacts,
+    }
+    canonical_hash = hashlib.sha256(
+        json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    receipt = {
+        "schema_version": "ClassicalPatternSemanticCalibrationReceiptV2",
+        **canonical_payload,
+        "canonical_hash": canonical_hash,
+        "status": "complete",
+        "readiness": "semantic_calibration",
+        "executable": False,
+        "outcomes_hidden": True,
+        "selected_count": len(records),
+        "requested_counts": requested_counts,
+        "exclusions": exclusion_contract,
+        "forbidden_review_keys": sorted(FORBIDDEN_REVIEW_KEYS),
+    }
+    receipt_path = output_dir / "batch_receipt.json"
+    receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    verify_semantic_calibration_batch_v2(output_dir)
+    return SemanticCalibrationBatchResultV2(
+        batch_id=batch_id,
+        output_dir=output_dir,
+        selected_count=len(records),
+        manifest_path=manifest_path,
+        receipt_path=receipt_path,
+        review_index_path=index_path,
+        response_template_path=response_path,
+        canonical_hash=canonical_hash,
+    )
+
+
+def verify_semantic_calibration_batch_v2(output_dir: Path) -> dict[str, Any]:
+    """Verify the parallel v2 artifact inventory and its hidden-class boundary."""
+
+    output_dir = output_dir.expanduser().resolve()
+    receipt = json.loads((output_dir / "batch_receipt.json").read_text(encoding="utf-8"))
+    _assert_exact_keys(
+        receipt,
+        {
+            "schema_version", "batch_id", "config_hash", "readiness_report_hash", "artifacts",
+            "canonical_hash", "status", "readiness", "executable", "outcomes_hidden",
+            "selected_count", "requested_counts", "exclusions", "forbidden_review_keys",
+        },
+        "v2 receipt",
+    )
+    if (
+        receipt["schema_version"] != "ClassicalPatternSemanticCalibrationReceiptV2"
+        or receipt["status"] != "complete"
+        or receipt["readiness"] != "semantic_calibration"
+        or receipt["executable"] is not False
+        or receipt["outcomes_hidden"] is not True
+    ):
+        raise ValueError("Semantic calibration receipt has an invalid safety contract.")
+    manifest = json.loads((output_dir / "batch_manifest.json").read_text(encoding="utf-8"))
+    _assert_exact_keys(
+        manifest,
+        {
+            "schema_version", "batch_id", "playbook_id", "config_hash", "readiness_report_hash",
+            "sampling", "cutoff", "source_daily_hashes", "enumerated_counts", "ineligible_reasons",
+            "exclusions", "cards", "private_cases",
+        },
+        "v2 manifest",
+    )
+    if manifest["schema_version"] != "ClassicalPatternSemanticCalibrationBatchV2":
+        raise ValueError("Unsupported semantic calibration manifest version.")
+    _assert_exact_keys(
+        manifest["sampling"],
+        {"version", "seed", "requested_counts", "selected_counts", "dedupe_key"},
+        "v2 sampling",
+    )
+    _assert_exact_keys(manifest["cutoff"], {"eligibility_start", "eligibility_end", "chart_end"}, "v2 cutoff")
+    if manifest["sampling"]["version"] != "class_hidden_fixed_counts_v2":
+        raise ValueError("Unsupported semantic calibration sampling version.")
+    for field in ("batch_id", "config_hash", "readiness_report_hash"):
+        if receipt[field] != manifest[field]:
+            raise ValueError(f"Receipt/manifest identity mismatch: {field}")
+    requested = manifest["sampling"]["requested_counts"]
+    if set(requested) != {"confirmed_signal", "qualified_no_trigger", "rejected_geometry"}:
+        raise ValueError("Invalid v2 requested class counts.")
+    if manifest["sampling"]["selected_counts"] != requested:
+        raise ValueError("Semantic calibration class counts do not meet the requested exact counts.")
+    if receipt["requested_counts"] != requested or receipt["selected_count"] != sum(requested.values()):
+        raise ValueError("Semantic calibration receipt count mismatch.")
+    if receipt["exclusions"] != manifest["exclusions"]:
+        raise ValueError("Semantic calibration receipt/manifest exclusion mismatch.")
+    exclusions = manifest["exclusions"]
+    _assert_exact_keys(
+        exclusions,
+        {
+            "version", "manifest_content_hashes", "excluded_identity_count",
+            "excluded_source_ids", "excluded_identity_hashes", "excluded_selected_overlap",
+        },
+        "v2 exclusions",
+    )
+    if exclusions["version"] != "prior_manifest_source_identity_v1":
+        raise ValueError("Unsupported semantic calibration exclusion version.")
+    manifest_hashes = exclusions["manifest_content_hashes"]
+    excluded_source_ids = exclusions["excluded_source_ids"]
+    identity_hashes = exclusions["excluded_identity_hashes"]
+    if (
+        not isinstance(manifest_hashes, list)
+        or manifest_hashes != sorted(set(manifest_hashes))
+        or not isinstance(identity_hashes, list)
+        or identity_hashes != sorted(set(identity_hashes))
+        or not isinstance(excluded_source_ids, list)
+        or excluded_source_ids != sorted(set(excluded_source_ids))
+        or any(not isinstance(value, str) or not value for value in excluded_source_ids)
+        or any(not isinstance(value, str) or len(value) != 64 for value in [*manifest_hashes, *identity_hashes])
+        or exclusions["excluded_identity_count"] != len(excluded_source_ids)
+        or identity_hashes != sorted(
+            hashlib.sha256(value.encode("utf-8")).hexdigest() for value in excluded_source_ids
+        )
+        or exclusions["excluded_selected_overlap"] != 0
+    ):
+        raise ValueError("Invalid semantic calibration exclusion contract.")
+    expected_card_keys = {field.name for field in fields(CalibrationCardRecordV2)}
+    expected_artifacts = {"batch_manifest.json", "calibration_responses.template.csv", "REVIEW_INDEX.md"}
+    cards_by_id: dict[str, dict[str, Any]] = {}
+    for card in manifest["cards"]:
+        _assert_exact_keys(card, expected_card_keys, "v2 card")
+        if card["schema_version"] != "ClassicalPatternSemanticCalibrationCardV2":
+            raise ValueError("Unsupported semantic calibration card version.")
+        if card["card_id"] in cards_by_id:
+            raise ValueError("Semantic calibration batch contains duplicate card identifiers.")
+        cards_by_id[card["card_id"]] = card
+        chart_relative = _safe_batch_relative_path(card["chart_path"], "chart_path")
+        card_relative = _safe_batch_relative_path(card["card_path"], "card_path")
+        expected_artifacts.update({chart_relative, card_relative})
+        if _sha256_path(output_dir / chart_relative) != card["chart_hash"]:
+            raise ValueError(f"Card chart_hash mismatch: {card['card_id']}")
+        if _sha256_path(output_dir / card_relative) != card["card_hash"]:
+            raise ValueError(f"Card card_hash mismatch: {card['card_id']}")
+        _verify_neutral_svg_metadata_v2(output_dir / chart_relative, card)
+    selected_source_ids = {card["source_id"] for card in manifest["cards"]}
+    if selected_source_ids & set(excluded_source_ids):
+        raise ValueError("Selected public cards overlap excluded source identities.")
+    private_ids: set[str] = set()
+    hidden_counts: Counter[str] = Counter()
+    for private in manifest["private_cases"]:
+        _assert_exact_keys(
+            private,
+            {"card_id", "hidden_class", "hidden_reason", "causal_attempt_direction", "causal_diagnostics"},
+            "v2 private case",
+        )
+        if private["card_id"] not in cards_by_id or private["card_id"] in private_ids:
+            raise ValueError("Invalid v2 private case card identity.")
+        if private["hidden_class"] not in requested:
+            raise ValueError("Invalid v2 hidden class.")
+        if private["hidden_class"] == "rejected_geometry" and private["causal_attempt_direction"] is not None:
+            raise ValueError("Rejected geometry may not claim an attempt direction.")
+        _assert_exact_keys(
+            private["causal_diagnostics"],
+            {
+                "anchor_span_sessions", "depth_percent", "touch_structure",
+                "prior_central_rail_excursion_count", "prior_full_trigger_close_count",
+            },
+            "v2 causal diagnostics",
+        )
+        touch_structure = private["causal_diagnostics"]["touch_structure"]
+        if touch_structure is not None:
+            _assert_exact_keys(
+                touch_structure,
+                {"upper_touch_count", "lower_touch_count", "alternations"},
+                "v2 touch structure",
+            )
+        private_ids.add(private["card_id"])
+        hidden_counts[private["hidden_class"]] += 1
+    if private_ids != set(cards_by_id) or dict(sorted(hidden_counts.items())) != requested:
+        raise ValueError("V2 private case inventory does not reconcile.")
+    if set(receipt["artifacts"]) != expected_artifacts:
+        raise ValueError("Receipt artifact inventory does not exactly match the v2 manifest.")
+    for relative_path, expected_hash in receipt["artifacts"].items():
+        path = (output_dir / relative_path).resolve()
+        if output_dir not in path.parents or not path.is_file():
+            raise ValueError(f"Missing or unsafe semantic calibration artifact: {relative_path}")
+        if _sha256_path(path) != expected_hash:
+            raise ValueError(f"Semantic calibration artifact hash mismatch: {relative_path}")
+    canonical_payload = {
+        "batch_id": manifest["batch_id"],
+        "config_hash": manifest["config_hash"],
+        "readiness_report_hash": manifest["readiness_report_hash"],
+        "artifacts": receipt["artifacts"],
+    }
+    expected_hash = hashlib.sha256(
+        json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if receipt["canonical_hash"] != expected_hash:
+        raise ValueError("Semantic calibration canonical hash mismatch.")
+    if receipt["forbidden_review_keys"] != sorted(FORBIDDEN_REVIEW_KEYS):
+        raise ValueError("Semantic calibration forbidden-key contract mismatch.")
+    _assert_outcome_hidden(manifest)
+    return receipt
+
+
+def validate_calibration_review_response_v2(row: dict[str, str], manifest: dict[str, Any]) -> None:
+    """Validate a v2 response without revealing the hidden calibration class."""
+
+    if set(row) != CALIBRATION_RESPONSE_FIELDS:
+        raise ValueError("Calibration review response fields do not match V2 contract.")
+    cards = {card["card_id"]: card for card in manifest.get("cards", [])}
+    card = cards.get(row["card_id"])
+    if card is None:
+        raise ValueError("Unknown calibration review card.")
+    for field in ("batch_id", "config_hash", "card_hash"):
+        expected = manifest[field] if field in manifest else card[field]
+        if row[field] != str(expected):
+            raise ValueError(f"Stale or mismatched calibration response: {field}")
+    if row["strict_rectangle_validity"] not in STRICT_RECTANGLE_VALIDITY:
+        raise ValueError("Invalid strict_rectangle_validity.")
+    if row["as_of_trade_worthiness"] not in AS_OF_TRADE_WORTHINESS:
+        raise ValueError("Invalid as_of_trade_worthiness.")
+    if not row["reviewer_id"].strip():
+        raise ValueError("reviewer_id is required.")
+    try:
+        if int(row["review_pass"]) <= 0:
+            raise ValueError
+    except ValueError as exc:
+        raise ValueError("review_pass must be a positive integer.") from exc
+    try:
+        reviewed_at = datetime.fromisoformat(row["reviewed_at"])
+    except ValueError as exc:
+        raise ValueError("reviewed_at must be an ISO-8601 timestamp.") from exc
+    if reviewed_at.tzinfo is None:
+        raise ValueError("reviewed_at must include a timezone.")
+    if row["outcome_hidden_attestation"].lower() != "true":
+        raise ValueError("Review must attest that outcomes remained hidden.")
+    if row["no_future_consulted_attestation"].lower() != "true":
+        raise ValueError("Review must attest that no future bars were consulted.")
+
+
+def ingest_calibration_review_responses_v2(
+    *, batch_dir: Path, responses_csv: Path | None = None
+) -> CalibrationIngestionResultV2:
+    """Append v2 responses, scoped by batch/card/reviewer/pass, without economic fields."""
+
+    batch_dir = batch_dir.expanduser().resolve()
+    verify_semantic_calibration_batch_v2(batch_dir)
+    manifest = json.loads((batch_dir / "batch_manifest.json").read_text(encoding="utf-8"))
+    responses_path = responses_csv or batch_dir / "calibration_responses.csv"
+    with responses_path.open(newline="", encoding="utf-8") as handle:
+        rows = [
+            dict(row)
+            for row in csv.DictReader(handle)
+            if row.get("strict_rectangle_validity", "").strip()
+        ]
+    decisions_dir = batch_dir / "calibration_decisions"
+    decisions_dir.mkdir(parents=True, exist_ok=True)
+    log_path = decisions_dir / "review_decisions.jsonl"
+    existing: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    if log_path.exists():
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            expected_fields = set(CALIBRATION_RESPONSE_FIELDS) | {"schema_version", "response_id"}
+            if set(record) != expected_fields or record["schema_version"] != "RectangleSemanticCalibrationResponseV2":
+                raise ValueError("Existing calibration decision fields do not match V2 contract.")
+            response = {field: record[field] for field in CALIBRATION_RESPONSE_FIELDS}
+            validate_calibration_review_response_v2(response, manifest)
+            response_id = hashlib.sha256(
+                json.dumps(response, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if record["response_id"] != response_id:
+                raise ValueError("Existing calibration decision response_id mismatch.")
+            key = (response["batch_id"], response["card_id"], response["reviewer_id"], response["review_pass"])
+            if key in existing:
+                raise ValueError("Duplicate existing calibration review identity.")
+            existing[key] = record
+    appended: list[dict[str, Any]] = []
+    for row in rows:
+        validate_calibration_review_response_v2(row, manifest)
+        response_id = hashlib.sha256(
+            json.dumps(row, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        key = (row["batch_id"], row["card_id"], row["reviewer_id"], row["review_pass"])
+        prior = existing.get(key)
+        if prior:
+            if prior["response_id"] != response_id:
+                raise ValueError("Conflicting calibration response for batch/card/reviewer/pass.")
+            continue
+        record = {"schema_version": "RectangleSemanticCalibrationResponseV2", "response_id": response_id, **row}
+        existing[key] = record
+        appended.append(record)
+    if appended:
+        with log_path.open("a", encoding="utf-8") as handle:
+            for record in appended:
+                handle.write(json.dumps(record, sort_keys=True) + "\n")
+    elif not log_path.exists():
+        log_path.touch()
+    strict_counts = Counter(record["strict_rectangle_validity"] for record in existing.values())
+    worthiness_counts = Counter(record["as_of_trade_worthiness"] for record in existing.values())
+    scorecard = {
+        "schema_version": "ClassicalPatternSemanticCalibrationScorecardV2",
+        "batch_id": manifest["batch_id"],
+        "reviewed_count": len(existing),
+        "strict_rectangle_validity_counts": dict(sorted(strict_counts.items())),
+        "as_of_trade_worthiness_counts": dict(sorted(worthiness_counts.items())),
+        "economic_fields_present": False,
+        "decision_log_hash": _sha256_path(log_path),
+    }
+    scorecard_path = decisions_dir / "semantic_calibration_scorecard.json"
+    scorecard_path.write_text(json.dumps(scorecard, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return CalibrationIngestionResultV2(
+        batch_id=manifest["batch_id"],
+        status="complete",
+        reviewed_count=len(existing),
+        decision_log_path=log_path,
+        scorecard_path=scorecard_path,
+    )
 
 
 def validate_review_response(row: dict[str, str], manifest: dict[str, Any]) -> None:
@@ -1210,3 +1931,345 @@ def _as_date(value: object) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
+
+
+def _calibration_case_eligibility_reason(
+    daily: pl.DataFrame,
+    evaluation_index: int,
+    lookback_sessions: int,
+    evaluation_date: date,
+    config: RectangleResearchConfig,
+    eligibility_start: date | None,
+    eligibility_end: date | None,
+) -> str | None:
+    if eligibility_start and evaluation_date < eligibility_start:
+        return "before_eligibility_window"
+    if eligibility_end and evaluation_date > eligibility_end:
+        return "after_eligibility_window"
+    if config.splits.label(evaluation_date) != "calibration":
+        return "non_calibration_split"
+    start = evaluation_index - lookback_sessions
+    if start < 0:
+        return "insufficient_causal_history"
+    slice_dates = daily.slice(start, lookback_sessions + 1).get_column("session_date").to_list()
+    if len(slice_dates) != lookback_sessions + 1:
+        return "insufficient_causal_history"
+    available = {_as_date(value) for value in slice_dates}
+    expected = set(trading_dates(min(available), evaluation_date))
+    if available != expected:
+        return "calendar_gap_in_pattern_window"
+    return None
+
+
+def _load_calibration_exclusions_v2(
+    manifests: Sequence[Path],
+) -> tuple[set[str], dict[str, Any]]:
+    """Load source identities from prior semantic manifests without retaining paths."""
+
+    excluded: set[str] = set()
+    manifest_hashes: set[str] = set()
+    for raw_path in manifests:
+        path = Path(raw_path).expanduser().resolve()
+        try:
+            content = path.read_bytes()
+            payload = json.loads(content)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Unable to load exclusion manifest: {path.name}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Exclusion manifest must be a JSON object.")
+        schema_version = payload.get("schema_version")
+        if schema_version == "ClassicalPatternSemanticBatchV1":
+            identity_field = "signal_id"
+        elif schema_version == "ClassicalPatternSemanticCalibrationBatchV2":
+            identity_field = "source_id"
+        else:
+            raise ValueError("Unsupported exclusion manifest schema.")
+        cards = payload.get("cards")
+        if not isinstance(cards, list):
+            raise ValueError("Exclusion manifest cards must be a list.")
+        identities: set[str] = set()
+        for card in cards:
+            if not isinstance(card, dict):
+                raise ValueError("Exclusion manifest card must be an object.")
+            identity = card.get(identity_field)
+            if not isinstance(identity, str) or not identity.strip():
+                raise ValueError("Exclusion manifest contains a malformed source identity.")
+            if identity in identities:
+                raise ValueError("Exclusion manifest contains duplicate source identities.")
+            identities.add(identity)
+        excluded.update(identities)
+        manifest_hashes.add(hashlib.sha256(content).hexdigest())
+    identity_hashes = sorted(
+        hashlib.sha256(identity.encode("utf-8")).hexdigest() for identity in excluded
+    )
+    return excluded, {
+        "version": "prior_manifest_source_identity_v1",
+        "manifest_content_hashes": sorted(manifest_hashes),
+        "excluded_identity_count": len(excluded),
+        "excluded_source_ids": sorted(excluded),
+        "excluded_identity_hashes": identity_hashes,
+        "excluded_selected_overlap": 0,
+    }
+
+
+def _select_calibration_cases_v2(
+    pools: dict[str, list[_CalibrationCase]],
+    *,
+    requested_counts: dict[str, int],
+    sampling_seed: str,
+) -> list[_CalibrationCase]:
+    """Sample fixed class counts while preventing correlated window duplicates."""
+
+    selected: list[_CalibrationCase] = []
+    used_keys: set[tuple[str, date, int]] = set()
+    used_symbols: set[str] = set()
+    for hidden_class in ("confirmed_signal", "qualified_no_trigger", "rejected_geometry"):
+        ordered = sorted(
+            pools[hidden_class],
+            key=lambda case: _calibration_sampling_key(case, sampling_seed),
+        )
+        class_selected: list[_CalibrationCase] = []
+        # Prefer one card per symbol across the whole packet. If the class
+        # cannot fill that way, fall back deterministically without weakening
+        # the correlation-key dedupe contract.
+        for require_fresh_symbol in (True, False):
+            for case in ordered:
+                if case.correlation_key in used_keys or case in class_selected:
+                    continue
+                if require_fresh_symbol and case.symbol in used_symbols:
+                    continue
+                class_selected.append(case)
+                used_keys.add(case.correlation_key)
+                used_symbols.add(case.symbol)
+                if len(class_selected) == requested_counts[hidden_class]:
+                    break
+            if len(class_selected) == requested_counts[hidden_class]:
+                break
+        if len(class_selected) != requested_counts[hidden_class]:
+            raise ValueError(
+                "Insufficient distinct causal cases for "
+                f"{hidden_class}: requested={requested_counts[hidden_class]}, available={len(class_selected)}"
+            )
+        selected.extend(class_selected)
+    return selected
+
+
+def _calibration_sampling_key(case: _CalibrationCase, seed: str) -> tuple[str, str]:
+    digest = hashlib.sha256(
+        f"{seed}|{case.hidden_class}|{case.source_id}".encode("utf-8")
+    ).hexdigest()
+    return digest, case.source_id
+
+
+def _calibration_diagnostics(
+    case: _CalibrationCase, daily: pl.DataFrame, config: RectangleResearchConfig
+) -> dict[str, Any]:
+    fields = {
+        "anchor_span_sessions": None,
+        "depth_percent": None,
+        "touch_structure": None,
+        "prior_central_rail_excursion_count": None,
+        "prior_full_trigger_close_count": None,
+    }
+    if case.signal is None:
+        return fields
+    candidate = case.signal.candidate
+    touch_indices = (*candidate.upper_touch_indices, *candidate.lower_touch_indices)
+    midpoint = (candidate.upper_boundary + candidate.lower_boundary) / 2.0
+    prior = daily.slice(
+        candidate.breakout_index - candidate.lookback_sessions,
+        candidate.lookback_sessions,
+    ).to_dicts()
+    closes = [float(row["close"]) for row in prior]
+    trigger_buffer = config.definition.breakout_buffer_atr * candidate.atr
+    if candidate.direction.value == "long":
+        central_rail_excursions = sum(close > candidate.upper_boundary for close in closes)
+        full_trigger = candidate.upper_edge + trigger_buffer
+        prior_full_triggers = sum(close > full_trigger for close in closes)
+    else:
+        central_rail_excursions = sum(close < candidate.lower_boundary for close in closes)
+        full_trigger = candidate.lower_edge - trigger_buffer
+        prior_full_triggers = sum(close < full_trigger for close in closes)
+    fields.update(
+        {
+            "anchor_span_sessions": max(touch_indices) - min(touch_indices) + 1 if touch_indices else None,
+            "depth_percent": (candidate.height / midpoint * 100.0) if midpoint else None,
+            "touch_structure": {
+                "upper_touch_count": len(candidate.upper_touch_indices),
+                "lower_touch_count": len(candidate.lower_touch_indices),
+                "alternations": candidate.touch_alternations,
+            },
+            "prior_central_rail_excursion_count": central_rail_excursions,
+            "prior_full_trigger_close_count": prior_full_triggers,
+        }
+    )
+    return fields
+
+
+def _write_calibration_response_template_v2(
+    records: Sequence[CalibrationCardRecordV2], path: Path
+) -> None:
+    fieldnames = [
+        "batch_id", "card_id", "config_hash", "card_hash", "reviewer_id", "review_pass",
+        "strict_rectangle_validity", "as_of_trade_worthiness", "note", "reviewed_at",
+        "outcome_hidden_attestation", "no_future_consulted_attestation",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            writer.writerow(
+                {
+                    "batch_id": record.batch_id,
+                    "card_id": record.card_id,
+                    "config_hash": record.config_hash,
+                    "card_hash": record.card_hash,
+                }
+            )
+
+
+def _render_calibration_card_v2(payload: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "---",
+            f"batch_id: {payload['batch_id']}",
+            f"card_id: {payload['card_id']}",
+            f"config_hash: {payload['config_hash']}",
+            f"symbol: {payload['symbol']}",
+            f"evaluation_date: {payload['evaluation_date']}",
+            "---",
+            "",
+            "# Daily OHLC Calibration Card",
+            "",
+            f"![As-of OHLC chart](../{payload['chart_path']})",
+            "",
+            f"- Symbol: `{payload['symbol']}`",
+            f"- Evaluation cutoff: `{payload['evaluation_date']}`",
+            f"- Candidate window: `{payload['displayed_bar_count']}` sessions ending at the cutoff",
+            "- Judge only the displayed candidate window; its inclusion is not a machine verdict.",
+            "- The pale final band marks the evaluation cutoff; it is not necessarily a breakout.",
+            "",
+            "## Blind Review",
+            "",
+            "Record answers in `../calibration_responses.csv`.",
+            "",
+            "1. Strict rectangle validity: `valid`, `invalid`, or `ambiguous`.",
+            "2. As-of trade worthiness: `trade`, `watch`, `no_trade`, or `ambiguous`.",
+            "3. Add a concise chart-grounded note if useful.",
+            "",
+            "Only bars through the evaluation cutoff are shown. Subsequent bars and economic results are intentionally absent.",
+            "",
+        ]
+    )
+
+
+def _render_calibration_index_v2(
+    batch_id: str, records: Sequence[CalibrationCardRecordV2]
+) -> str:
+    lines = [
+        f"# Classical Rectangle Calibration Review — {batch_id}",
+        "",
+        "Each chart is raw daily OHLC through its evaluation cutoff. The final pale band is the cutoff, not necessarily a breakout.",
+        "Class, detector rationale, and prior verdict are intentionally hidden.",
+        "Write responses in `calibration_responses.csv`; do not edit cards or manifests.",
+        "",
+    ]
+    for index, record in enumerate(records, start=1):
+        lines.append(f"{index}. [Card {index:02d} · {record.symbol} · {record.evaluation_date}]({record.card_path})")
+    lines.extend(["", "This packet is semantic-calibration evidence only and is not executable.", ""])
+    return "\n".join(lines)
+
+
+def _render_neutral_ohlc_svg(
+    frame: pl.DataFrame,
+    *,
+    card_id: str,
+    definition_hash: str,
+    source_slice_hash: str,
+) -> str:
+    """Render raw causal OHLC without any class- or detector-revealing overlays."""
+
+    rows = frame.sort("session_date").to_dicts()
+    width, height = 1200, 700
+    left, right, top, bottom = 80.0, 100.0, 45.0, 90.0
+    plot_width, plot_height = width - left - right, height - top - bottom
+    min_price = min(float(row["low"]) for row in rows)
+    max_price = max(float(row["high"]) for row in rows)
+    padding = max((max_price - min_price) * 0.05, 0.01)
+    min_price -= padding
+    max_price += padding
+
+    def x(index: int) -> float:
+        return left + (index + 0.5) * plot_width / len(rows)
+
+    def y(price: float) -> float:
+        return top + (max_price - price) / (max_price - min_price) * plot_height
+
+    candle_width = max(2.0, min(9.0, plot_width / len(rows) * 0.58))
+    metadata = {
+        "renderer_version": "classical_rectangle_neutral_ohlc_v2",
+        "card_id": card_id,
+        "definition_hash": definition_hash,
+        "source_slice_hash": source_slice_hash,
+        "first_bar_date": _as_date(rows[0]["session_date"]).isoformat(),
+        "last_bar_date": _as_date(rows[-1]["session_date"]).isoformat(),
+        "bar_count": len(rows),
+    }
+    elements = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        "<metadata>" + escape(json.dumps(metadata, sort_keys=True, separators=(",", ":"))) + "</metadata>",
+        '<rect width="100%" height="100%" fill="#0f172a"/>',
+        f'<text x="{left}" y="28" fill="#e2e8f0" font-family="sans-serif" font-size="18">Daily OHLC through evaluation cutoff · {_as_date(rows[-1]["session_date"]).isoformat()}</text>',
+    ]
+    for step in range(6):
+        price = min_price + step * (max_price - min_price) / 5
+        y_value = y(price)
+        elements.extend(
+            [
+                f'<line x1="{left}" x2="{width-right}" y1="{y_value:.2f}" y2="{y_value:.2f}" stroke="#334155" stroke-width="1"/>',
+                f'<text x="8" y="{y_value+4:.2f}" fill="#94a3b8" font-family="monospace" font-size="12">{price:.2f}</text>',
+            ]
+        )
+    elements.append(
+        f'<rect x="{x(len(rows)-1)-candle_width:.2f}" y="{top:.2f}" width="{2*candle_width:.2f}" height="{plot_height:.2f}" fill="#e2e8f0" fill-opacity="0.10"/>'
+    )
+    for index, row in enumerate(rows):
+        open_price, close_price = float(row["open"]), float(row["close"])
+        high, low = float(row["high"]), float(row["low"])
+        color = "#22c55e" if close_price >= open_price else "#ef4444"
+        x_value = x(index)
+        elements.extend(
+            [
+                f'<line x1="{x_value:.2f}" x2="{x_value:.2f}" y1="{y(high):.2f}" y2="{y(low):.2f}" stroke="{color}" stroke-width="1"/>',
+                f'<rect x="{x_value-candle_width/2:.2f}" y="{min(y(open_price), y(close_price)):.2f}" width="{candle_width:.2f}" height="{max(1.0, abs(y(open_price)-y(close_price))):.2f}" fill="{color}"/>',
+            ]
+        )
+        if index % max(1, len(rows) // 8) == 0 or index == len(rows) - 1:
+            label = _as_date(row["session_date"]).strftime("%m-%d")
+            elements.append(f'<text x="{x_value:.2f}" y="{height-38}" fill="#94a3b8" font-family="monospace" font-size="10" text-anchor="middle">{label}</text>')
+    elements.append("</svg>\n")
+    return "\n".join(elements)
+
+
+def _verify_neutral_svg_metadata_v2(chart_path: Path, card: dict[str, Any]) -> None:
+    try:
+        root = ElementTree.fromstring(chart_path.read_text(encoding="utf-8"))
+        node = root.find("{http://www.w3.org/2000/svg}metadata")
+        metadata = json.loads(node.text) if node is not None and node.text else None
+    except (ElementTree.ParseError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid neutral chart metadata: {card['card_id']}") from exc
+    expected = {
+        "renderer_version": "classical_rectangle_neutral_ohlc_v2",
+        "card_id": card["card_id"],
+        "definition_hash": card["config_hash"],
+        "source_slice_hash": card["source_slice_hash"],
+        "last_bar_date": card["evaluation_date"],
+        "bar_count": card["displayed_bar_count"],
+    }
+    if not isinstance(metadata, dict) or any(metadata.get(key) != value for key, value in expected.items()):
+        raise ValueError(f"Neutral chart metadata mismatch: {card['card_id']}")
+    if (
+        not isinstance(metadata.get("bar_count"), int)
+        or metadata["bar_count"] != card["lookback_sessions"] + 1
+    ):
+        raise ValueError(f"Invalid neutral chart bar_count: {card['card_id']}")
