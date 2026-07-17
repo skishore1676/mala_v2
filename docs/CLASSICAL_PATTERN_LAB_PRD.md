@@ -1,11 +1,11 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Draft for Suman review
+Status: Daily rectangle v1 semantic pilot built; human semantic review pending
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release
-Canonical proposed home: `mala_v2`
-Source-control state: local branch `agent/classical-pattern-lab-architecture`; do not publish to the current public Mala origin
+Canonical home: `mala_v2`
+Source-control state: local `main`; do not publish to the current public Mala origin
 
 Sources:
 

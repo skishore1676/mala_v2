@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, datetime, time, timedelta
+from math import ceil
 import hashlib
 
 import polars as pl
 
 from src.time_utils import et_date_expr, et_time_expr
+from src.trading_calendar import expected_rth_minutes, nyse_market_close
 
 from .contracts import SessionDefinition
 
@@ -39,9 +41,17 @@ def build_rth_daily_bars(
             et_date_expr("timestamp").alias("session_date"),
             et_time_expr("timestamp").alias("session_time"),
         )
+        .with_columns(
+            pl.col("session_date")
+            .map_elements(nyse_market_close, return_dtype=pl.Time)
+            .alias("expected_market_close"),
+            pl.col("session_date")
+            .map_elements(expected_rth_minutes, return_dtype=pl.Int64)
+            .alias("expected_rth_minutes"),
+        )
         .filter(
             (pl.col("session_time") >= session.market_open)
-            & (pl.col("session_time") < session.market_close)
+            & (pl.col("session_time") < pl.col("expected_market_close"))
         )
     )
     if enriched.is_empty():
@@ -57,10 +67,34 @@ def build_rth_daily_bars(
             pl.col("close").last().cast(pl.Float64).alias("close"),
             pl.col("volume").sum().cast(pl.Float64).alias("volume"),
             pl.len().cast(pl.Int64).alias("source_bar_count"),
+            pl.col("session_time").min().alias("first_source_time"),
+            pl.col("session_time").max().alias("last_source_time"),
+            pl.col("expected_market_close").first(),
+            pl.col("expected_rth_minutes").first(),
         )
         .with_columns(
             pl.lit(symbol.upper()).alias("symbol"),
-            (pl.col("source_bar_count") >= session.minimum_source_bars).alias("complete_session"),
+            (
+                (
+                    pl.col("source_bar_count")
+                    >= pl.col("expected_rth_minutes").map_elements(
+                        lambda minutes: ceil(
+                            session.minimum_source_bars * minutes / 390
+                        ),
+                        return_dtype=pl.Int64,
+                    )
+                )
+                & (pl.col("first_source_time") <= time(9, 31))
+                & (
+                    pl.col("last_source_time")
+                    >= pl.col("expected_market_close").map_elements(
+                        lambda close: (
+                            datetime.combine(date.min, close) - timedelta(minutes=1)
+                        ).time(),
+                        return_dtype=pl.Time,
+                    )
+                )
+            ).alias("complete_session"),
         )
         .select(
             "session_date",

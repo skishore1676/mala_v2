@@ -219,6 +219,38 @@ def test_daily_builder_uses_new_york_session_across_dst_and_filters_incomplete()
     assert complete.get_column("session_date").to_list() == [date(2024, 1, 8)]
 
 
+def test_daily_builder_accepts_declared_early_close_and_rejects_unknown_partial() -> None:
+    session = replace(_config().session, minimum_source_bars=300)
+
+    def bars_for(day: date, count: int) -> pl.DataFrame:
+        start = datetime(day.year, day.month, day.day, 14, 30, tzinfo=timezone.utc)
+        return pl.DataFrame(
+            {
+                "timestamp": [start + timedelta(minutes=index) for index in range(count)],
+                "open": [100.0] * count,
+                "high": [101.0] * count,
+                "low": [99.0] * count,
+                "close": [100.0] * count,
+                "volume": [10.0] * count,
+            }
+        )
+
+    early = build_rth_daily_bars(
+        bars_for(date(2024, 11, 29), 210),
+        symbol="TEST",
+        session=session,
+        require_complete=True,
+    )
+    ordinary_partial = build_rth_daily_bars(
+        bars_for(date(2024, 11, 27), 210),
+        symbol="TEST",
+        session=session,
+        require_complete=True,
+    )
+    assert early.get_column("session_date").to_list() == [date(2024, 11, 29)]
+    assert ordinary_partial.is_empty()
+
+
 def test_enumerator_is_prefix_invariant_and_future_poison_safe() -> None:
     config = _config()
     prefix = _rectangle_frame().head(61)

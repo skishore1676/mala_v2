@@ -2,13 +2,36 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 
 
 SPECIAL_FULL_DAY_CLOSURES: frozenset[date] = frozenset(
     {
         date(2025, 1, 9),  # National Day of Mourning for President Jimmy Carter.
+    }
+)
+
+# Explicit NYSE 13:00 ET closes used by retained research data. Keep this
+# allowlist auditable; an unknown short session must fail closed rather than be
+# inferred from missing bars.
+SPECIAL_EARLY_CLOSES: frozenset[date] = frozenset(
+    {
+        date(2021, 11, 26),
+        date(2022, 11, 25),
+        date(2023, 7, 3),
+        date(2023, 11, 24),
+        date(2024, 7, 3),
+        date(2024, 11, 29),
+        date(2024, 12, 24),
+        date(2025, 7, 3),
+        date(2025, 11, 28),
+        date(2025, 12, 24),
+        date(2026, 11, 27),
+        date(2026, 12, 24),
+        date(2027, 11, 26),
+        date(2028, 7, 3),
+        date(2028, 11, 24),
     }
 )
 
@@ -71,6 +94,16 @@ def nyse_holidays(year: int) -> frozenset[date]:
 
 def is_trading_day(value: date) -> bool:
     return value.weekday() < 5 and value not in nyse_holidays(value.year)
+
+
+def nyse_market_close(value: date) -> time:
+    """Return the declared regular-session close for a supported NYSE date."""
+
+    return time(13, 0) if value in SPECIAL_EARLY_CLOSES else time(16, 0)
+
+
+def expected_rth_minutes(value: date) -> int:
+    return 210 if value in SPECIAL_EARLY_CLOSES else 390
 
 
 def trading_dates(start: date, end: date) -> list[date]:

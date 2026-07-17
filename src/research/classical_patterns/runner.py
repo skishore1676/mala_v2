@@ -17,6 +17,7 @@ from typing import Any, Sequence
 import polars as pl
 
 from src.chronos.storage import LocalStorage
+from src.config import DATA_DIR
 from src.oracle.rectangle_trade_simulator import simulate_rectangle_trade
 
 from .contracts import (
@@ -28,7 +29,13 @@ from .contracts import (
 )
 from .daily_bars import build_rth_daily_bars, hash_daily_bars, normalize_daily_input
 from .lifecycle import derive_lifecycle
+from .readiness import audit_local_cache, load_readiness_report, write_readiness_report
 from .rectangle import EnumerationResult, enumerate_rectangles
+from .review import (
+    build_semantic_review_batch,
+    ingest_review_responses,
+    verify_semantic_batch,
+)
 
 
 DEFAULT_CONFIG = Path("config/classical_patterns/rectangle_daily_v1.yaml")
@@ -449,6 +456,36 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate-config")
     validate.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
 
+    audit = subparsers.add_parser("audit-cache")
+    audit.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    audit.add_argument("--symbols", required=True)
+    audit.add_argument("--start", type=_parse_date)
+    audit.add_argument("--end", type=_parse_date)
+    audit.add_argument("--data-dir", type=Path, default=DATA_DIR)
+    audit.add_argument("--output-dir", type=Path, required=True)
+
+    semantic = subparsers.add_parser("semantic-batch")
+    semantic.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    semantic.add_argument("--symbols", required=True)
+    semantic.add_argument("--start", required=True, type=_parse_date)
+    semantic.add_argument("--end", required=True, type=_parse_date)
+    semantic.add_argument("--data-dir", type=Path)
+    semantic.add_argument("--readiness-json", type=Path, required=True)
+    semantic.add_argument("--batch-id", required=True)
+    semantic.add_argument("--batch-size", type=int, default=12)
+    semantic.add_argument("--eligibility-start", type=_parse_date)
+    semantic.add_argument("--eligibility-end", type=_parse_date)
+    semantic.add_argument("--output-dir", type=Path, required=True)
+
+    verify = subparsers.add_parser("verify-semantic-batch")
+    verify.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    verify.add_argument("--batch-dir", type=Path, required=True)
+
+    ingest = subparsers.add_parser("ingest-semantic-responses")
+    ingest.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    ingest.add_argument("--batch-dir", type=Path, required=True)
+    ingest.add_argument("--responses-csv", type=Path)
+
     fixture = subparsers.add_parser("fixture-shadow")
     fixture.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     fixture.add_argument("--daily-csv", type=Path, required=True)
@@ -473,6 +510,68 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("STATUS=valid")
         print(f"PLAYBOOK_ID={config.playbook_id}")
         print(f"CONFIG_HASH={config.source_hash}")
+        return 0
+    if args.command == "audit-cache":
+        symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]
+        report = audit_local_cache(
+            symbols=symbols,
+            config=config,
+            data_dir=args.data_dir,
+            start=args.start,
+            end=args.end,
+        )
+        paths = write_readiness_report(report, args.output_dir)
+        print(f"STATUS={report.semantic_review_status}")
+        print(f"ECONOMIC_STATUS={report.economic_research_status}")
+        print(f"REPORT_HASH={report.report_hash}")
+        print(f"REPORT_JSON={paths['json'].resolve()}")
+        return 0
+    if args.command == "verify-semantic-batch":
+        receipt = verify_semantic_batch(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic batch uses a stale config hash.")
+        print("STATUS=valid")
+        print(f"BATCH_ID={receipt['batch_id']}")
+        print(f"CANONICAL_HASH={receipt['canonical_hash']}")
+        return 0
+    if args.command == "ingest-semantic-responses":
+        receipt = verify_semantic_batch(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic batch uses a stale config hash.")
+        result = ingest_review_responses(
+            batch_dir=args.batch_dir,
+            responses_csv=args.responses_csv,
+        )
+        print(f"STATUS={result.status}")
+        print(f"REVIEWED={result.reviewed_count}")
+        print(f"TOTAL={result.total_count}")
+        print(f"SCORECARD={result.scorecard_path}")
+        return 0
+    if args.command == "semantic-batch":
+        symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]
+        daily = _load_cache(
+            symbols,
+            start=args.start,
+            end=args.end,
+            data_dir=args.data_dir,
+            config=config,
+        )
+        result = build_semantic_review_batch(
+            daily,
+            config=config,
+            readiness=load_readiness_report(args.readiness_json),
+            output_dir=args.output_dir,
+            batch_id=args.batch_id,
+            batch_size=args.batch_size,
+            eligibility_start=args.eligibility_start,
+            eligibility_end=args.eligibility_end,
+        )
+        print("STATUS=complete")
+        print("READINESS=semantic_pilot")
+        print(f"BATCH_ID={result.batch_id}")
+        print(f"SELECTED={result.selected_signal_count}")
+        print(f"CANONICAL_HASH={result.canonical_hash}")
+        print(f"REVIEW_INDEX={result.review_index_path}")
         return 0
     if args.command == "fixture-shadow":
         daily = _load_daily_csv(args.daily_csv)
