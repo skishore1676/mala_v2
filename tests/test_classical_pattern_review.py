@@ -20,6 +20,7 @@ from src.research.classical_patterns.readiness import (
 from src.research.classical_patterns.review import (
     build_semantic_review_batch,
     ingest_review_responses,
+    render_obsidian_review_card,
     validate_review_response,
     verify_semantic_batch,
 )
@@ -197,6 +198,38 @@ def test_semantic_batch_refuses_nonempty_output_root(tmp_path: Path) -> None:
             batch_id="semantic-v1",
             batch_size=1,
         )
+
+
+def test_obsidian_projection_is_self_contained_deterministic_and_outcome_hidden(
+    tmp_path: Path,
+) -> None:
+    config = load_rectangle_config(CONFIG)
+    result = build_semantic_review_batch(
+        {"TEST": _rectangle_frame()},
+        config=config,
+        readiness=_readiness(config.source_hash),
+        output_dir=tmp_path / "batch",
+        batch_id="semantic-v1",
+        batch_size=1,
+    )
+    first = render_obsidian_review_card(
+        batch_dir=result.output_dir,
+        output_path=tmp_path / "first.md",
+    )
+    second = render_obsidian_review_card(
+        batch_dir=result.output_dir,
+        output_path=tmp_path / "second.md",
+    )
+    text = first.read_text(encoding="utf-8")
+    assert text == second.read_text(encoding="utf-8")
+    assert text.count("data:image/svg+xml;base64,") == 1
+    assert "../charts/" not in text
+    assert "No pointy comment on a chart means AGREE" in text
+    assert "<!-- classical-pattern-card:" in text
+    assert result.canonical_hash in text
+    assert "2021-04-" not in text
+    for forbidden in ("entry_price", "gross_pnl", "net_r", "objective"):
+        assert forbidden not in text
 
 
 def test_semantic_batch_rejects_readiness_daily_hash_mismatch(tmp_path: Path) -> None:

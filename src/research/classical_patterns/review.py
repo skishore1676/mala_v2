@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections import Counter, defaultdict
 import csv
 from dataclasses import asdict, dataclass, fields
@@ -132,6 +133,87 @@ class SemanticIngestionResult:
     total_count: int
     decision_log_path: Path
     scorecard_path: Path
+
+
+def render_obsidian_review_card(*, batch_dir: Path, output_path: Path) -> Path:
+    """Render a self-contained, outcome-hidden adjudication note for Lathi Bus."""
+
+    batch_dir = batch_dir.expanduser().resolve()
+    receipt = verify_semantic_batch(batch_dir)
+    manifest = json.loads((batch_dir / "batch_manifest.json").read_text(encoding="utf-8"))
+    cards = sorted(
+        manifest["cards"],
+        key=lambda card: (card["breakout_date"], card["symbol"], card["card_id"]),
+    )
+    lines = [
+        "# Classical Rectangle Adjudication — Round 1",
+        "",
+        "Ten machine-detected daily rectangles are shown below using bars available",
+        "only through each close-confirmed breakout. Subsequent prices, outcomes,",
+        "trades, and P&L remain hidden.",
+        "",
+        "## How to review",
+        "",
+        "- **No pointy comment on a chart means AGREE.**",
+        "- If anything is wrong, add one correction in angle brackets on that",
+        "  chart's `Pointy correction` line.",
+        "- Comment on the rectangle, boundaries, breakout, or Last Full Day only.",
+        "- If you leave any corrections, choose **Revise** at the bottom. Otherwise",
+        "  choose **Approve**. Park if you want to return later.",
+        "- Every uncommented chart remains accepted even when the batch is revised.",
+        "",
+        "## Chart legend",
+        "",
+        "- Cyan box and lines: proposed rectangle and central boundaries",
+        "- Cyan circles: causal touch anchors",
+        "- Orange band/dashed line: proposed Last Full Day and raw risk reference",
+        "- Pale final band: close-confirmed breakout bar",
+        "",
+        f"Batch hash: `{receipt['canonical_hash']}`",
+        "",
+        "---",
+        "",
+    ]
+    for index, card in enumerate(cards, start=1):
+        chart_relative = _safe_batch_relative_path(card["chart_path"], "chart_path")
+        chart_bytes = (batch_dir / chart_relative).read_bytes()
+        chart_uri = base64.b64encode(chart_bytes).decode("ascii")
+        levels = card["levels"]
+        lines.extend(
+            [
+                f"### {index:02d} · {card['symbol']} {card['direction'].upper()} · {card['breakout_date']}",
+                f"<!-- classical-pattern-card:{card['card_id']} signal:{card['signal_id']} -->",
+                "",
+                f"**Machine proposal:** valid {card['direction']} rectangle breakout.",
+                f"**Base:** {card['pattern_start_date']} through {card['pattern_end_date']} "
+                f"({card['lookback_sessions']} sessions).",
+                f"**Central boundaries:** {levels['lower_boundary']:.2f} to "
+                f"{levels['upper_boundary']:.2f}.",
+                f"**Last Full Day:** {levels['last_full_day']}; raw risk reference "
+                f"{levels['raw_lfd_stop']:.2f}.",
+                "",
+                f"![{card['symbol']} {card['direction']} rectangle](data:image/svg+xml;base64,{chart_uri})",
+                "",
+                "**Pointy correction (only if you disagree):**",
+                "",
+                "---",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## What happens next",
+            "",
+            "Mala will bind collected comments to the hidden card IDs above, retain",
+            "accepted charts, and prepare only the corrected or next calibration cases.",
+            "Economic outcomes remain hidden until the semantic definition is frozen.",
+            "",
+        ]
+    )
+    output_path = output_path.expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
 
 
 def build_semantic_review_batch(

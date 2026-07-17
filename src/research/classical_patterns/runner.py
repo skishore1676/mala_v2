@@ -34,6 +34,7 @@ from .rectangle import EnumerationResult, enumerate_rectangles
 from .review import (
     build_semantic_review_batch,
     ingest_review_responses,
+    render_obsidian_review_card,
     verify_semantic_batch,
 )
 
@@ -486,6 +487,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--batch-dir", type=Path, required=True)
     ingest.add_argument("--responses-csv", type=Path)
 
+    obsidian = subparsers.add_parser("render-obsidian-review")
+    obsidian.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    obsidian.add_argument("--batch-dir", type=Path, required=True)
+    obsidian.add_argument("--output", type=Path, required=True)
+
     fixture = subparsers.add_parser("fixture-shadow")
     fixture.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     fixture.add_argument("--daily-csv", type=Path, required=True)
@@ -546,6 +552,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"REVIEWED={result.reviewed_count}")
         print(f"TOTAL={result.total_count}")
         print(f"SCORECARD={result.scorecard_path}")
+        return 0
+    if args.command == "render-obsidian-review":
+        receipt = verify_semantic_batch(args.batch_dir)
+        if receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Semantic batch uses a stale config hash.")
+        output = render_obsidian_review_card(
+            batch_dir=args.batch_dir,
+            output_path=args.output,
+        )
+        print("STATUS=complete")
+        print(f"BATCH_ID={receipt['batch_id']}")
+        print(f"OBSIDIAN_SOURCE={output}")
         return 0
     if args.command == "semantic-batch":
         symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]

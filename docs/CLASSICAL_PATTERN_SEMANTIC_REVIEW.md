@@ -111,8 +111,22 @@ batch root rather than inheriting stale cards from an earlier attempt.
 
 ## Human Review
 
-Open `REVIEW_INDEX.md`, inspect each as-of card, and fill these columns in
-`review_responses.csv`:
+The preferred operator surface is one self-contained Lathi Bus card in Obsidian,
+matching the earlier Playbook Tag Adjudication workflow. Render it with:
+
+```bash
+uv run --frozen python -m src.research.classical_patterns.runner render-obsidian-review \
+  --batch-dir research/results/playbooks/classical_pattern_lab/semantic_round_1/review_batch_2022_v1 \
+  --output research/results/playbooks/classical_pattern_lab/semantic_round_1/obsidian/classical_rectangle_adjudication_round_1.md
+```
+
+The projection embeds every SVG as a base64 data URI, so Lathi Bus publishes a
+single note with no attachment dependency. Silence on a chart means agree; add
+a pointy-bracket correction only when the machine read is wrong. Uncommented
+charts remain accepted if the overall decision is revise.
+
+The structured CSV remains the machine-side ingestion contract. It may also be
+used directly by an operator or populated from a collected Obsidian response:
 
 - `decision`: `accept`, `revise`, `reject`, or `ambiguous`;
 - four fidelity fields: `yes`, `no`, `revise`, or `ambiguous`;
