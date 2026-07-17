@@ -424,8 +424,9 @@ It should not show subsequent return, objective hit, outcome type, or P&L.
 
 ## First Slice: Daily Rectangle Breakout v1
 
-This is a recommendation for Suman's approval, not an already approved trading
-definition.
+Suman approved this as the first research implementation slice on 2026-07-17.
+That approval authorizes deterministic fixture-shadow research only; it is not
+approval of the semantics as a faithful Brandt model or of any trading use.
 
 ### Scope
 
@@ -441,9 +442,8 @@ definition.
 - Initial risk: Last Full Day level plus a predeclared buffer variant.
 - Structural failure: opposite rectangle boundary/defined negation.
 - Objective: rectangle height projected from the breakout boundary.
-- Re-entry: zero versus one additional completion, predeclared as separate
-  variants; never added after seeing results.
-- Expiry: predeclared bar-count variants.
+- Re-entry: zero in v1. A one-reentry rule requires a new definition version.
+- Expiry: one frozen lifecycle horizon and one frozen trade horizon in v1.
 
 ### Why rectangle first
 
@@ -469,7 +469,7 @@ definition.
 10. Treatment of splits, dividends, missing sessions, earnings gaps, and
     limit/abnormal bars.
 
-## Proposed Internal Layout
+## Implemented and Deferred Internal Layout
 
 ```text
 research/playbooks/
@@ -481,27 +481,18 @@ config/classical_patterns/
 src/research/classical_patterns/
   contracts.py             # versioned dataclasses / schema validation
   daily_bars.py            # RTH minute bars -> adjusted ET-session daily bars
-  geometry.py              # generic points, levels, tolerances
   rectangle.py             # rectangle candidate and definition logic
   lifecycle.py             # deterministic state transitions
-  trade_rules.py           # entry/stop/objective/re-entry variants
-  benchmark.py             # frozen manual/adjudicated examples
-  review_queue.py          # review artifact and response ingestion
   runner.py                # bounded calibration/holdout orchestration
-  reports.py               # semantic and economic evidence reports
 
 src/oracle/
-  rectangle_trade_simulator.py  # bar-by-bar fills and lifecycle outcomes
+  rectangle_trade_simulator.py  # next-open multi-session fills and trade outcomes
 
-tests/classical_patterns/
-  test_contracts.py
-  test_daily_bars.py
-  test_rectangle_geometry.py
-  test_lifecycle_synthetic.py
-  test_trade_rules_synthetic.py
-  test_no_lookahead.py
-  test_benchmark_roundtrip.py
-  test_backtest_receipt.py
+tests/
+  test_classical_rectangle_lab.py
+
+# Deferred until the deterministic semantics earn a human-review pilot:
+src/research/classical_patterns/{benchmark.py,review_queue.py}
 ```
 
 Generated artifacts:
@@ -511,14 +502,14 @@ research/results/playbooks/classical_pattern_lab/
   rectangle_daily/RUN_ID/
     RECEIPT.md
     receipt.json
-    observations.jsonl
-    review_decisions.jsonl
-    lifecycle_events.parquet
-    trades.parquet
-    semantic_scorecard.csv
+    daily_bars.parquet
+    enumeration_audit.csv
+    candidates.csv
+    signals.csv
+    lifecycle_events.csv
+    outcomes.csv
+    trades.csv
     economic_scorecard.csv
-    robustness/
-    review_queue/
     REPORT.md
 ```
 
@@ -669,8 +660,10 @@ Predeclared comparisons:
 - breakout-close fill only as an explicitly unattainable diagnostic upper
   bound, never as an executable result;
 - raw LFD stop versus buffered LFD stop;
-- objective-only versus selected trailing/expiry variants;
-- zero versus one re-entry;
+- objective plus fixed-expiry baseline only in v1; trailing exits require a
+  separately versioned hypothesis;
+- zero re-entry in v1; any one-re-entry rule requires its own frozen trigger,
+  sample-accounting policy, and definition version;
 - long and short separately;
 - Type 1–4 breakout outcome reporting independent of entry/fill variants;
 - unresolved/censored outcome reporting and same-bar
@@ -758,7 +751,7 @@ strategy-lane detector. D7 here authorizes no live trade.
 
 ### Golden fixtures
 
-- Small synthetic OHLCV fixtures checked into Git.
+- Small synthetic OHLCV builders and exact assertions checked into Git.
 - Curated real examples stored as bar manifests plus hashes where licensing
   permits; otherwise retained locally with reproducible manifests.
 - Expected lifecycle JSON compared byte-for-byte where stable.
@@ -896,6 +889,30 @@ review.
   Suman explicitly approves a sanitized public publication. Never push the 60
   unpublished strategy/P&L commits to the current public origin casually.
 
+## Implemented Fixture-Shadow Slice
+
+The approved first slice is now represented by these source-controlled
+surfaces:
+
+- `config/classical_patterns/rectangle_daily_v1.yaml`: frozen v1 semantics,
+  cost assumptions, splits, and deferred-integration locks;
+- `src/research/classical_patterns/contracts.py`: strict versioned contracts;
+- `daily_bars.py`: ET regular-session daily construction and completeness;
+- `rectangle.py`: causal confirmed-pivot geometry, breakout enumeration, and
+  outcome-blind representative selection;
+- `lifecycle.py`: independent Type 1–4, unresolved, and censored outcomes;
+- `src/oracle/rectangle_trade_simulator.py`: next-open, zero-reentry,
+  conservative daily-bar simulation;
+- `runner.py`: full-population artifacts, scorecard, and non-executable receipt;
+- `tests/test_classical_rectangle_lab.py`: DST, strict-config,
+  future-poison/prefix-invariance, lifecycle, long/short gap, same-bar, and
+  receipt/accounting proof.
+
+This implementation is deliberately `fixture_shadow`. It proves that the
+contracts execute and reconcile; it does not claim semantic agreement with
+Suman, historical alpha, provider adjustment quality, point-in-time universe
+coverage, or promotion readiness.
+
 ## Dependencies
 
 - Suman's D0 architecture and first-pattern approval.
@@ -951,7 +968,7 @@ Choose the next iteration from evidence, not momentum:
 | Is entry on breakout close or next open? | Signal remains close-confirmed; next open is executable baseline and close fill is diagnostic only. | Confirm at D1. |
 | How many semantic review examples? | Size after a pilot batch; preserve separate calibration/adjudication/holdout sets. | Measure review time in D2 pilot. |
 | Which Last Full Day buffer? | Raw level and one predeclared ATR/tick buffer variant. | Freeze at D1. |
-| Is one re-entry allowed? | Test zero vs one as separate variants because Brandt's cited example is not universal doctrine. | Suman approve variant. |
+| Is one re-entry allowed? | No in v1. A later one-reentry hypothesis must define its trigger and accounting before a new version is run. | Revisit only after the zero-reentry population is reviewed. |
 | Where should the approved architecture decision be recorded? | Full spec in Mala; concise durable decision/index in private TradeLab. | Do after PRD approval. |
 | How should the PRD be published? | Private remote/draft PR. Current Mala origin is public and unsafe for proprietary divergence. | Suman choose private destination or sanitized public scope. |
 
@@ -1016,7 +1033,8 @@ Choose the next iteration from evidence, not momentum:
 | TradeLab is durable brain, not research runtime | Mala bootstrap and current TradeLab contract | Proven |
 | TradingView machine-processing boundary | Current TradingView Terms §3 | Proven as current published terms; enforcement interpretation not asserted |
 | Type 1–4 are post-breakout outcome classes | TechCharts article definitions | Proven |
-| Rectangle is the best first pattern | Architecture judgment | Assumption pending Suman approval |
+| Rectangle is the best first pattern | Architecture decision plus implemented fixture-shadow slice | Approved for v1; semantic fidelity still unproven |
+| Deterministic v1 mechanics execute causally on synthetic data | Focused config, DST, future-poison, lifecycle, fill, and receipt tests | Proven for the checked fixtures |
 | The method has economic edge | No completed test | Open; this project exists to find out |
 | Agent improves semantic fidelity or review burden | No benchmark | Open; D6 test |
 | Any packet is fit for live trading | No packet/parity/shadow evidence | Explicitly false at this stage |

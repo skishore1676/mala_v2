@@ -1,0 +1,50 @@
+playbook_id: classical-rectangle-breakout-daily
+version: 1
+status: fixture_shadow
+timeframe: 1d
+session:
+  timezone: America/New_York
+  market_open: "09:30"
+  market_close: "16:00"
+  minimum_source_bars: 300
+  adjustment_policy: provider_adjusted
+definition:
+  lookback_sessions: [20, 40, 60]
+  atr_lookback_sessions: 14
+  pivot_span_sessions: 2
+  minimum_boundary_touches: 2
+  minimum_touch_separation_sessions: 3
+  minimum_touch_alternations: 2
+  boundary_tolerance_atr: 0.25
+  breakout_buffer_atr: 0.10
+  lfd_stop_buffer_atr: [0.00, 0.10]
+  negation_buffer_atr: 0.00
+  minimum_height_atr: 1.50
+  maximum_height_atr: 6.00
+  maximum_close_drift_height_fraction: 0.35
+  minimum_center_close_containment: 0.80
+  maximum_latest_touch_age_fraction: 0.34
+  objective_height_multiple: 1.00
+  maximum_lifecycle_sessions: 60
+  maximum_trade_sessions: 20
+  maximum_reentries: 0
+execution_assumptions:
+  entry_timing: next_session_open
+  same_bar_trade_ordering: stop_first
+  same_bar_outcome_ordering: unresolved
+  slippage_bps_each_side: 5.0
+  round_trip_cost_bps: 2.0
+splits:
+  calibration_end: "2022-12-31"
+  validation_end: "2024-12-31"
+  holdout_end: null
+population:
+  representative_policy: causal_geometry_quality
+  include_all_representative_signals: true
+  human_review_may_filter_economics: false
+deferred:
+  agent_model_in_signal_path: false
+  consultation: false
+  playbook_packet: false
+  bhiksha_runtime: false
+  options_overlay: false
