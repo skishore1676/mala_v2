@@ -372,6 +372,18 @@ def test_trade_simulator_mirrors_long_and_short_next_open_gap_rules() -> None:
     assert short_result.exit_reason == "entry_open_through_stop"
 
 
+def test_deprecated_tradeable_flag_cannot_filter_economic_population() -> None:
+    signal = _signal()
+    signal = replace(signal, candidate=replace(signal.candidate, tradeable=False))
+    result = simulate_rectangle_trade(
+        signal,
+        _daily_rows([(106.0, 109.0, 106.0, 108.0), (107.0, 116.0, 106.0, 115.0)]),
+        stop_buffer_atr=0.0,
+        config=_config(),
+    )
+    assert result.exit_reason != "candidate_not_tradeable"
+
+
 def test_later_gap_exit_does_not_use_post_exit_intraday_excursions() -> None:
     result = simulate_rectangle_trade(
         _signal(),
@@ -405,6 +417,9 @@ def test_fixture_shadow_runner_writes_reconciled_non_executable_receipt(
     assert receipt["executable"] is False
     assert receipt["readiness"] == "fixture_shadow"
     assert all(receipt["population_checks"].values())
+    assert receipt["population_checks"]["economic_signal_ids_match_enumerator"] is True
+    assert receipt["population_checks"]["economic_signal_variants_match_contract"] is True
+    assert receipt["population_checks"]["economic_signal_variants_have_no_duplicates"] is True
     assert receipt["population"]["representative_signals"] >= 1
     assert (output / "receipt.json").exists()
     assert (output / "candidates.csv").exists()

@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Daily rectangle v1 semantic pilot built; human semantic review pending
+Status: Daily rectangle v1 built; source-grounded semantic audit and economic proof next
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release
@@ -24,11 +24,13 @@ Sources:
 Build a **Classical Pattern Lab inside Mala v2** that turns one precisely scoped
 Peter Brandt-inspired chart-pattern method at a time into a reviewable,
 deterministic research program. A chart-reasoning agent proposes pattern type,
-anchors, boundaries, and ambiguity from an as-of chart. Suman reviews whether
-the proposal faithfully represents the setup before any future outcome is
-revealed. Mala derives breakout, Last Full Day, negation, and objective from
-those anchors plus the frozen rule, then deterministically simulates entries,
-stops, exits, costs, re-entry variants, and portfolio results.
+anchors, boundaries, and ambiguity from an as-of chart. Independent
+outcome-blind reviewers audit the proposal against a frozen rubric derived
+from cited public sources. Mala derives breakout, Last Full Day, negation, and
+objective from those anchors plus the frozen rule, then deterministically
+simulates entries, stops, exits, costs, re-entry variants, and portfolio
+results. Suman governs whether the research continues or is eventually
+promoted; he is not required to act as a Peter-style chart curator.
 
 This is structurally similar to Mala's existing Flywheel process, but the human
 review question changes. The Flywheel asks whether the machine represents
@@ -50,7 +52,7 @@ all of Brandt's discretionary judgment has been captured.
 | Repository | Build in `mala_v2`; do not create a new repo | Mala already owns research data, split discipline, simulation, evidence receipts, review queues, consultation journals, and later packet promotion. A new repo would create a second research truth. |
 | Internal shape | Add an isolated `classical_patterns` research namespace | The second playbook should prove the reusable seams. Do not generalize the mean-reversion implementation prematurely. |
 | Reasoning layer | A bounded thinking workflow above deterministic Mala contracts | The agent proposes and critiques semantics; it never owns fills, P&L, promotion, or authorization. |
-| Human review | Use Lathi Bus/Obsidian as a review projection | Suman approves semantic meaning and disputed anchors. Canonical state stays in Mala artifacts. |
+| Review | Source-grounded independent audit first; Lathi Bus/Obsidian only for true governance choices | Reviewer taste and Suman's personal trade style cannot become economic labels. Canonical state stays in Mala artifacts. |
 | Market data | Independently licensed OHLCV, hashed and retained | Research must be reproducible and must not rely on screenshot pixels or TradingView data extraction. |
 | TradingView | Human-facing visual comparison only | Current TradingView terms prohibit non-display machine processing and algorithmic decision-making using its content/data. The experimental MCP is not a safe research substrate. |
 | Runtime | No kernel, Bhiksha, or live-trading changes in iterations 0–2 | First prove semantics and underlying-level economics. Money-path work remains a later, separately approved gate. |
@@ -76,9 +78,10 @@ proof while keeping the boundary between them explicit.
 
 ## Users and Jobs
 
-- **Primary user — Suman:** teach the machine the intended chart semantics,
-  review disputed examples efficiently, and decide whether a frozen rule is
-  faithful enough to test or promote.
+- **Primary user — Suman:** supply the hypothesis, review the resulting
+  evidence, and decide whether to continue, refine, stop, or later promote a
+  frozen rule. He is not the labeling authority for an external trader's
+  personal style.
 - **Secondary user — research agent:** propose pattern hypotheses, explain
   uncertainty, find counterexamples, and prepare bounded review batches.
 - **Secondary user — future runtime operator:** consume only a locked,
@@ -93,9 +96,10 @@ proof while keeping the boundary between them explicit.
 
 - **Given** a chart cropped at a historical decision timestamp and a frozen
   rectangle definition,
-- **when** the thinking workflow proposes a pattern and Suman reviews it,
-- **then** the review records semantic acceptance or correction without showing
-  the future path or P&L.
+- **when** the thinking workflow proposes a pattern and independent reviewers
+  audit it against the cited frozen rubric,
+- **then** the review records source fidelity or a specific ambiguity without
+  showing the future path or P&L.
 
 ### Scenario 2 — Test a frozen rule
 
@@ -183,12 +187,12 @@ exists. They are not interchangeable.
 
 ```mermaid
 flowchart LR
-    S["Cited doctrine + Suman's clarifications"] --> F["Frozen playbook spec"]
+    S["Cited public doctrine"] --> F["Frozen playbook spec"]
     D["Licensed OHLCV"] --> R["Deterministic chart renderer"]
     F --> A["Thinking workflow"]
     R --> A
     A --> H["Pattern hypothesis proposal"]
-    H --> V["Suman review in Obsidian"]
+    H --> V["Independent source-fidelity audit"]
     V -->|revise| A
     V -->|accept semantics| Z["Frozen semantic benchmark"]
     F --> Q["Frozen causal signal enumerator"]
@@ -196,12 +200,12 @@ flowchart LR
     Q --> E["Deterministic lifecycle engine"]
     D --> E
     E --> B["Backtest + robustness evidence"]
-    B --> G["Promote / refine / kill gate"]
+    B --> G["Suman: promote / refine / kill gate"]
     G -. later, separate approval .-> K["Kernel contract"]
     K -. shadow/live gates .-> X["Bhiksha"]
 ```
 
-The human-reviewed benchmark evaluates semantic fidelity; it never selects the
+The source-audited benchmark evaluates semantic fidelity; it never selects the
 economic sample. The frozen causal enumerator emits **every** qualifying event
 from the point-in-time universe, including cases no human reviewed or liked.
 The lifecycle engine and backtest consume that complete event population. This
@@ -392,20 +396,22 @@ lookahead_checks, result_artifacts[], status
 
 ## Review Workflow
 
-The review loop is designed to improve semantic fidelity without turning Suman
-into the scheduler of every next step.
+The review loop is designed to improve source fidelity without turning Suman
+into either the scheduler of every next step or a substitute for Peter's
+private discretion.
 
 1. Mala creates a bounded batch of as-of-only chart observations.
-2. During D2, Suman or a human-prepared seed labels the benchmark. During D6,
-   the chart agent proposes overlays and structured hypotheses against the
-   already frozen benchmark contract.
+2. During D2, independent reviewers label source fidelity against the frozen
+   public-doctrine rubric. During D6, the chart agent proposes overlays and
+   structured hypotheses against the already frozen benchmark contract.
 3. Deterministic validation rejects impossible coordinates and records the
    reason; it does not "repair" meaning silently.
 4. Once its repository divergence is reconciled, a Lathi Bus packet projects
    only disagreements, low-confidence cases, and a small random audit sample
    into Obsidian. Until then, Mala writes the same review contract locally.
-5. Suman accepts, revises, rejects, or marks ambiguous using fixed reason codes
-   plus an optional note.
+5. Reviewers accept, revise, reject, or mark source ambiguity using fixed reason
+   codes plus an optional note. Suman is involved only if the remaining choice
+   changes research scope, risk, or governance.
 6. The response packet returns to Mala. Mala appends `ReviewDecisionV1`, updates
    the benchmark version, and automatically prepares the next calibration
    batch when policy allows.
@@ -595,13 +601,13 @@ Synthetic paths must include:
 Pass when every chart and lifecycle output is reproducible, no source field
 crosses `visible_as_of`, and same-bar ambiguity is explicit and conservative.
 
-### D3 — Human benchmark and review loop
+### D3 — Source-fidelity benchmark and review loop
 
 Deliverables:
 
 - versioned benchmark manifest with as-of cutoffs and a frozen sampling
   protocol independent of later P&L;
-- human benchmark Obsidian review packet and response ingestion;
+- independent source-fidelity review packet and response ingestion;
 - semantic scorecard separated from P&L.
 
 Recommended benchmark shape:
@@ -618,7 +624,8 @@ The exact counts are a D1 decision based on review burden and class balance.
 Pass when:
 
 - every image is reproducible from bar hashes and renderer version;
-- Suman can complete a batch without outcome leakage;
+- independent reviewers can complete a batch against the cited rubric without
+  outcome leakage;
 - corrected decisions round-trip into canonical artifacts;
 - duplicate, stale, or wrong-version responses fail closed;
 - inter-round improvements are measured on new examples, not the edited set.
@@ -791,7 +798,7 @@ Before any promotion, a reviewer must try to find:
 | --- | --- | --- | --- |
 | Reproducible accepted observations | 0 | 100% reproduce from receipt and retained data | Run receipt |
 | Outcome leakage defects | Unknown | 0 known defects | No-lookahead tests + audit |
-| Suman review completion | No lane | One full bounded batch completed without P&L visibility | Review receipts |
+| Source-fidelity review completion | No lane | One full bounded batch independently completed without P&L visibility | Review receipts |
 | LFD and breakout agreement | Not yet measured | Target frozen before semantic holdout | Semantic scorecard |
 | Review burden | No lane | Measured minutes and decisions per batch; improvement target set after first batch | Lathi Bus receipts |
 | Economic evidence | None | Complete calibration/validation/holdout report for all predeclared variants | Economic scorecard |

@@ -35,14 +35,9 @@ def simulate_rectangle_trade(
     )
     target = candidate.objective
 
-    if not candidate.tradeable:
-        return _no_trade(
-            signal,
-            variant_id,
-            stop,
-            target,
-            "candidate_not_tradeable",
-        )
+    # `RectangleCandidate.tradeable` is a deprecated V1 artifact field retained
+    # only for schema compatibility. Economic eligibility is derived here from
+    # bars plus frozen config; no human/model review field may suppress a signal.
     if candidate.direction is BreakoutDirection.LONG and stop <= candidate.structural_negation:
         return _no_trade(signal, variant_id, stop, target, "stop_not_inside_structural_negation")
     if candidate.direction is BreakoutDirection.SHORT and stop >= candidate.structural_negation:

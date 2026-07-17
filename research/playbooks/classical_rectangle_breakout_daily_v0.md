@@ -1,7 +1,9 @@
 # Classical Rectangle Breakout Daily — Playbook Spec v0
 
-**Status:** implementation baseline approved for fixture-shadow research
-**Owner:** Suman + Codex
+**Status:** implementation baseline approved for source-grounded fixture-shadow research
+**Doctrine owner:** cited Peter Brandt public sources, narrowed by this versioned spec
+**Research owner:** Mala v2
+**Project sponsor and later capital authority:** Suman
 **Playbook id:** `classical-rectangle-breakout-daily`
 **Family:** classical pattern breakout
 **Horizon:** multi-day
@@ -13,6 +15,13 @@ This is a research definition, not an execution packet. It encodes one narrow,
 inspectable subset of classical chart-pattern practice so Mala can measure
 semantic fidelity and economic outcomes without claiming to reproduce Peter
 Brandt's private judgment or performance.
+
+Suman is not the setup-labeling authority for this lane. He does not need to
+trade like Brandt or decide whether an as-of chart is personally attractive.
+Source-grounded reviewers audit whether this spec and its examples faithfully
+encode the cited public method. Mala owns complete-population enumeration,
+mechanics, and economic measurement. Suman owns the decision to continue,
+refine, stop, or later authorize capital after seeing the evidence.
 
 ## Thesis
 
@@ -105,6 +114,31 @@ Every selected-lookback candidate remains in diagnostics, and every audit row
 includes its qualifying-geometry count. Every representative signal enters the
 outcome population unless a predeclared mechanical rejection reason applies.
 Human review cannot add or remove economic signals.
+
+## Evidence and Authority Contract
+
+The lane keeps four authorities separate:
+
+1. **Public doctrine evidence:** cited Brandt material and the TechCharts
+   taxonomy constrain what may be called Brandt-inspired.
+2. **Semantic audit:** independent, outcome-blind reviewers judge fidelity to
+   that frozen source contract and may mark genuine source ambiguity.
+3. **Deterministic research:** Mala decides mechanically whether an event
+   qualifies, enters, exits, or is rejected, and reports the entire population.
+4. **Human governance:** Suman decides whether the evidence justifies another
+   research iteration or a separately governed promotion. His chart preference
+   is not a training label and cannot select the backtest sample.
+
+`trade`, `watch`, and `no_trade` impressions captured in earlier calibration
+packets remain historical reviewer observations only. They are not doctrine,
+ground truth, eligibility filters, or optimization targets.
+
+The V1 `RectangleCandidate.tradeable` field is retained only for artifact
+compatibility and is ignored by the simulator. Mechanical no-trade reasons are
+derived inside the simulator from bars and frozen config. Each run fails closed
+unless the set of signal ids entering economics exactly equals the enumerator's
+representative signal ids and the exact `(signal_id, variant_id)` pair set has
+one row for every predeclared variant with no duplicates.
 
 ## Derived Levels
 
@@ -215,3 +249,5 @@ No packet may be proposed until:
 | 2026-07-17 | Underlying-only fixture shadow | Vehicle and money-path work must be earned later |
 | 2026-07-17 | Confirmed pivots and ATR-scaled boundary clusters | Makes repeated tests causal and independently auditable |
 | 2026-07-17 | Zero re-entries in v1 | Avoids doubling the event/accounting state before the base population is proven |
+| 2026-07-17 | Suman is sponsor, not Peter-style chart curator | Personal trade preference cannot establish fidelity to an external method or select an economic sample |
+| 2026-07-17 | Source fidelity, mechanics, and alpha are separate gates | Prevents reviewer taste from leaking into deterministic eligibility or P&L |

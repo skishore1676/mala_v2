@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Semantic Review Round 1
 
-Status: local semantic pilot ready; review decisions pending
+Status: Round 2 reviewed; human trade-curation gate retired
 Date: 2026-07-17
 Playbook: `classical-rectangle-breakout-daily@1`
 Readiness: semantic calibration only; not economic or executable
@@ -239,3 +239,39 @@ identities and their hashes in its private exclusion contract—never an absolut
 input path. Verification rejects an
 unsupported or malformed prior manifest and proves selected public cards have
 zero overlap with the exclusion set.
+
+## Round 2 Disposition — Role Correction
+
+The two blind Sol Ultra passes were useful, but the final Obsidian card asked
+Suman the wrong question. Suman does not trade this style and is testing a
+public Peter Brandt-inspired hypothesis; his answer to "would you trade this?"
+cannot establish either source fidelity or future profitability.
+
+The collected human response contained two impressions—AMAT `trade` and JPM
+`ambiguous`—and no overall decision. These are retained as operator notes, not
+canonical labels. Silence on WMT, META, TSLA, and GOOGL is not missing work and
+will not be interpreted as acceptance.
+
+V2 remains a valid historical calibration artifact, including its
+`as_of_trade_worthiness` field, but that field is deprecated for doctrine and
+economic selection. No response from V2 may add, remove, or weight an event in
+the backtest population.
+
+### Authority model for the next round
+
+- **Peter-source fidelity:** audited against a frozen, cited public-source
+  rubric by independent outcome-blind reviewers.
+- **Entry state:** computed by the deterministic detector from the frozen
+  geometry and trigger contract.
+- **Exit state and P&L:** computed by the deterministic lifecycle and trade
+  simulator with predeclared variants, costs, and same-bar policy.
+- **Alpha claim:** decided only from complete-population calibration,
+  validation, untouched holdout, and robustness evidence.
+- **Suman's role:** sponsor and governance authority—choose whether to continue,
+  refine, stop, or later authorize a capital-facing packet after evidence is
+  available.
+
+Future review packets therefore ask only source-answerable questions such as
+"does this match the frozen Peter-style rectangle definition?" or expose a
+specific ambiguity in the cited doctrine. They must not ask Suman to predict
+whether an individual chart should make money.

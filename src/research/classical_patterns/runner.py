@@ -127,7 +127,12 @@ def run_research(
     artifacts = _write_frames(frames, output_dir)
 
     variant_ids = [f"lfd_buffer_{value:.2f}atr".replace(".", "p") for value in config.definition.lfd_stop_buffer_atr]
-    population_checks = _population_checks(population_counts)
+    population_checks = _population_checks(
+        population_counts,
+        signal_rows=signal_rows,
+        trade_rows=trade_rows,
+        variant_ids=variant_ids,
+    )
     if not all(population_checks.values()):
         raise RuntimeError(f"Population accounting failed: {population_checks}")
     git = _git_state()
@@ -220,9 +225,26 @@ def _accumulate_population(counts: Counter[str], result: EnumerationResult) -> N
     counts["cluster_duplicates"] += result.cluster_duplicate_count
 
 
-def _population_checks(counts: Counter[str]) -> dict[str, bool]:
+def _population_checks(
+    counts: Counter[str],
+    *,
+    signal_rows: Sequence[dict[str, Any]],
+    trade_rows: Sequence[dict[str, Any]],
+    variant_ids: Sequence[str],
+) -> dict[str, bool]:
     """Fail-closed accounting identities for the complete enumerated population."""
 
+    signal_ids = {str(row["signal_id"]) for row in signal_rows}
+    economic_signal_ids = {str(row["signal_id"]) for row in trade_rows}
+    expected_signal_variants = {
+        (signal_id, variant_id)
+        for signal_id in signal_ids
+        for variant_id in variant_ids
+    }
+    actual_signal_variants = [
+        (str(row["signal_id"]), str(row["variant_id"]))
+        for row in trade_rows
+    ]
     return {
         "windows_reconcile": counts["scanned_windows"]
         == counts["rejected_windows"]
@@ -230,6 +252,11 @@ def _population_checks(counts: Counter[str]) -> dict[str, bool]:
         + counts["qualifying_candidates"],
         "candidate_clusters_reconcile": counts["qualifying_candidates"]
         == counts["representative_signals"] + counts["cluster_duplicates"],
+        "economic_signal_ids_match_enumerator": economic_signal_ids == signal_ids,
+        "economic_signal_variants_match_contract": set(actual_signal_variants)
+        == expected_signal_variants,
+        "economic_signal_variants_have_no_duplicates": len(actual_signal_variants)
+        == len(set(actual_signal_variants)),
     }
 
 
