@@ -73,7 +73,9 @@ def test_public_validation_analysis_rejects_nonreplicating_directional_effect(
     assert analysis["counts"]["replicated_positive_cells"] == 0
     replication = pl.read_csv(run_dir / "replication_scorecard.csv")
     assert set(replication.get_column("replication_status")) == {"not_replicated"}
-    assert "Do not retune from the holdout" in (run_dir / "OBSIDIAN_REVIEW.md").read_text()
+    obsidian = (run_dir / "OBSIDIAN_REVIEW.md").read_text()
+    assert "Do not retune from the holdout" in obsidian
+    assert "<" not in obsidian
     artifact = json.loads((run_dir / "artifact.json").read_text())
     assert artifact["surface"] == "report"
     assert artifact["manifest"]["blocks"][0]["body"] == (
