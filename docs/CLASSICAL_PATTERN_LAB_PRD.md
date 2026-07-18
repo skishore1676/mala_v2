@@ -1,9 +1,9 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Rectangle v1 Public frozen-cohort validation complete; no replicated alpha
+Status: CLOSED — rectangle v2 exit experiment found no out-of-sample edge
 Owner: Suman + Codex
-Last Updated: 2026-07-17
-Target Release: Research iteration 1; no runtime release
+Last Updated: 2026-07-18
+Target Release: Terminal research record; no runtime release
 Canonical home: `mala_v2`
 Source-control state: local `main`; do not publish to the current public Mala origin
 
@@ -19,6 +19,18 @@ Sources:
 - [TradingView Terms of Use](https://www.tradingview.com/policies/)
 - [tradesdontlie/tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp)
 - [Classical Rectangle Public Validation Protocol](CLASSICAL_PATTERN_PUBLIC_VALIDATION.md)
+- [Classical Rectangle Exit Experiment V2 and Closeout](CLASSICAL_PATTERN_EXIT_EXPERIMENT_V2.md)
+
+## Terminal outcome — 2026-07-18
+
+The first playbook is closed as an economically negative experiment. Version 2
+preserved the reviewed 20/40/60 signals, added only 80-session new events, and
+compared four bounded exit/stop variants. The least-negative development
+variant returned `-0.205R` per emitted signal with profit factor `0.65` from
+2025 onward; all four variants were negative OOS. Do not retune this rectangle
+entry against the consumed 2021–2026 history or promote it into autonomous
+shadow/live trading. Reopen only under the fresh-evidence conditions in the
+v2 closeout document.
 
 ## Executive Summary
 

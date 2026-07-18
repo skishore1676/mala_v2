@@ -1,7 +1,7 @@
 # Classical Rectangle Exit Experiment V2
 
-Status: implemented and economically negative on the frozen Public 43-symbol
-cohort. This is local research only and is not executable.
+Status: **CLOSED — `no_out_of_sample_edge`** on the frozen Public 43-symbol
+cohort. Closed 2026-07-18. This is local research only and is not executable.
 
 ## Decision
 
@@ -154,3 +154,27 @@ the rectangle detector only as a prospective consultation surface. A
 consultation lane must log every emitted signal, take/pass decision, stated
 reason, and subsequent outcome so that any human-selection value is measured
 rather than assumed.
+
+## Revisit protocol
+
+The terminal machine receipt and complete trade ledger are curated under
+`research/results/playbooks/classical_pattern_lab/rectangle_exit_experiment_v2/public_43_v2/`.
+Start with that directory's `REVISIT.md`, then read `REPORT.md` and
+`experiment_receipt.json`. The implementation used clean commit
+`976def49b407d15e323f4df5474362bbbfc9d588`; the stopping-rule lesson is in
+`docs/lessons/semantic-fidelity-is-not-economic-edge.md`.
+
+Do not reopen merely to add another exit, buffer, symbol slice, or favorable
+subgroup to the consumed history. A legitimate revisit requires at least one
+of:
+
+1. genuinely new forward bars collected after this closeout;
+2. a new frozen external point-in-time dataset not inspected in this program;
+3. prospective consultation logs containing every emitted signal and the
+   operator's take/pass decision; or
+4. a separately sourced Brandt pattern hypothesis with a new semantic and
+   economic contract.
+
+Reacquiring historical provider bars is a new dataset unless its canonical
+hash exactly matches the source hash in the receipt. Preserve the old result
+and write a new versioned output directory rather than overwriting it.

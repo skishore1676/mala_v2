@@ -1,0 +1,5 @@
+analysis_period,stop_buffer_atr,signal_count,mean_profile_minus_baseline_r,median_profile_minus_baseline_r,profile_better_count,baseline_better_count,tie_count
+optimization,0.0,63,-0.04501417410202203,0.0,12,23,28
+optimization,0.1,63,-0.09657708608377365,0.0,10,24,29
+out_of_sample,0.0,33,-0.0327703311285135,0.0,6,10,17
+out_of_sample,0.1,33,-0.010053156977331166,0.0,6,10,17

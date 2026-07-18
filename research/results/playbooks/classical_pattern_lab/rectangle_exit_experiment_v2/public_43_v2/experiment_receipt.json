@@ -1,0 +1,165 @@
+{
+  "artifacts": {
+    "REPORT.md": {
+      "content_hash": "cb3f762229a891fce859cc8e57f5a972ac390170159e9f05d1d4b100d447bc1f",
+      "path": "REPORT.md",
+      "row_count": 1
+    },
+    "exit_scorecard.csv": {
+      "content_hash": "e70893c922b19995a8511a0c59d64bcea96bb32d3da4c82d1bd1d4bf22e50991",
+      "path": "exit_scorecard.csv",
+      "row_count": 8
+    },
+    "exit_slice_scorecard.csv": {
+      "content_hash": "e085671e9a19b3f769fa0d23d61b631727cd7e387464311cec61b7803a972a5f",
+      "path": "exit_slice_scorecard.csv",
+      "row_count": 32
+    },
+    "exit_trades.csv": {
+      "content_hash": "9cd26ca9deede936a111871d092d1ffe4d180307e9832943f97eefed804cd38e",
+      "path": "exit_trades.csv",
+      "row_count": 384
+    },
+    "paired_exit_comparisons.csv": {
+      "content_hash": "a12d1357e768b20d7f126c0a4b7d19d1b52481ee3c1a66ef5174c0249c426fc2",
+      "path": "paired_exit_comparisons.csv",
+      "row_count": 4
+    },
+    "signals_v2.csv": {
+      "content_hash": "dab78e6be57334e08400a358dac92f991ff2a0f40d02ebc9b4c3918af808ecab",
+      "path": "signals_v2.csv",
+      "row_count": 96
+    }
+  },
+  "configs": {
+    "v1_hash": "7cc10b3303881be6d0b361bd39c2170832c8a0977b7d19713dfa99ce16653cb8",
+    "v1_path": "/Users/suman/code/mala_v2/config/classical_patterns/rectangle_daily_v1.yaml",
+    "v2_hash": "d8fb8c6c41126a9f9ca70a785701b4b428b7fe2cf83bcb74ac0262c333fe9079",
+    "v2_path": "/Users/suman/code/mala_v2/config/classical_patterns/rectangle_daily_v2.yaml"
+  },
+  "created_at": "2026-07-18T12:36:25.526759+00:00",
+  "design": {
+    "bootstrap": {
+      "draws": 10000,
+      "method": "symbol_cluster_resample",
+      "seed": 20260718
+    },
+    "boundary_purge": true,
+    "maximum_trade_sessions": 20,
+    "no_trade_signal_r": 0.0,
+    "optimization_end": "2024-12-31",
+    "out_of_sample_start": "2025-01-01",
+    "primary_metric": "mean_net_r_per_signal",
+    "selection_tiebreakers": [
+      "symbol_cluster_ci95_lower",
+      "max_drawdown_r",
+      "variant_id"
+    ],
+    "variant_count": 4
+  },
+  "executable": false,
+  "git": {
+    "branch": "main",
+    "commit": "976def49b407d15e323f4df5474362bbbfc9d588",
+    "dirty": false,
+    "status": []
+  },
+  "identity_checks": {
+    "incremental_events_are_80_only": true,
+    "source_v1_replay_exact": true,
+    "trade_variant_population_complete": true,
+    "v1_events_preserved_in_v2": true,
+    "v1_representatives_preserved_in_v2": true
+  },
+  "limitations": [
+    "The 43-symbol universe is a frozen current-symbol cohort, not a point-in-time market universe.",
+    "Public provider adjustment continuity was checked empirically but its policy is undocumented.",
+    "The 2025+ period was inspected in rectangle v1, so it is secondary OOS evidence rather than a pristine program-level holdout.",
+    "The Range Expansion policy is a daily underlying analogue, not the minute-level option-premium profile.",
+    "No result authorizes shadow or live trading."
+  ],
+  "population": {
+    "incremental_80_only_signals": 11,
+    "optimization_signals": 63,
+    "out_of_sample_signals": 33,
+    "purged_signals": 0,
+    "v1_signals": 85,
+    "v2_candidates": 104,
+    "v2_scanned_windows": 207088,
+    "v2_signals": 96
+  },
+  "quality": {
+    "column_count": 10,
+    "duplicate_symbol_dates": 0,
+    "failed_checks": [],
+    "first_session": "2021-07-19",
+    "invalid_ohlc_rows": 0,
+    "last_session": "2026-07-16",
+    "nonfinite_numeric_cells": 0,
+    "required_null_cells": 0,
+    "row_count": 53922,
+    "sessions_per_symbol_max": 1254,
+    "sessions_per_symbol_min": 1254,
+    "status": "ready",
+    "symbol_count": 43
+  },
+  "question": "Does the frozen daily rectangle entry have net underlying edge under a bounded exit comparison?",
+  "schema_version": "RectangleExitExperimentV2",
+  "selection": {
+    "optimization_metrics": {
+      "analysis_period": "optimization",
+      "closed_trade_count": 61,
+      "exit_family": "rectangle_height",
+      "max_drawdown_r": -8.48880816098511,
+      "mean_net_r_per_closed_trade": -0.013009593414448326,
+      "mean_net_r_per_signal": -0.012596590448910287,
+      "median_net_r_per_signal": 0.0,
+      "no_trade_count": 2,
+      "observed_year_count": 4,
+      "positive_year_count": 2,
+      "profit_factor": 0.9723560046959697,
+      "signal_count": 63,
+      "stop_buffer_atr": 0.0,
+      "symbol_cluster_ci95_lower": -0.2554918349372941,
+      "symbol_cluster_ci95_upper": 0.24784796829128591,
+      "variant_id": "rectangle_height_lfd_buffer_0p00atr",
+      "win_rate_per_signal": 0.49206349206349204
+    },
+    "out_of_sample_metrics": {
+      "analysis_period": "out_of_sample",
+      "closed_trade_count": 32,
+      "exit_family": "rectangle_height",
+      "max_drawdown_r": -8.37921186681389,
+      "mean_net_r_per_closed_trade": -0.21100103861296146,
+      "mean_net_r_per_signal": -0.20460706774590198,
+      "median_net_r_per_signal": -0.31411896281035245,
+      "no_trade_count": 1,
+      "observed_year_count": 2,
+      "positive_year_count": 0,
+      "profit_factor": 0.6471245043807827,
+      "signal_count": 33,
+      "stop_buffer_atr": 0.0,
+      "symbol_cluster_ci95_lower": -0.5351155680227687,
+      "symbol_cluster_ci95_upper": 0.13483779410423347,
+      "variant_id": "rectangle_height_lfd_buffer_0p00atr",
+      "win_rate_per_signal": 0.42424242424242425
+    },
+    "selected_variant": "rectangle_height_lfd_buffer_0p00atr"
+  },
+  "source": {
+    "daily_bars_hash": "8db73647adf4c32af3460f47f6dbc3c052ca8367697c8411ae9030eb0e4a8333",
+    "dataset_manifest_hash": "333d9cf9ed65aa527307eae377986fc79206933d51a877fc4b885c77791b27b0",
+    "provider_adjustment_provenance": "empirically_split_continuous_provider_policy_undocumented",
+    "receipt_hash": "aa5cfc88d0b827083b00aa2c5545f5171e882cf4021a13bb7a89fce4425012da",
+    "run_dir": "/Users/suman/code/mala_v2/research/results/playbooks/classical_pattern_lab/public_validation_round_1/economic_public_43_v1",
+    "universe_status": "frozen_current_symbol_cohort_not_point_in_time"
+  },
+  "status": "complete",
+  "verdict": {
+    "action": "Move on from autonomous rectangle trading; optional discretionary alerts require prospective logging.",
+    "code": "no_out_of_sample_edge",
+    "selected_oos_mean_net_r_per_signal": -0.20460706774590198,
+    "selected_oos_profit_factor": 0.6471245043807827,
+    "selected_oos_symbol_cluster_ci95_lower": -0.5351155680227687
+  }
+}
