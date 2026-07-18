@@ -746,6 +746,7 @@ def test_v3_source_fidelity_overlay_removes_trade_worthiness_and_is_pass_scoped(
     scorecard = json.loads(ingested.scorecard_path.read_text(encoding="utf-8"))
     assert scorecard["economic_fields_present"] is False
     assert scorecard["agreement_counts"]["mala_rectangle_state"] == 3
+    assert scorecard["agreement_counts"]["lfd_joint"] == 3
     freeze_path = freeze_mala_rectangle_semantic_spec_v1(
         batch_dir=batch.output_dir,
         detector_git_commit="a" * 40,

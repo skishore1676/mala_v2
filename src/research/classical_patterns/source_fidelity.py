@@ -466,6 +466,12 @@ def ingest_source_fidelity_responses_v3(
         )
         for field in agreement_fields
     }
+    agreement_counts["lfd_joint"] = sum(
+        1
+        for records in by_card.values()
+        if len(records) >= 2
+        and len({(record["lfd_assessment"], record["lfd_date"]) for record in records}) == 1
+    )
     disagreement_cards = sorted(
         card_id for card_id, records in by_card.items()
         if len(records) >= 2 and any(len({record[field] for record in records}) > 1 for field in agreement_fields)
@@ -549,7 +555,7 @@ def freeze_mala_rectangle_semantic_spec_v1(
     }
     card_count = int(scorecard["card_count"])
     state_agreement = scorecard["agreement_counts"]["mala_rectangle_state"] / card_count
-    lfd_agreement = scorecard["agreement_counts"]["lfd_assessment"] / card_count
+    lfd_agreement = scorecard["agreement_counts"]["lfd_joint"] / card_count
     indeterminate_fraction = (
         sum(record["mala_rectangle_state"] == "indeterminate" for record in records) / len(records)
         if records
