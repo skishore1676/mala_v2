@@ -92,6 +92,9 @@ def analyze_public_validation(
             "bootstrap_seed": BOOTSTRAP_SEED,
             "confidence_interval": "nonparametric_trade_level_percentile_95",
             "minimum_directional_closed_trades": MINIMUM_DIRECTIONAL_CLOSED_TRADES,
+            "minimum_sample_rule_status": (
+                "post_run_descriptive_evidence_floor_not_original_protocol_gate"
+            ),
             "replicated_positive_rule": (
                 "validation and holdout average net R are positive, both 95% lower bounds "
                 "are above zero, and both samples have at least 20 closed trades"
@@ -314,7 +317,7 @@ def _render_obsidian_card(
         "Validation shorts were positive, but both short variants reversed to materially",
         "negative average net R in holdout. Validation longs were negative; holdout longs",
         "were approximately flat. Every directional confidence interval crosses zero, and",
-        "each directional split has fewer than the predeclared 20 closed trades.",
+        "each directional split has fewer than this report's descriptive 20-trade evidence floor.",
         "",
         "<Suman comment: leave blank if you agree with recording this as a negative result.>",
         "",
