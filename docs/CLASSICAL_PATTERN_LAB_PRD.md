@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Daily rectangle v1 built; source-grounded semantic audit and economic proof next
+Status: Daily rectangle v1 and V3 source-fidelity gate built; claim-grade economic proof data-blocked
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release
@@ -911,14 +911,21 @@ surfaces:
 - `src/oracle/rectangle_trade_simulator.py`: next-open, zero-reentry,
   conservative daily-bar simulation;
 - `runner.py`: full-population artifacts, scorecard, and non-executable receipt;
+- `source_fidelity.py`: sanitized, rubric-hashed V3 review overlay, independent
+  reviewer/pass ingestion, and aggregate-only semantic freeze;
+- `research/playbooks/classical_rectangle_source_rubric_v1.md`: cited source
+  boundary plus explicit Mala-owned 20/40/60-session operationalization;
 - `tests/test_classical_rectangle_lab.py`: DST, strict-config,
   future-poison/prefix-invariance, lifecycle, long/short gap, same-bar, and
   receipt/accounting proof.
 
-This implementation is deliberately `fixture_shadow`. It proves that the
-contracts execute and reconcile; it does not claim semantic agreement with
-Suman, historical alpha, provider adjustment quality, point-in-time universe
-coverage, or promotion readiness.
+The deterministic economic implementation remains deliberately
+`fixture_shadow`. It proves that contracts execute and populations reconcile;
+it does not turn retained cache data into historical alpha evidence. V3 may
+freeze the tested Mala semantics through independent source-fidelity review,
+but provider adjustment quality, point-in-time universe coverage, delistings,
+validation, and untouched holdout remain separate prerequisites for a
+claim-grade economic result.
 
 ## Dependencies
 

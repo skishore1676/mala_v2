@@ -271,7 +271,79 @@ the backtest population.
   refine, stop, or later authorize a capital-facing packet after evidence is
   available.
 
-Future review packets therefore ask only source-answerable questions such as
-"does this match the frozen Peter-style rectangle definition?" or expose a
-specific ambiguity in the cited doctrine. They must not ask Suman to predict
-whether an individual chart should make money.
+Future review packets therefore ask only source-answerable questions about the
+frozen Mala rectangle operationalization and expose source silence explicitly.
+They must not call the deterministic geometry a Peter-defined rectangle or ask
+Suman to predict whether an individual chart should make money.
+
+## Round 3 — Source-Fidelity Overlay and Semantic Freeze
+
+Round 3 is an additive V3 overlay on a verified, outcome-hidden V2 batch. It
+does not alter V1 or V2 serialization. The authoritative rubric is
+`research/playbooks/classical_rectangle_source_rubric_v1.md`; each generated
+review directory contains a byte-identical `FROZEN_RUBRIC.md` copy and binds it
+by SHA-256.
+
+The V3 response asks only for:
+
+- `mala_rectangle_state`;
+- `lfd_assessment` and an optional `lfd_date`;
+- frozen Mala-spec reason codes;
+- source-ambiguity codes and an optional note.
+
+There is no trade-worthiness, action, expected-return, or economic-selection
+field. V3 generates its own sanitized card wrappers around the already-hashed
+as-of SVGs. Verification rejects historical V2 review language in those cards,
+rubric/card/chart tampering, stale identities, unknown enums, missing
+attestations, or conflicting reviewer/pass records.
+
+The aggregate `MalaRectangleSemanticSpecFreezeV1` gate requires two distinct
+complete reviewers, predeclared agreement and indeterminate limits, and a
+minimum match rate in each hidden calibration cohort. Its receipt contains no
+accepted-card or signal allowlist and grants no authority to filter economics.
+This is a freeze of **Mala rectangle v1 semantics**, not certification of Peter
+Brandt's private method or results.
+
+Runner commands:
+
+```bash
+uv run --frozen python -m src.research.classical_patterns.runner \
+  init-source-fidelity-review-v3 \
+  --batch-dir "$batch_dir" \
+  --rubric research/playbooks/classical_rectangle_source_rubric_v1.md
+
+uv run --frozen python -m src.research.classical_patterns.runner \
+  verify-source-fidelity-review-v3 --batch-dir "$batch_dir"
+
+uv run --frozen python -m src.research.classical_patterns.runner \
+  ingest-source-fidelity-responses-v3 --batch-dir "$batch_dir" \
+  --responses-csv "$responses_csv"
+
+uv run --frozen python -m src.research.classical_patterns.runner \
+  freeze-source-fidelity-v3 --batch-dir "$batch_dir" \
+  --detector-git-commit "$detector_commit"
+```
+
+Semantic freeze and economic readiness remain separate gates. The retained
+local cache may support a clearly labeled fixture/calibration plumbing run, but
+the current `ClassicalPatternDataReadinessV1` explicitly blocks an alpha claim
+until adjustment provenance, point-in-time universe membership, and delisting
+coverage are independently proven.
+
+### Current economic gate readback — 2026-07-17
+
+The latest retained-cache audit covers 43 symbols from 2021-09-01 through
+2022-12-30 and reports:
+
+- `adjustment_provenance=unverified_provider_adjusted`;
+- `economic_research_status=blocked_unverified_adjustment_and_point_in_time_universe`;
+- no validation or untouched holdout beyond the configured calibration end;
+- no date-effective security-master, membership, corporate-action, or
+  delisting receipt.
+
+A read-only daily-aggregate entitlement probe against the configured provider
+also returned HTTP 403 `NOT_AUTHORIZED`; no secret was printed or persisted.
+Therefore the autonomous path is to run only non-claiming engineering economics
+from the retained cache after semantic freeze. Claim-grade D5 remains blocked
+until a licensed, immutable bar manifest and point-in-time universe evidence
+are available.

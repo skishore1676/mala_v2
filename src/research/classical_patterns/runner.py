@@ -41,6 +41,12 @@ from .review import (
     verify_semantic_calibration_batch_v2,
     verify_semantic_batch,
 )
+from .source_fidelity import (
+    freeze_mala_rectangle_semantic_spec_v1,
+    ingest_source_fidelity_responses_v3,
+    initialize_source_fidelity_review_v3,
+    verify_source_fidelity_review_v3,
+)
 
 
 DEFAULT_CONFIG = Path("config/classical_patterns/rectangle_daily_v1.yaml")
@@ -544,6 +550,25 @@ def build_parser() -> argparse.ArgumentParser:
     render_calibration_gate_v2.add_argument("--card-id", action="append", required=True)
     render_calibration_gate_v2.add_argument("--output", type=Path, required=True)
 
+    init_source_fidelity_v3 = subparsers.add_parser("init-source-fidelity-review-v3")
+    init_source_fidelity_v3.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    init_source_fidelity_v3.add_argument("--batch-dir", type=Path, required=True)
+    init_source_fidelity_v3.add_argument("--rubric", type=Path, required=True)
+
+    verify_source_fidelity_v3 = subparsers.add_parser("verify-source-fidelity-review-v3")
+    verify_source_fidelity_v3.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    verify_source_fidelity_v3.add_argument("--batch-dir", type=Path, required=True)
+
+    ingest_source_fidelity_v3 = subparsers.add_parser("ingest-source-fidelity-responses-v3")
+    ingest_source_fidelity_v3.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    ingest_source_fidelity_v3.add_argument("--batch-dir", type=Path, required=True)
+    ingest_source_fidelity_v3.add_argument("--responses-csv", type=Path)
+
+    freeze_source_fidelity_v3 = subparsers.add_parser("freeze-source-fidelity-v3")
+    freeze_source_fidelity_v3.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    freeze_source_fidelity_v3.add_argument("--batch-dir", type=Path, required=True)
+    freeze_source_fidelity_v3.add_argument("--detector-git-commit", required=True)
+
     ingest = subparsers.add_parser("ingest-semantic-responses")
     ingest.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     ingest.add_argument("--batch-dir", type=Path, required=True)
@@ -633,6 +658,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print("STATUS=complete")
         print(f"OUTPUT={output}")
+        return 0
+    if args.command == "init-source-fidelity-review-v3":
+        base_receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if base_receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Source-fidelity base batch uses a stale config hash.")
+        result = initialize_source_fidelity_review_v3(
+            batch_dir=args.batch_dir,
+            rubric_path=args.rubric,
+        )
+        print("STATUS=complete")
+        print(f"BATCH_ID={result.batch_id}")
+        print(f"CANONICAL_HASH={result.canonical_hash}")
+        print(f"REVIEW_DIR={result.review_dir}")
+        return 0
+    if args.command == "verify-source-fidelity-review-v3":
+        base_receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if base_receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Source-fidelity base batch uses a stale config hash.")
+        receipt = verify_source_fidelity_review_v3(args.batch_dir)
+        print("STATUS=valid")
+        print(f"BATCH_ID={receipt['batch_id']}")
+        print(f"CANONICAL_HASH={receipt['canonical_hash']}")
+        return 0
+    if args.command == "ingest-source-fidelity-responses-v3":
+        base_receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if base_receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Source-fidelity base batch uses a stale config hash.")
+        result = ingest_source_fidelity_responses_v3(
+            batch_dir=args.batch_dir,
+            responses_csv=args.responses_csv,
+        )
+        print("STATUS=complete")
+        print(f"REVIEWED={result.reviewed_count}")
+        print(f"COMPLETE_PASSES={result.complete_review_pass_count}")
+        print(f"SCORECARD={result.scorecard_path}")
+        return 0
+    if args.command == "freeze-source-fidelity-v3":
+        base_receipt = verify_semantic_calibration_batch_v2(args.batch_dir)
+        if base_receipt.get("config_hash") != config.source_hash:
+            raise ValueError("Source-fidelity base batch uses a stale config hash.")
+        git = _git_state()
+        if git["dirty"]:
+            raise ValueError("Semantic freeze requires a clean Git tree.")
+        if git["commit"] != args.detector_git_commit:
+            raise ValueError("Semantic freeze detector commit does not match HEAD.")
+        freeze_path = freeze_mala_rectangle_semantic_spec_v1(
+            batch_dir=args.batch_dir,
+            detector_git_commit=args.detector_git_commit,
+        )
+        payload = json.loads(freeze_path.read_text(encoding="utf-8"))
+        print(f"STATUS={payload['status']}")
+        print(f"FREEZE={freeze_path}")
+        print(f"CANONICAL_HASH={payload['canonical_hash']}")
         return 0
     if args.command == "ingest-semantic-responses":
         receipt = verify_semantic_batch(args.batch_dir)

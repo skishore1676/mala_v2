@@ -31,6 +31,14 @@ from src.research.classical_patterns.review import (
     verify_semantic_calibration_batch_v2,
     verify_semantic_batch,
 )
+from src.research.classical_patterns.source_fidelity import (
+    SOURCE_FIDELITY_RESPONSE_FIELDS,
+    freeze_mala_rectangle_semantic_spec_v1,
+    ingest_source_fidelity_responses_v3,
+    initialize_source_fidelity_review_v3,
+    validate_source_fidelity_response_v3,
+    verify_source_fidelity_review_v3,
+)
 from src.research.classical_patterns.rectangle import enumerate_rectangles
 from src.trading_calendar import trading_dates
 
@@ -654,6 +662,130 @@ def test_v2_calibration_response_contract_is_reviewer_pass_scoped(tmp_path: Path
     assert first.decision_log_path.read_text(encoding="utf-8").count("\n") == 1
     with pytest.raises(ValueError, match="review_pass"):
         validate_calibration_review_response_v2(dict(row, review_pass="0"), manifest)
+
+
+def test_v3_source_fidelity_overlay_removes_trade_worthiness_and_is_pass_scoped(
+    tmp_path: Path,
+) -> None:
+    config = load_rectangle_config(CONFIG)
+    daily = {"TEST": _rectangle_frame(), "FLAT": _flat_frame()}
+    batch = build_semantic_calibration_batch_v2(
+        daily,
+        config=config,
+        readiness=_readiness(config.source_hash, daily),
+        output_dir=tmp_path / "batch",
+        batch_id="semantic-calibration-v3-base",
+        confirmed_signal_count=1,
+        qualified_no_trigger_count=1,
+        rejected_geometry_count=1,
+    )
+    rubric = tmp_path / "rubric.md"
+    rubric.write_text("# Frozen source rubric\n", encoding="utf-8")
+    result = initialize_source_fidelity_review_v3(
+        batch_dir=batch.output_dir,
+        rubric_path=rubric,
+    )
+    receipt = verify_source_fidelity_review_v3(batch.output_dir)
+    assert receipt["economic_selection_allowed"] is False
+    contract = json.loads(result.contract_path.read_text(encoding="utf-8"))
+    assert "as_of_trade_worthiness" not in contract["response_fields"]
+    assert contract["response_fields"] == list(SOURCE_FIDELITY_RESPONSE_FIELDS)
+    for card in contract["cards"]:
+        text = (result.review_dir / card["card_path"]).read_text(encoding="utf-8")
+        assert "trade worthiness" not in text.lower()
+        assert "strict rectangle validity" not in text.lower()
+        assert "source_fidelity_responses.csv" in text
+    assert (result.review_dir / "FROZEN_RUBRIC.md").read_bytes() == rubric.read_bytes()
+
+    with result.response_path.open(newline="", encoding="utf-8") as handle:
+        template_rows = list(csv.DictReader(handle))
+    base_manifest = json.loads(batch.manifest_path.read_text(encoding="utf-8"))
+    private_by_card = {item["card_id"]: item for item in base_manifest["private_cases"]}
+    rows: list[dict[str, str]] = []
+    for reviewer_id, review_pass in (("sol-a", "1"), ("sol-b", "1")):
+        for template in template_rows:
+            row = dict(template)
+            private = private_by_card[row["card_id"]]
+            if private["hidden_class"] == "confirmed_signal":
+                state = f"mala_rectangle_{private['causal_attempt_direction']}_close_breakout"
+                lfd_assessment = "identified"
+                lfd_date = "2021-01-01"
+            elif private["hidden_class"] == "qualified_no_trigger":
+                state = "mala_rectangle_no_close_breakout"
+                lfd_assessment = "not_applicable"
+                lfd_date = ""
+            else:
+                state = "no_mala_rectangle"
+                lfd_assessment = "not_applicable"
+                lfd_date = ""
+            row.update(
+                reviewer_id=reviewer_id,
+                review_pass=review_pass,
+                mala_rectangle_state=state,
+                lfd_assessment=lfd_assessment,
+                lfd_date=lfd_date,
+                spec_reason_codes="",
+                source_ambiguity_codes="",
+                reviewed_at="2026-07-17T00:00:00-05:00",
+                outcome_hidden_attestation="true",
+                no_future_consulted_attestation="true",
+            )
+            validate_source_fidelity_response_v3(row, contract)
+            rows.append(row)
+    responses = tmp_path / "responses.csv"
+    with responses.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SOURCE_FIDELITY_RESPONSE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    ingested = ingest_source_fidelity_responses_v3(
+        batch_dir=batch.output_dir,
+        responses_csv=responses,
+    )
+    assert ingested.reviewed_count == 6
+    assert ingested.complete_review_pass_count == 2
+    scorecard = json.loads(ingested.scorecard_path.read_text(encoding="utf-8"))
+    assert scorecard["economic_fields_present"] is False
+    assert scorecard["agreement_counts"]["mala_rectangle_state"] == 3
+    freeze_path = freeze_mala_rectangle_semantic_spec_v1(
+        batch_dir=batch.output_dir,
+        detector_git_commit="a" * 40,
+    )
+    freeze = json.loads(freeze_path.read_text(encoding="utf-8"))
+    assert freeze["status"] == "frozen"
+    assert freeze["economic_filtering_allowed"] is False
+    assert "card_ids" not in freeze and "signal_ids" not in freeze
+    with pytest.raises(ValueError, match="requires an LFD assessment"):
+        validate_source_fidelity_response_v3(
+            dict(
+                next(row for row in rows if row["mala_rectangle_state"] == "no_mala_rectangle"),
+                mala_rectangle_state="mala_rectangle_long_close_breakout",
+            ),
+            contract,
+        )
+
+
+def test_v3_source_fidelity_overlay_detects_tampering(tmp_path: Path) -> None:
+    config = load_rectangle_config(CONFIG)
+    daily = {"TEST": _rectangle_frame(), "FLAT": _flat_frame()}
+    batch = build_semantic_calibration_batch_v2(
+        daily,
+        config=config,
+        readiness=_readiness(config.source_hash, daily),
+        output_dir=tmp_path / "batch",
+        batch_id="semantic-calibration-v3-tamper",
+        confirmed_signal_count=1,
+        qualified_no_trigger_count=1,
+        rejected_geometry_count=1,
+    )
+    rubric = tmp_path / "rubric.md"
+    rubric.write_text("# Frozen source rubric\n", encoding="utf-8")
+    result = initialize_source_fidelity_review_v3(
+        batch_dir=batch.output_dir,
+        rubric_path=rubric,
+    )
+    result.guide_path.write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        verify_source_fidelity_review_v3(batch.output_dir)
 
 
 def test_v2_positive_diagnostics_separate_central_rail_excursions_from_full_triggers() -> None:
