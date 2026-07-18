@@ -25,7 +25,7 @@ from src.research.classical_patterns.daily_bars import (
 )
 from src.research.classical_patterns.lifecycle import derive_lifecycle
 from src.research.classical_patterns.rectangle import enumerate_rectangles
-from src.research.classical_patterns.runner import run_research
+from src.research.classical_patterns.runner import _frame, run_research
 
 
 CONFIG_PATH = Path("config/classical_patterns/rectangle_daily_v1.yaml")
@@ -431,3 +431,11 @@ def test_fixture_shadow_runner_writes_reconciled_non_executable_receipt(
         assert metadata["content_hash"] == hashlib.sha256(
             (output / name).read_bytes()
         ).hexdigest()
+
+
+def test_population_frame_infers_nullable_fields_across_all_rows() -> None:
+    rows = [{"row": index, "direction": None} for index in range(101)]
+    rows.append({"row": 101, "direction": "short"})
+    frame = _frame(rows)
+    assert frame.height == 102
+    assert frame.get_column("direction")[-1] == "short"

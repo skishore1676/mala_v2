@@ -342,7 +342,10 @@ def _frame(rows: list[dict[str, Any]]) -> pl.DataFrame:
         }
         for row in rows
     ]
-    return pl.DataFrame(normalized)
+    # Economic populations can exceed Polars' default inference sample. A
+    # nullable audit field may be empty in the first 100 rows and populated
+    # later, so infer across the complete deterministic population.
+    return pl.DataFrame(normalized, infer_schema_length=None)
 
 
 def _write_frames(frames: dict[str, pl.DataFrame], output_dir: Path) -> dict[str, Any]:
