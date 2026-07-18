@@ -22,6 +22,8 @@ def test_public_validation_analysis_rejects_nonreplicating_directional_effect(
     run_dir.mkdir()
     rows = []
     for split, direction, values in (
+        ("calibration", "long", [-1.0, 0.5, 0.5]),
+        ("calibration", "short", [1.0, -0.5, -0.5]),
         ("validation", "long", [-1.0, 0.5, 0.5]),
         ("holdout", "long", [1.0, 0.5, 0.5]),
         ("validation", "short", [1.0, 0.5, 0.5]),
@@ -72,6 +74,13 @@ def test_public_validation_analysis_rejects_nonreplicating_directional_effect(
     replication = pl.read_csv(run_dir / "replication_scorecard.csv")
     assert set(replication.get_column("replication_status")) == {"not_replicated"}
     assert "Do not retune from the holdout" in (run_dir / "OBSIDIAN_REVIEW.md").read_text()
+    artifact = json.loads((run_dir / "artifact.json").read_text())
+    assert artifact["surface"] == "report"
+    assert artifact["manifest"]["blocks"][0]["body"] == (
+        "# Classical Rectangle Public Validation"
+    )
+    assert len(artifact["manifest"]["charts"]) == 2
+    assert artifact["snapshot"]["status"] == "ready"
 
 
 def test_public_validation_analysis_verifies_source_artifact_hashes(

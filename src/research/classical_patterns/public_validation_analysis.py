@@ -134,6 +134,14 @@ def analyze_public_validation(
         ),
         encoding="utf-8",
     )
+    _write_report_artifact(
+        output_dir=output_dir,
+        receipt=receipt,
+        analysis=analysis,
+        scorecard_rows=scorecard_rows,
+        replication_rows=replication_rows,
+        concentration_rows=concentration_rows,
+    )
     return analysis
 
 
@@ -408,6 +416,343 @@ def _variant_label(variant_id: str) -> str:
     return variant_id.removeprefix("lfd_buffer_").replace("p", ".").replace("atr", " ATR")
 
 
+def _write_report_artifact(
+    *,
+    output_dir: Path,
+    receipt: dict[str, Any],
+    analysis: dict[str, Any],
+    scorecard_rows: list[dict[str, Any]],
+    replication_rows: list[dict[str, Any]],
+    concentration_rows: list[dict[str, Any]],
+) -> None:
+    directional = [row for row in scorecard_rows if row["scope"] == "directional"]
+    combined = [row for row in scorecard_rows if row["scope"] == "combined"]
+    variants = sorted({row["variant_id"] for row in scorecard_rows})
+    direction_chart_rows: list[dict[str, Any]] = []
+    for split in ("calibration", "validation", "holdout"):
+        for direction in ("long", "short"):
+            row: dict[str, Any] = {
+                "cell": f"{split.title()} {direction}",
+                "split": split,
+                "direction": direction,
+            }
+            for variant in variants:
+                match = next(
+                    item
+                    for item in directional
+                    if item["split"] == split
+                    and item["direction"] == direction
+                    and item["variant_id"] == variant
+                )
+                row[_variant_field(variant)] = match["average_net_r"]
+                row[_variant_field(variant) + "_closed"] = match["closed_trades"]
+                row[_variant_field(variant) + "_ci_lower"] = match[
+                    "mean_net_r_ci95_lower"
+                ]
+                row[_variant_field(variant) + "_ci_upper"] = match[
+                    "mean_net_r_ci95_upper"
+                ]
+            direction_chart_rows.append(row)
+    combined_chart_rows: list[dict[str, Any]] = []
+    for split in ("calibration", "validation", "holdout"):
+        row = {"split": split.title()}
+        for variant in variants:
+            match = next(
+                item
+                for item in combined
+                if item["split"] == split and item["variant_id"] == variant
+            )
+            row[_variant_field(variant)] = match["average_net_r"]
+            row[_variant_field(variant) + "_closed"] = match["closed_trades"]
+            row[_variant_field(variant) + "_ci_lower"] = match[
+                "mean_net_r_ci95_lower"
+            ]
+            row[_variant_field(variant) + "_ci_upper"] = match[
+                "mean_net_r_ci95_upper"
+            ]
+        combined_chart_rows.append(row)
+    base_holdout = next(
+        row
+        for row in combined
+        if row["split"] == "holdout" and row["variant_id"] == variants[0]
+    )
+    headline_rows = [
+        {
+            "signals": analysis["counts"]["signals"],
+            "closed_variant_rows": analysis["counts"]["closed_trade_rows"],
+            "replicated_positive_cells": analysis["counts"]["replicated_positive_cells"],
+            "holdout_average_net_r": base_holdout["average_net_r"],
+        }
+    ]
+    sources = [
+        {
+            "id": "run-source",
+            "label": "Frozen Public rectangle run",
+            "path": "trades.csv",
+            "query": {
+                "description": "Complete closed-trade population from the hash-bound Public run.",
+                "language": "python",
+                "query": "python -m src.research.classical_patterns.public_validation_analysis --run-dir <run_dir>",
+                "filters": [
+                    "status = closed for expectancy metrics",
+                    "all frozen cohort symbols",
+                    "all predeclared variants",
+                ],
+                "metric_definitions": [
+                    "Average net R is the arithmetic mean of closed-trade net_r after configured costs.",
+                    "Closed variant rows count one result per signal and stop-buffer variant.",
+                ],
+            },
+        },
+        {
+            "id": "analysis-source",
+            "label": "Deterministic robustness analysis",
+            "path": "validation_analysis.json",
+            "query": {
+                "description": "Seeded trade-level percentile bootstrap and split replication checks.",
+                "language": "python",
+                "query": "python -m src.research.classical_patterns.public_validation_analysis --run-dir <run_dir>",
+                "metric_definitions": [
+                    "95% intervals are 2.5th and 97.5th percentiles from 10,000 seeded trade-level bootstrap means.",
+                    "Replicated positive requires positive validation and holdout lower bounds plus at least 20 closed trades in each split; the sample floor is descriptive and was not an original protocol gate.",
+                ],
+            },
+        },
+    ]
+    series = [
+        {
+            "field": _variant_field(variant),
+            "label": _variant_label(variant),
+            "color": color,
+        }
+        for variant, color in zip(variants, ("blue", "orange"))
+    ]
+    artifact = {
+        "surface": "report",
+        "manifest": {
+            "version": 1,
+            "surface": "report",
+            "title": "Classical Rectangle Public Validation",
+            "description": "Frozen-cohort economic validation and robustness report.",
+            "generatedAt": analysis["created_at"],
+            "sources": sources,
+            "cards": [
+                {
+                    "id": "signals-card",
+                    "dataset": "headline",
+                    "sourceId": "run-source",
+                    "description": "Complete causal signals emitted across the 43-symbol cohort.",
+                    "metrics": [{"label": "Signals", "field": "signals", "format": "number"}],
+                },
+                {
+                    "id": "closed-card",
+                    "dataset": "headline",
+                    "sourceId": "run-source",
+                    "description": "Closed result rows; each signal contributes one row per stop variant.",
+                    "metrics": [
+                        {"label": "Closed variant rows", "field": "closed_variant_rows", "format": "number"}
+                    ],
+                },
+                {
+                    "id": "replicated-card",
+                    "dataset": "headline",
+                    "sourceId": "analysis-source",
+                    "description": "Directional variant cells meeting the robustness report's replication rule.",
+                    "metrics": [
+                        {"label": "Replicated positive cells", "field": "replicated_positive_cells", "format": "number"}
+                    ],
+                },
+                {
+                    "id": "holdout-card",
+                    "dataset": "headline",
+                    "sourceId": "analysis-source",
+                    "description": "Combined-direction holdout mean for the 0.00 ATR stop-buffer variant.",
+                    "metrics": [
+                        {"label": "Holdout average net R", "field": "holdout_average_net_r", "format": "number", "signed": True}
+                    ],
+                },
+            ],
+            "charts": [
+                {
+                    "id": "direction-chart",
+                    "title": "Average net R by split and direction",
+                    "subtitle": "43-symbol frozen cohort; closed trades only; grouped by the two predeclared LFD stop buffers",
+                    "type": "bar",
+                    "intent": "comparison",
+                    "dataset": "direction_chart",
+                    "sourceId": "analysis-source",
+                    "xField": "cell",
+                    "xAxisTitle": "Split and direction",
+                    "yAxisTitle": "Average net R",
+                    "series": series,
+                    "valueFormat": "number",
+                    "layout": "full",
+                    "referenceLines": [{"axis": "y", "value": 0, "label": "Break-even", "color": "neutral"}],
+                    "settings": {"groupMode": "grouped", "showValues": True, "categoryLabelPolicy": "wrap"},
+                    "labels": {"values": "auto"},
+                    "legend": {"position": "bottom", "sort": "spec", "title": "Stop buffer"},
+                    "palette": {"kind": "categorical", "name": "blue-orange"},
+                    "surface": {"viewMode": "both", "showControls": True},
+                },
+                {
+                    "id": "combined-chart",
+                    "title": "Combined-direction average net R by split",
+                    "subtitle": "Validation was slightly positive, but calibration and holdout were negative for both variants",
+                    "type": "bar",
+                    "intent": "comparison",
+                    "dataset": "combined_chart",
+                    "sourceId": "analysis-source",
+                    "xField": "split",
+                    "xAxisTitle": "Research split",
+                    "yAxisTitle": "Average net R",
+                    "series": series,
+                    "valueFormat": "number",
+                    "layout": "full",
+                    "referenceLines": [{"axis": "y", "value": 0, "label": "Break-even", "color": "neutral"}],
+                    "settings": {"groupMode": "grouped", "showValues": True},
+                    "labels": {"values": "all"},
+                    "legend": {"position": "bottom", "sort": "spec", "title": "Stop buffer"},
+                    "palette": {"kind": "categorical", "name": "blue-orange"},
+                    "surface": {"viewMode": "both", "showControls": True},
+                },
+            ],
+            "tables": [
+                {
+                    "id": "replication-table",
+                    "title": "Validation-to-holdout replication detail",
+                    "subtitle": "Average net R and seeded 95% bootstrap intervals by direction and stop buffer",
+                    "dataset": "replication",
+                    "sourceId": "analysis-source",
+                    "layout": "full",
+                    "density": "dense",
+                    "defaultSort": {"field": "direction", "direction": "asc"},
+                    "columns": [
+                        {"field": "direction", "label": "Direction", "type": "text"},
+                        {"field": "stop_buffer", "label": "Stop buffer", "type": "text"},
+                        {"field": "validation_average_net_r", "label": "Validation avg R", "format": "number"},
+                        {"field": "validation_ci", "label": "Validation 95% CI", "type": "text"},
+                        {"field": "validation_closed_trades", "label": "Validation n", "format": "number"},
+                        {"field": "holdout_average_net_r", "label": "Holdout avg R", "format": "number"},
+                        {"field": "holdout_ci", "label": "Holdout 95% CI", "type": "text"},
+                        {"field": "holdout_closed_trades", "label": "Holdout n", "format": "number"},
+                        {"field": "replication_status", "label": "Status", "type": "text"},
+                    ],
+                },
+                {
+                    "id": "concentration-table",
+                    "title": "Symbol concentration by split and stop buffer",
+                    "subtitle": "Absolute net-R contribution shares; concentration is descriptive, not a rescue filter",
+                    "dataset": "concentration",
+                    "sourceId": "analysis-source",
+                    "layout": "full",
+                    "density": "dense",
+                    "defaultSort": {"field": "split", "direction": "asc"},
+                    "columns": [
+                        {"field": "split", "label": "Split", "type": "text"},
+                        {"field": "stop_buffer", "label": "Stop buffer", "type": "text"},
+                        {"field": "symbol_count", "label": "Symbols", "format": "number"},
+                        {"field": "largest_absolute_contributor", "label": "Largest contributor", "type": "text"},
+                        {"field": "largest_absolute_contribution_share", "label": "Largest share", "format": "percent"},
+                        {"field": "top_five_absolute_contribution_share", "label": "Top-five share", "format": "percent"},
+                    ],
+                },
+            ],
+            "blocks": [
+                {"id": "title", "type": "markdown", "body": "# Classical Rectangle Public Validation"},
+                {
+                    "id": "summary",
+                    "type": "markdown",
+                    "sourceId": "analysis-source",
+                    "body": (
+                        "## No replicated alpha in the frozen rectangle run\n\n"
+                        "The validation short signal reversed in holdout, while validation longs were negative and holdout longs were approximately flat. Both variants produced negative combined holdout expectancy. This is a clean negative or insufficient result—not a basis for tuning on holdout."
+                    ),
+                },
+                {"id": "metrics", "type": "metric-strip", "cardIds": ["signals-card", "closed-card", "replicated-card", "holdout-card"]},
+                {
+                    "id": "direction-heading",
+                    "type": "markdown",
+                    "body": "## Directional effects did not survive validation to holdout\n\nThe charts show average net R; the following table preserves sample sizes and uncertainty intervals.",
+                },
+                {"id": "direction-visual", "type": "chart", "chartId": "direction-chart"},
+                {"id": "replication-detail", "type": "table", "tableId": "replication-table"},
+                {
+                    "id": "combined-heading",
+                    "type": "markdown",
+                    "body": "## The complete population was negative in calibration and holdout",
+                },
+                {"id": "combined-visual", "type": "chart", "chartId": "combined-chart"},
+                {
+                    "id": "scope-method",
+                    "type": "markdown",
+                    "sourceId": "run-source",
+                    "body": (
+                        "## Scope and method\n\n"
+                        "The unchanged rectangle v1 detector scanned 43 frozen current symbols from 2021-07-19 through 2026-07-16. The run retained all causal signals and both predeclared Last Full Day stop-buffer variants. Calibration ends 2022-12-31, validation ends 2024-12-31, and the remaining history is holdout. Average net R includes configured costs and uses closed trades only."
+                    ),
+                },
+                {
+                    "id": "uncertainty",
+                    "type": "markdown",
+                    "sourceId": "analysis-source",
+                    "body": (
+                        "## Uncertainty remains wide\n\n"
+                        "All validation and holdout directional 95% bootstrap intervals cross zero. The intervals use 10,000 seeded trade-level resamples and do not remove common market-regime dependence. The 20-trade sample floor is a post-run descriptive evidence floor, not an original protocol gate."
+                    ),
+                },
+                {"id": "concentration-detail", "type": "table", "tableId": "concentration-table"},
+                {
+                    "id": "limitations",
+                    "type": "markdown",
+                    "body": (
+                        "## What this result does not establish\n\n"
+                        "The cohort is not a point-in-time market universe, Public's adjustment policy is undocumented despite passing three known-split continuity checks, and the two variants share the same signals. The report therefore cannot make a population-alpha or independent-replication claim."
+                    ),
+                },
+                {
+                    "id": "next",
+                    "type": "markdown",
+                    "body": (
+                        "## Recommended next step\n\n"
+                        "Record rectangle v1 as a negative or insufficient economic result and do not retune from holdout. Continue with a separately versioned Brandt pattern hypothesis, or replicate this exact unchanged rule only after obtaining broader point-in-time data. No artifact here authorizes shadow or live trading.\n\n"
+                        "## Further questions\n\n"
+                        "Would another classical pattern family have a more testable deterministic definition? If exact rectangle replication is desired, which point-in-time universe source can preserve delisted and renamed securities?"
+                    ),
+                },
+            ],
+        },
+        "snapshot": {
+            "version": 1,
+            "generatedAt": analysis["created_at"],
+            "status": "ready",
+            "datasets": {
+                "headline": headline_rows,
+                "direction_chart": direction_chart_rows,
+                "combined_chart": combined_chart_rows,
+                "replication": [
+                    {
+                        **row,
+                        "stop_buffer": _variant_label(row["variant_id"]),
+                        "validation_ci": f"[{row['validation_ci95_lower']:+.3f}, {row['validation_ci95_upper']:+.3f}]",
+                        "holdout_ci": f"[{row['holdout_ci95_lower']:+.3f}, {row['holdout_ci95_upper']:+.3f}]",
+                    }
+                    for row in replication_rows
+                ],
+                "concentration": [
+                    {**row, "stop_buffer": _variant_label(row["variant_id"])}
+                    for row in concentration_rows
+                ],
+            },
+        },
+        "sources": sources,
+    }
+    _write_json(output_dir / "artifact.json", artifact)
+
+
+def _variant_field(variant_id: str) -> str:
+    return variant_id.removeprefix("lfd_buffer_").removesuffix("atr") + "_average_net_r"
+
+
 def _file_meta(path: Path, row_count: int) -> dict[str, Any]:
     return {"path": path.name, "row_count": row_count, "content_hash": _sha256_path(path)}
 
@@ -456,6 +801,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"CANONICAL_HASH={analysis['canonical_hash']}")
     print(f"ANALYSIS_JSON={target / 'validation_analysis.json'}")
     print(f"OBSIDIAN_REVIEW={target / 'OBSIDIAN_REVIEW.md'}")
+    print(f"REPORT_ARTIFACT={target / 'artifact.json'}")
     return 0
 
 
