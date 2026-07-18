@@ -428,14 +428,14 @@ def validate_rectangle_config(config: RectangleResearchConfig) -> None:
     errors: list[str] = []
     if config.playbook_id != "classical-rectangle-breakout-daily":
         errors.append("unsupported playbook_id")
-    if config.version != 1:
-        errors.append("v1 implementation requires version=1")
+    if config.version not in {1, 2}:
+        errors.append("supported rectangle versions are 1 and 2")
     if config.status not in {"draft", "fixture_shadow", "frozen", "retired"}:
         errors.append("status must be draft, fixture_shadow, frozen, or retired")
     if config.timeframe != "1d":
-        errors.append("v1 only supports timeframe=1d")
+        errors.append("rectangle implementation only supports timeframe=1d")
     if config.session.timezone != "America/New_York":
-        errors.append("v1 requires America/New_York session grouping")
+        errors.append("rectangle implementation requires America/New_York session grouping")
     if config.session.market_open >= config.session.market_close:
         errors.append("market_open must be before market_close")
     if config.session.minimum_source_bars <= 0:
@@ -490,9 +490,9 @@ def validate_rectangle_config(config: RectangleResearchConfig) -> None:
     if config.execution.entry_timing != "next_session_open":
         errors.append("daily close confirmation requires entry_timing=next_session_open")
     if config.execution.same_bar_trade_ordering != "stop_first":
-        errors.append("v1 requires conservative same_bar_trade_ordering=stop_first")
+        errors.append("rectangle implementation requires conservative same_bar_trade_ordering=stop_first")
     if config.execution.same_bar_outcome_ordering != "unresolved":
-        errors.append("v1 requires same_bar_outcome_ordering=unresolved")
+        errors.append("rectangle implementation requires same_bar_outcome_ordering=unresolved")
     if config.execution.slippage_bps_each_side < 0:
         errors.append("slippage_bps_each_side must be non-negative")
     if config.execution.round_trip_cost_bps < 0:
@@ -505,8 +505,22 @@ def validate_rectangle_config(config: RectangleResearchConfig) -> None:
         errors.append("economic population must include all representative signals")
     if config.population.human_review_may_filter_economics:
         errors.append("human review may not filter the economic population")
-    if config.population.representative_policy != "causal_geometry_quality":
-        errors.append("unsupported representative_policy")
+    if config.version == 1:
+        if config.population.representative_policy != "causal_geometry_quality":
+            errors.append("v1 requires representative_policy=causal_geometry_quality")
+        if 80 in definition.lookback_sessions:
+            errors.append("80-session rectangles require version=2")
+    elif config.version == 2:
+        if definition.lookback_sessions != (20, 40, 60, 80):
+            errors.append(
+                "v2 requires lookback_sessions=(20, 40, 60, 80); "
+                "the existing definition requires version=1"
+            )
+        if config.population.representative_policy != "baseline_preserving_80_extension":
+            errors.append(
+                "v2 requires representative_policy=baseline_preserving_80_extension; "
+                "causal_geometry_quality alone requires version=1"
+            )
 
     if errors:
         raise ValueError("Invalid rectangle config: " + "; ".join(errors))

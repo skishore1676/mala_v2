@@ -10,6 +10,9 @@ import pytest
 import yaml
 
 from src.oracle.rectangle_trade_simulator import simulate_rectangle_trade
+from src.oracle.rectangle_range_expansion_simulator import (
+    simulate_daily_range_expansion_trade,
+)
 from src.research.classical_patterns.contracts import (
     BreakoutDirection,
     BreakoutOutcome,
@@ -24,11 +27,15 @@ from src.research.classical_patterns.daily_bars import (
     normalize_daily_input,
 )
 from src.research.classical_patterns.lifecycle import derive_lifecycle
-from src.research.classical_patterns.rectangle import enumerate_rectangles
+from src.research.classical_patterns.rectangle import (
+    _select_representatives,
+    enumerate_rectangles,
+)
 from src.research.classical_patterns.runner import _frame, run_research
 
 
 CONFIG_PATH = Path("config/classical_patterns/rectangle_daily_v1.yaml")
+V2_CONFIG_PATH = Path("config/classical_patterns/rectangle_daily_v2.yaml")
 
 
 def _config():
@@ -166,6 +173,12 @@ def test_config_is_strict_and_fixture_shadow_is_non_executable(tmp_path: Path) -
     with pytest.raises(ValueError, match="version=1"):
         validate_rectangle_config(replace(config, version=2))
 
+    v2 = load_rectangle_config(V2_CONFIG_PATH)
+    assert v2.version == 2
+    assert v2.status == "frozen"
+    assert v2.definition.lookback_sessions == (20, 40, 60, 80)
+    assert v2.population.representative_policy == "baseline_preserving_80_extension"
+
 
 def test_daily_input_rejects_null_and_nonfinite_prices() -> None:
     base = {
@@ -275,6 +288,34 @@ def test_representative_tie_prefers_shorter_lookback_then_stable_id() -> None:
     lexical = replace(base, candidate_id="a-short", lookback_sessions=20)
     assert shorter.representative_key() < longer.representative_key()
     assert lexical.representative_key() < shorter.representative_key()
+
+
+def test_v2_representative_policy_preserves_baseline_and_adds_80_only_events() -> None:
+    base = _candidate()
+    baseline = replace(base, candidate_id="baseline", lookback_sessions=60)
+    preferred_80 = replace(
+        base,
+        candidate_id="eighty-overlap",
+        lookback_sessions=80,
+        touch_alternations=99,
+    )
+    new_80 = replace(
+        base,
+        candidate_id="eighty-new",
+        breakout_index=1,
+        breakout_date=date(2024, 1, 3),
+        lookback_sessions=80,
+    )
+
+    signals = _select_representatives(
+        [baseline, preferred_80, new_80],
+        representative_policy="baseline_preserving_80_extension",
+    )
+
+    assert [signal.candidate.candidate_id for signal in signals] == [
+        "baseline",
+        "eighty-new",
+    ]
 
 
 def test_enumerator_has_long_short_price_mirror_symmetry() -> None:
@@ -400,6 +441,92 @@ def test_later_gap_exit_does_not_use_post_exit_intraday_excursions() -> None:
     assert result.exit_reason == "gap_stop"
     assert result.mfe == pytest.approx(108.0 - result.entry_price)
     assert result.mae == pytest.approx(result.entry_price - 101.0)
+
+
+def test_daily_range_expansion_stop_wins_when_initial_stop_and_targets_share_bar() -> None:
+    result = simulate_daily_range_expansion_trade(
+        _signal(),
+        _daily_rows(
+            [
+                (106.0, 109.0, 106.0, 108.0),
+                (103.0, 111.0, 99.0, 109.0),
+            ]
+        ),
+        stop_buffer_atr=0.0,
+        config=_config(),
+    )
+
+    assert result.status == "closed"
+    assert result.exit_reason == "stop"
+    assert result.target_1_date is None
+    assert result.net_r is not None and result.net_r < -1.0
+
+
+def test_daily_range_expansion_blends_t1_and_t2_on_directional_bar() -> None:
+    result = simulate_daily_range_expansion_trade(
+        _signal(),
+        _daily_rows(
+            [
+                (106.0, 109.0, 106.0, 108.0),
+                (103.0, 110.0, 101.0, 109.0),
+            ]
+        ),
+        stop_buffer_atr=0.0,
+        config=_config(),
+    )
+
+    assert result.status == "closed"
+    assert result.exit_reason == "target_2"
+    assert result.target_1_date == date(2024, 1, 3)
+    assert result.net_r == pytest.approx(1.6, abs=0.03)
+
+
+def test_daily_range_expansion_moves_runner_to_breakeven_after_t1() -> None:
+    result = simulate_daily_range_expansion_trade(
+        _signal(),
+        _daily_rows(
+            [
+                (106.0, 109.0, 106.0, 108.0),
+                (103.0, 107.0, 101.0, 106.0),
+                (106.0, 107.0, 102.0, 103.0),
+            ]
+        ),
+        stop_buffer_atr=0.0,
+        config=_config(),
+    )
+
+    assert result.status == "closed"
+    assert result.exit_reason == "breakeven_stop"
+    assert result.target_1_date == date(2024, 1, 3)
+    assert result.net_r is not None and 0.35 < result.net_r < 0.45
+
+
+def test_daily_range_expansion_has_long_short_price_mirror_symmetry() -> None:
+    long_bars = _daily_rows(
+        [
+            (106.0, 109.0, 106.0, 108.0),
+            (103.0, 110.0, 101.0, 109.0),
+        ]
+    )
+    short_bars = long_bars.with_columns(
+        (pl.lit(200.0) - pl.col("open")).alias("open"),
+        (pl.lit(200.0) - pl.col("low")).alias("high"),
+        (pl.lit(200.0) - pl.col("high")).alias("low"),
+        (pl.lit(200.0) - pl.col("close")).alias("close"),
+    )
+    long_result = simulate_daily_range_expansion_trade(
+        _signal(), long_bars, stop_buffer_atr=0.0, config=_config()
+    )
+    short_result = simulate_daily_range_expansion_trade(
+        _signal(direction=BreakoutDirection.SHORT),
+        short_bars,
+        stop_buffer_atr=0.0,
+        config=_config(),
+    )
+
+    assert long_result.exit_reason == short_result.exit_reason == "target_2"
+    # Multiplicative adverse slippage creates a tiny price-level asymmetry.
+    assert long_result.net_r == pytest.approx(short_result.net_r, abs=0.005)
 
 
 def test_fixture_shadow_runner_writes_reconciled_non_executable_receipt(

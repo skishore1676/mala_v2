@@ -137,3 +137,18 @@ Review surfaces:
 - `research/results/playbooks/classical_pattern_lab/public_validation_round_1/economic_public_43_v1/OBSIDIAN_REVIEW.md`
 - `research/results/playbooks/classical_pattern_lab/public_validation_round_1/economic_public_43_v1/REPORT.html`
 - Obsidian Inbox: `07 Agents/Coding/Inbox/Rectangle Public Validation Round 1 - 2026-07-18.md`
+
+## Bounded exit follow-up — 2026-07-18
+
+At the operator's direction, version 2 added baseline-preserving 80-session
+events and compared the existing rectangle-height exit with a daily Range
+Expansion exit analogue. Development through 2024 selected the original raw
+LFD/rectangle-height policy at `-0.013R` per emitted signal. That selected
+policy then returned `-0.205R` per signal with profit factor `0.65` from 2025
+onward. All four predeclared variants were negative OOS, and the Range
+Expansion analogue did not improve the baseline.
+
+This follow-up strengthens the original negative decision: do not continue
+exit tuning on the consumed history. Complete design, calculations, caveats,
+and the optional prospective consultation-only path are recorded in
+`docs/CLASSICAL_PATTERN_EXIT_EXPERIMENT_V2.md`.

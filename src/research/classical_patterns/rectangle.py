@@ -212,7 +212,10 @@ def enumerate_rectangles(
                 )
             )
 
-    signals = _select_representatives(candidates)
+    signals = _select_representatives(
+        candidates,
+        representative_policy=config.population.representative_policy,
+    )
     return EnumerationResult(
         records=tuple(records),
         candidates=tuple(sorted(candidates, key=lambda item: item.candidate_id)),
@@ -505,7 +508,24 @@ def _breakout_bar_diagnostic_codes(
     return codes
 
 
-def _select_representatives(candidates: Sequence[RectangleCandidate]) -> list[RectangleSignal]:
+def _select_representatives(
+    candidates: Sequence[RectangleCandidate],
+    *,
+    representative_policy: str = "causal_geometry_quality",
+) -> list[RectangleSignal]:
+    """Select one outcome-blind geometry for each breakout event.
+
+    Version 2 preserves the already-reviewed 20/40/60 representative whenever
+    one exists. An 80-session candidate may create a new event, but it may not
+    silently rewrite a version-1 event. This keeps the extension auditable and
+    makes every incremental signal attributable to the new lookback.
+    """
+
+    if representative_policy not in {
+        "causal_geometry_quality",
+        "baseline_preserving_80_extension",
+    }:
+        raise ValueError(f"Unsupported representative policy: {representative_policy}")
     grouped: dict[tuple[str, int, BreakoutDirection], list[RectangleCandidate]] = {}
     for candidate in candidates:
         grouped.setdefault(
@@ -514,7 +534,12 @@ def _select_representatives(candidates: Sequence[RectangleCandidate]) -> list[Re
     signals: list[RectangleSignal] = []
     for key in sorted(grouped, key=lambda item: (item[0], item[1], item[2].value)):
         cohort = grouped[key]
-        selected = min(cohort, key=RectangleCandidate.representative_key)
+        eligible = cohort
+        if representative_policy == "baseline_preserving_80_extension":
+            baseline = [candidate for candidate in cohort if candidate.lookback_sessions != 80]
+            if baseline:
+                eligible = baseline
+        selected = min(eligible, key=RectangleCandidate.representative_key)
         signal_id = f"signal:{selected.candidate_id}"
         signals.append(
             RectangleSignal(
