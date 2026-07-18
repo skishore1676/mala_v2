@@ -1,6 +1,6 @@
 # Classical Rectangle Public Validation — Frozen Protocol
 
-Status: implementation complete; provider acquisition pending
+Status: complete; verdict `no_replicated_alpha`
 Date: 2026-07-17
 Execution boundary: local research only; non-executable
 
@@ -97,3 +97,43 @@ The next decision is one of:
 
 None of these decisions authorizes Bhiksha, options translation, shadow, or
 live trading.
+
+## Result — 2026-07-17
+
+Public returned 1,254 expected daily sessions for every one of the 43 frozen
+symbols, with no gaps or unexpected sessions. The three known split transitions
+passed continuity checks. The immutable dataset manifest hash is
+`333d9cf9ed65aa527307eae377986fc79206933d51a877fc4b885c77791b27b0`.
+
+The unchanged detector scanned 156,606 windows and emitted 85 representative
+signals across 37 symbols. Both predeclared stop-buffer variants were simulated
+for every signal. Six signal/variant rows were not entered because the next open
+was already at or beyond the objective; 164 variant rows closed.
+
+Validation did not replicate into holdout:
+
+| Direction | Stop buffer | Validation average net R | Holdout average net R | Verdict |
+|---|---:|---:|---:|---|
+| Long | 0.00 ATR | -0.089 | +0.014 | Not replicated |
+| Long | 0.10 ATR | -0.101 | -0.009 | Not replicated |
+| Short | 0.00 ATR | +0.162 | -0.388 | Not replicated |
+| Short | 0.10 ATR | +0.118 | -0.394 | Not replicated |
+
+Across both directions, holdout average net R was `-0.147` for the unbuffered
+variant and `-0.163` for the 0.10 ATR variant. All validation and holdout
+directional 95% trade-level bootstrap intervals crossed zero. The descriptive
+20-trade evidence floor used by the robustness report was added after the run
+and is not presented as an original protocol gate; the sign reversal itself is
+enough to reject replication.
+
+The durable verdict is **no replicated alpha**. Record rectangle v1 as a clean
+negative or insufficient economic result on this cohort and do not retune its
+consumed holdout. The next lane should be a separately versioned classical
+pattern hypothesis unless broader point-in-time data is obtained solely to
+replicate this exact unchanged rule.
+
+Review surfaces:
+
+- `research/results/playbooks/classical_pattern_lab/public_validation_round_1/economic_public_43_v1/OBSIDIAN_REVIEW.md`
+- `research/results/playbooks/classical_pattern_lab/public_validation_round_1/economic_public_43_v1/REPORT.html`
+- Obsidian Inbox: `07 Agents/Coding/Inbox/Rectangle Public Validation Round 1 - 2026-07-18.md`

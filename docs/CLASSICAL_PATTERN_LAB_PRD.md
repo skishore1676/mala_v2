@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Mala rectangle v1 semantics frozen; Public frozen-cohort validation implementation ready
+Status: Rectangle v1 Public frozen-cohort validation complete; no replicated alpha
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release
@@ -920,13 +920,13 @@ surfaces:
   future-poison/prefix-invariance, lifecycle, long/short gap, same-bar, and
   receipt/accounting proof.
 
-The deterministic economic implementation remains deliberately
-`fixture_shadow`. It proves that contracts execute and populations reconcile;
-it does not turn retained cache data into historical alpha evidence. V3 may
-freeze the tested Mala semantics through independent source-fidelity review,
-but provider adjustment quality, point-in-time universe coverage, delistings,
-validation, and untouched holdout remain separate prerequisites for a
-claim-grade economic result.
+The deterministic implementation first passed `fixture_shadow`, then ran the
+unchanged detector on a hash-bound Public daily dataset across calibration,
+validation, and holdout. That frozen current-symbol cohort is useful for a
+negative/replication decision but still lacks point-in-time membership,
+delistings, and documented provider adjustment policy needed for a population
+alpha claim. The result showed no validation-to-holdout replicated positive
+cell; rectangle v1 should not be retuned from its consumed holdout.
 
 ## Dependencies
 
@@ -946,8 +946,8 @@ Choose the next iteration from evidence, not momentum:
 1. **If semantics fail:** improve the definition/review tooling, or kill the
    chart-agent approach. Do not add more patterns.
 2. **If semantics pass but economics fail:** record the negative result and test
-   one predeclared adjacent entry/exit hypothesis only if the failure analysis
-   justifies it.
+   a separately versioned pattern hypothesis; do not modify rectangle v1 from
+   its consumed holdout. **This is the current branch.**
 3. **If rectangle v1 is robust:** add a second pattern—recommended symmetrical
    triangle—to test sloped-boundary and morph semantics.
 4. **If review burden is the bottleneck:** introduce the thinking workflow and
@@ -1050,6 +1050,6 @@ Choose the next iteration from evidence, not momentum:
 | Type 1–4 are post-breakout outcome classes | TechCharts article definitions | Proven |
 | Rectangle is the best first pattern | Architecture decision plus implemented fixture-shadow slice | Approved for v1; semantic fidelity still unproven |
 | Deterministic v1 mechanics execute causally on synthetic data | Focused config, DST, future-poison, lifecycle, fill, and receipt tests | Proven for the checked fixtures |
-| The method has economic edge | No completed test | Open; this project exists to find out |
+| The rectangle v1 method has economic edge in the frozen Public cohort | 85 signals; validation-to-holdout robustness analysis | Not supported; zero replicated positive cells and negative combined holdout expectancy |
 | Agent improves semantic fidelity or review burden | No benchmark | Open; D6 test |
 | Any packet is fit for live trading | No packet/parity/shadow evidence | Explicitly false at this stage |

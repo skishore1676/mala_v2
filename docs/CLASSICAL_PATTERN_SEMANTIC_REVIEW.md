@@ -391,3 +391,26 @@ contains only ten closed calibration trades and is not alpha evidence. The
 honest current read is: no broad positive edge appears in this small retained
 calibration sample, and claim-grade validation remains blocked by data
 provenance and point-in-time-universe evidence.
+
+### Public frozen-cohort validation — complete
+
+A fresh Public `FIVE_YEARS/ONE_DAY` snapshot supplied 100% expected-session
+coverage for all 43 frozen symbols from 2021-07-19 through 2026-07-16. The
+dataset retained raw provider payloads, normalized Parquet bars, a 22,894-row
+current equity catalogue snapshot, file/content hashes, and three passing known
+split-continuity checks. Its evidence grade remains
+`frozen_cohort_validation_not_population_alpha` because current-symbol
+selection is not point-in-time and Public's adjustment policy is undocumented.
+
+The unchanged semantic freeze and detector produced 85 signals. Validation
+shorts were positive (`+0.162 R` and `+0.118 R`) but reversed in holdout
+(`-0.388 R` and `-0.394 R`). Validation longs were negative; holdout longs were
+approximately flat. Combined holdout expectancy was negative for both variants
+(`-0.147 R`, `-0.163 R`), and all validation/holdout directional 95% bootstrap
+intervals crossed zero. No positive directional cell replicated.
+
+The economic verdict is `no_replicated_alpha`. This closes rectangle v1 as a
+negative or insufficient result for the frozen cohort; the consumed holdout
+must not be used to retune it. The next economic experiment requires a new,
+versioned hypothesis or broader point-in-time data used only for unchanged
+replication. Nothing in this result is executable.
