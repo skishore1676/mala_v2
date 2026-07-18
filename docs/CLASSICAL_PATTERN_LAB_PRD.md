@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Daily rectangle v1 and V3 source-fidelity gate built; claim-grade economic proof data-blocked
+Status: Mala rectangle v1 semantics frozen; local-cache engineering economics complete; claim-grade proof data-blocked
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release

@@ -347,3 +347,47 @@ Therefore the autonomous path is to run only non-claiming engineering economics
 from the retained cache after semantic freeze. Claim-grade D5 remains blocked
 until a licensed, immutable bar manifest and point-in-time universe evidence
 are available.
+
+### Round 3 result
+
+Two pristine Sol Ultra reviewers independently covered all nine sanitized cards
+and exact as-of charts. They agreed on 8/9 `mala_rectangle_state` calls and 8/9
+joint LFD assessment/date calls. The retained disagreement is CRM on 2022-03-29:
+one reviewer saw a fresh long completion while the other rejected the geometry
+as trend/reversal without sufficient repeated upper tests.
+
+The aggregate gate passed without resolving that card by vote:
+
+- confirmed-signal cohort match: `6/6` review rows;
+- qualified-no-trigger cohort match: `6/6`;
+- rejected-geometry cohort match: `5/6`;
+- indeterminate fraction: `0`;
+- economic filtering: `false`.
+
+The resulting `MalaRectangleSemanticSpecFreezeV1` is bound to clean commit
+`c3eccbe933c79bafe3adf1e3ad85451e43cba376`. It freezes the tested Mala
+operationalization while retaining the CRM disagreement and source-silence
+codes; it is not an accepted-chart allowlist.
+
+### Economic round 1 — engineering/calibration only
+
+The complete retained-cache population was replayed across all 43 audited
+symbols from 2021-09-01 through 2022-12-30. The run reconciled 38,178 scanned
+windows, 21 qualifying candidates, 20 representative signals, and both exact
+stop-buffer variants for every signal (40 rows). All population identities and
+artifact hashes passed. The run is `readiness=fixture_shadow`,
+`executable=false`, and contains calibration rows only.
+
+| Direction | LFD buffer | Result rows | Closed | Win rate | Average net R | Profit factor |
+|---|---:|---:|---:|---:|---:|---:|
+| Long | 0.00 ATR | 9 | 9 | 44.4% | -0.341 | 0.395 |
+| Long | 0.10 ATR | 9 | 9 | 44.4% | -0.355 | 0.370 |
+| Short | 0.00 ATR | 11 | 10 | 50.0% | -0.068 | 0.866 |
+| Short | 0.10 ATR | 11 | 10 | 60.0% | +0.056 | 1.137 |
+
+Across both directions, average net R was `-0.197` for the unbuffered variant
+and `-0.139` for the 0.10 ATR variant. The narrow positive short/buffered cell
+contains only ten closed calibration trades and is not alpha evidence. The
+honest current read is: no broad positive edge appears in this small retained
+calibration sample, and claim-grade validation remains blocked by data
+provenance and point-in-time-universe evidence.
