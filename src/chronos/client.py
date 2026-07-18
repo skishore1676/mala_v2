@@ -26,6 +26,7 @@ MAX_RESULTS_PER_PAGE = 50_000  # Polygon max limit per request
 REQUEST_DELAY_S = 0.25  # polite pause between paginated calls
 
 PUBLIC_BARS_ENDPOINT = "/userapigateway/historicdata/{type}/{symbol}/{period}/{aggregation}"
+PUBLIC_INSTRUMENTS_ENDPOINT = "/userapigateway/trading/instruments"
 PUBLIC_SESSIONS = ("preMarket", "regularMarket", "afterMarket")
 
 
@@ -203,20 +204,7 @@ class PublicMarketDataClient:
         based, so Chronos requests a configured period and filters locally.
         """
         del adjusted  # Public's endpoint does not expose an adjusted toggle.
-        url = self.base_url + PUBLIC_BARS_ENDPOINT.format(
-            type=self.instrument_type,
-            symbol=ticker.upper(),
-            period=self.period,
-            aggregation=self.aggregation,
-        )
-        logger.debug(
-            "Fetching Public bars for {} period={} aggregation={}",
-            ticker,
-            self.period,
-            self.aggregation,
-        )
-        resp = self._get_with_retry(url, headers=self._headers())
-        payload = resp.json()
+        payload = self.fetch_bars_payload(ticker)
         bars = [
             bar
             for bar in self._normalize_public_bars(ticker, payload)
@@ -231,6 +219,41 @@ class PublicMarketDataClient:
             end,
         )
         return bars
+
+    def fetch_bars_payload(self, ticker: str) -> dict:
+        """Return one raw Public bars payload without persisting credentials."""
+
+        url = self.base_url + PUBLIC_BARS_ENDPOINT.format(
+            type=self.instrument_type,
+            symbol=ticker.upper(),
+            period=self.period,
+            aggregation=self.aggregation,
+        )
+        logger.debug(
+            "Fetching Public bars for {} period={} aggregation={}",
+            ticker,
+            self.period,
+            self.aggregation,
+        )
+        resp = self._get_with_retry(url, headers=self._headers())
+        payload = resp.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Public bars response must be a JSON object.")
+        return payload
+
+    def fetch_instruments(self, instrument_type: str = "EQUITY") -> dict:
+        """Return the current Public instrument catalogue for one type."""
+
+        url = self.base_url + PUBLIC_INSTRUMENTS_ENDPOINT
+        resp = self._get_with_retry(
+            url,
+            headers=self._headers(),
+            params={"typeFilter": instrument_type.upper()},
+        )
+        payload = resp.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("instruments"), list):
+            raise ValueError("Public instruments response has an invalid shape.")
+        return payload
 
     def fetch_aggs_chunked(
         self,
@@ -286,12 +309,13 @@ class PublicMarketDataClient:
         self,
         url: str,
         headers: Optional[dict] = None,
+        params: Optional[dict] = None,
         max_retries: int = 3,
         backoff: float = 2.0,
     ) -> requests.Response:
         for attempt in range(1, max_retries + 1):
             try:
-                resp = self._session.get(url, headers=headers, timeout=30)
+                resp = self._session.get(url, headers=headers, params=params, timeout=30)
                 resp.raise_for_status()
                 return resp
             except requests.exceptions.RequestException as exc:

@@ -30,6 +30,12 @@ from .contracts import (
 from .daily_bars import build_rth_daily_bars, hash_daily_bars, normalize_daily_input
 from .lifecycle import derive_lifecycle
 from .readiness import audit_local_cache, load_readiness_report, write_readiness_report
+from .public_daily import (
+    acquire_public_daily_dataset,
+    load_public_daily_dataset,
+    load_public_validation_universe,
+    verify_semantic_freeze_for_public_run,
+)
 from .rectangle import EnumerationResult, enumerate_rectangles
 from .review import (
     build_semantic_calibration_batch_v2,
@@ -50,6 +56,9 @@ from .source_fidelity import (
 
 
 DEFAULT_CONFIG = Path("config/classical_patterns/rectangle_daily_v1.yaml")
+DEFAULT_PUBLIC_UNIVERSE = Path(
+    "config/classical_patterns/public_validation_universe_v1.json"
+)
 
 
 def run_research(
@@ -60,6 +69,10 @@ def run_research(
     run_id: str,
     mode: str,
     argv: Sequence[str] | None = None,
+    phase: str = "deterministic implementation fixture shadow",
+    readiness: str = "fixture_shadow",
+    data_context: dict[str, Any] | None = None,
+    warnings: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Run the complete deterministic population and write reviewable artifacts."""
 
@@ -144,11 +157,11 @@ def run_research(
     git = _git_state()
     receipt: dict[str, Any] = {
         "schema_version": "BacktestRunReceiptV1",
-        "phase": "deterministic implementation fixture shadow",
+        "phase": phase,
         "run_id": run_id,
         "mode": mode,
         "status": "complete",
-        "readiness": "fixture_shadow",
+        "readiness": readiness,
         "executable": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "git": git,
@@ -168,6 +181,7 @@ def run_research(
             "adjustment_policy": config.session.adjustment_policy,
             "symbol_hashes": data_hashes,
             "symbols": sorted(data_hashes),
+            **(data_context or {}),
         },
         "policies": {
             "entry": config.execution.entry_timing,
@@ -195,7 +209,7 @@ def run_research(
             "human_review_cannot_filter_population": True,
         },
         "artifacts": artifacts,
-        "warnings": [
+        "warnings": list(warnings) if warnings is not None else [
             "Fixture-shadow evidence is not a live or packet-promotion claim.",
             "Provider adjustment provenance must be independently verified before historical holdout claims.",
         ],
@@ -419,8 +433,8 @@ def _write_receipt_markdown(receipt: dict[str, Any], path: Path) -> None:
             "",
             "## Boundary",
             "",
-            "This is deterministic fixture-shadow research. It is not an execution packet,",
-            "shadow authorization, live approval, or trading recommendation.",
+            f"This is {receipt['phase']}. It is not an execution packet, shadow",
+            "authorization, live approval, or trading recommendation.",
             "",
         ]
     )
@@ -428,13 +442,23 @@ def _write_receipt_markdown(receipt: dict[str, Any], path: Path) -> None:
 
 
 def _write_report(receipt: dict[str, Any], scorecard: pl.DataFrame, path: Path) -> None:
+    if receipt["readiness"] == "fixture_shadow":
+        verdict = (
+            "Fixture-shadow implementation proof only. Economic results below are not\n"
+            "promotion evidence until the detector, universe, data provenance, and holdout are frozen."
+        )
+    else:
+        verdict = (
+            "Frozen-cohort historical research only. Validation and holdout are untouched by\n"
+            "parameter tuning, but current-symbol selection and provider limitations prevent a\n"
+            "population-alpha claim."
+        )
     lines = [
         f"# Classical Rectangle Breakout Report — {receipt['run_id']}",
         "",
         "## Verdict",
         "",
-        "Fixture-shadow implementation proof only. Economic results below are not",
-        "promotion evidence until the detector, universe, data provenance, and holdout are frozen.",
+        verdict,
         "",
         "## Population",
         "",
@@ -596,6 +620,21 @@ def build_parser() -> argparse.ArgumentParser:
     cache.add_argument("--data-dir", type=Path)
     cache.add_argument("--run-id", required=True)
     cache.add_argument("--output-dir", type=Path, required=True)
+
+    acquire_public = subparsers.add_parser("acquire-public-daily")
+    acquire_public.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    acquire_public.add_argument(
+        "--universe", type=Path, default=DEFAULT_PUBLIC_UNIVERSE
+    )
+    acquire_public.add_argument("--output-dir", type=Path, required=True)
+    acquire_public.add_argument("--request-delay-seconds", type=float, default=0.12)
+
+    run_public = subparsers.add_parser("run-public-daily")
+    run_public.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    run_public.add_argument("--dataset-dir", type=Path, required=True)
+    run_public.add_argument("--semantic-freeze", type=Path, required=True)
+    run_public.add_argument("--run-id", required=True)
+    run_public.add_argument("--output-dir", type=Path, required=True)
     return parser
 
 
@@ -621,6 +660,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ECONOMIC_STATUS={report.economic_research_status}")
         print(f"REPORT_HASH={report.report_hash}")
         print(f"REPORT_JSON={paths['json'].resolve()}")
+        return 0
+    if args.command == "acquire-public-daily":
+        universe = load_public_validation_universe(args.universe)
+        if universe["config_hash"] != config.source_hash:
+            raise ValueError("Public universe uses a stale rectangle config hash.")
+        if _git_state()["dirty"]:
+            raise ValueError("Public dataset acquisition requires a clean Git tree.")
+        result = acquire_public_daily_dataset(
+            universe_path=args.universe,
+            output_dir=args.output_dir,
+            request_delay_seconds=args.request_delay_seconds,
+        )
+        print(f"STATUS={result.quality_status}")
+        print(f"DATASET_ID={result.dataset_id}")
+        print(f"CANONICAL_HASH={result.canonical_hash}")
+        print(f"MANIFEST={result.manifest_path}")
+        print(f"QUALITY_REPORT={result.report_path}")
         return 0
     if args.command == "verify-semantic-batch":
         receipt = verify_semantic_batch(args.batch_dir)
@@ -798,6 +854,47 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "fixture-shadow":
         daily = _load_daily_csv(args.daily_csv)
         mode = "fixture_shadow"
+    elif args.command == "run-public-daily":
+        if _git_state()["dirty"]:
+            raise ValueError("Public validation requires a clean Git tree.")
+        daily, dataset = load_public_daily_dataset(args.dataset_dir)
+        if dataset["config_hash"] != config.source_hash:
+            raise ValueError("Public dataset uses a stale rectangle config hash.")
+        freeze = verify_semantic_freeze_for_public_run(
+            freeze_path=args.semantic_freeze,
+            config_hash=config.source_hash,
+        )
+        receipt = run_research(
+            daily,
+            config=config,
+            output_dir=args.output_dir,
+            run_id=args.run_id,
+            mode="public_daily_research",
+            argv=argv,
+            phase="deterministic Public frozen-cohort validation and holdout",
+            readiness="public_best_effort_frozen_cohort_validation",
+            data_context={
+                "dataset_id": dataset["dataset_id"],
+                "dataset_manifest_hash": dataset["canonical_hash"],
+                "dataset_quality_status": dataset["quality_status"],
+                "economic_research_grade": dataset["economic_research_grade"],
+                "universe_hash": dataset["universe_hash"],
+                "universe_status": dataset["universe_status"],
+                "provider_adjustment_provenance": dataset["adjustment_provenance"],
+                "semantic_freeze_hash": freeze["canonical_hash"],
+            },
+            warnings=[
+                "This is a frozen current-symbol cohort, not a point-in-time market universe or population-alpha claim.",
+                "Public split continuity was checked empirically; the provider adjustment policy remains undocumented.",
+                "This receipt is non-executable and does not authorize shadow or live trading.",
+            ],
+        )
+        print(f"STATUS={receipt['status']}")
+        print(f"RUN_ID={receipt['run_id']}")
+        print(f"RUN_DIR={args.output_dir.expanduser().resolve()}")
+        print(f"RECEIPT_JSON={(args.output_dir / 'receipt.json').expanduser().resolve()}")
+        print(f"SIGNALS={receipt['population'].get('representative_signals', 0)}")
+        return 0
     else:
         symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]
         daily = _load_cache(

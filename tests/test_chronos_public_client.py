@@ -19,15 +19,36 @@ class StubResponse:
 
 
 class StubSession:
-    def __init__(self, *, bars_payload: dict, auth_payload: dict | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        bars_payload: dict,
+        auth_payload: dict | None = None,
+        instruments_payload: dict | None = None,
+    ) -> None:
         self.bars_payload = bars_payload
         self.auth_payload = auth_payload or {"accessToken": "minted-token"}
+        self.instruments_payload = instruments_payload
         self.get_calls: list[dict] = []
         self.post_calls: list[dict] = []
 
-    def get(self, url: str, *, headers: dict | None = None, timeout: int = 30) -> StubResponse:
-        self.get_calls.append({"url": url, "headers": headers, "timeout": timeout})
-        return StubResponse(self.bars_payload)
+    def get(
+        self,
+        url: str,
+        *,
+        headers: dict | None = None,
+        params: dict | None = None,
+        timeout: int = 30,
+    ) -> StubResponse:
+        self.get_calls.append(
+            {"url": url, "headers": headers, "params": params, "timeout": timeout}
+        )
+        payload = (
+            self.instruments_payload
+            if url.endswith("/userapigateway/trading/instruments")
+            else self.bars_payload
+        )
+        return StubResponse(payload or {})
 
     def post(self, url: str, *, json: dict | None = None, timeout: int = 30) -> StubResponse:
         self.post_calls.append({"url": url, "json": json, "timeout": timeout})
@@ -106,6 +127,28 @@ def test_public_client_mints_access_token_from_secret() -> None:
         }
     ]
     assert session.get_calls[0]["headers"]["Authorization"] == "Bearer minted-token"
+
+
+def test_public_client_exposes_raw_bars_and_current_instrument_catalogue() -> None:
+    bars_payload = {"regularMarket": {"bars": []}}
+    instruments_payload = {
+        "instruments": [
+            {"instrument": {"symbol": "SPY", "type": "EQUITY"}, "trading": "ENABLED"}
+        ]
+    }
+    session = StubSession(
+        bars_payload=bars_payload,
+        instruments_payload=instruments_payload,
+    )
+    client = PublicMarketDataClient(access_token="token", base_url="https://example.test")
+    client._session = session
+
+    assert client.fetch_bars_payload("spy") == bars_payload
+    assert client.fetch_instruments("equity") == instruments_payload
+    assert session.get_calls[1]["url"] == (
+        "https://example.test/userapigateway/trading/instruments"
+    )
+    assert session.get_calls[1]["params"] == {"typeFilter": "EQUITY"}
 
 
 def test_build_market_data_client_rejects_unknown_provider() -> None:

@@ -3,7 +3,7 @@
 Status: Round 2 reviewed; human trade-curation gate retired
 Date: 2026-07-17
 Playbook: `classical-rectangle-breakout-daily@1`
-Readiness: semantic calibration only; not economic or executable
+Readiness: semantics frozen; Public frozen-cohort validation implementation ready; not executable
 
 ## What This Round Proves
 

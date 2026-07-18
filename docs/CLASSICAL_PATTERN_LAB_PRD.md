@@ -1,6 +1,6 @@
 # Classical Pattern Lab — Vision, Architecture, and Delivery PRD
 
-Status: Mala rectangle v1 semantics frozen; local-cache engineering economics complete; claim-grade proof data-blocked
+Status: Mala rectangle v1 semantics frozen; Public frozen-cohort validation implementation ready
 Owner: Suman + Codex
 Last Updated: 2026-07-17
 Target Release: Research iteration 1; no runtime release
@@ -18,6 +18,7 @@ Sources:
 - [Peter Brandt: July Soybeans — A Chart Lesson](https://www.peterlbrandt.com/july-soybeans-a-chart-lesson/)
 - [TradingView Terms of Use](https://www.tradingview.com/policies/)
 - [tradesdontlie/tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp)
+- [Classical Rectangle Public Validation Protocol](CLASSICAL_PATTERN_PUBLIC_VALIDATION.md)
 
 ## Executive Summary
 

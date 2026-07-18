@@ -433,6 +433,34 @@ def test_fixture_shadow_runner_writes_reconciled_non_executable_receipt(
         ).hexdigest()
 
 
+def test_public_research_receipt_preserves_dataset_and_freeze_evidence(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    receipt = run_research(
+        {"TEST": _rectangle_frame()},
+        config=_config(),
+        output_dir=output,
+        run_id="public-proof",
+        mode="public_daily_research",
+        argv=["run-public-daily"],
+        phase="deterministic Public frozen-cohort validation and holdout",
+        readiness="public_best_effort_frozen_cohort_validation",
+        data_context={
+            "dataset_manifest_hash": "dataset-hash",
+            "semantic_freeze_hash": "freeze-hash",
+        },
+        warnings=["Non-executable frozen-cohort research."],
+    )
+
+    assert receipt["executable"] is False
+    assert receipt["readiness"] == "public_best_effort_frozen_cohort_validation"
+    assert receipt["data"]["dataset_manifest_hash"] == "dataset-hash"
+    assert receipt["data"]["semantic_freeze_hash"] == "freeze-hash"
+    assert receipt["warnings"] == ["Non-executable frozen-cohort research."]
+    assert "Frozen-cohort historical research only" in (output / "REPORT.md").read_text()
+
+
 def test_population_frame_infers_nullable_fields_across_all_rows() -> None:
     rows = [{"row": index, "direction": None} for index in range(101)]
     rows.append({"row": 101, "direction": "short"})

@@ -1,0 +1,79 @@
+{
+  "schema_version": "PublicValidationUniverseV1",
+  "universe_id": "classical-rectangle-public-43-v1",
+  "config_hash": "7cc10b3303881be6d0b361bd39c2170832c8a0977b7d19713dfa99ce16653cb8",
+  "selection_date": "2026-07-17",
+  "selection_basis": "The 43-symbol semantic-readiness cohort was frozen before Public validation and holdout outcomes were inspected.",
+  "requested_start": "2021-07-19",
+  "requested_end": "2026-07-16",
+  "symbols": [
+    "AAPL",
+    "ABNB",
+    "ADBE",
+    "AMAT",
+    "AMD",
+    "AMZN",
+    "AVGO",
+    "BAC",
+    "COST",
+    "CRM",
+    "DIA",
+    "DIS",
+    "GDX",
+    "GLD",
+    "GOOGL",
+    "GS",
+    "HD",
+    "IEF",
+    "IWM",
+    "JPM",
+    "META",
+    "MSFT",
+    "NFLX",
+    "NVDA",
+    "QCOM",
+    "QQQ",
+    "SBUX",
+    "SLV",
+    "SMH",
+    "SPY",
+    "TLT",
+    "TSLA",
+    "UNH",
+    "V",
+    "WFC",
+    "WMT",
+    "XLE",
+    "XLF",
+    "XLI",
+    "XLK",
+    "XLV",
+    "XLY",
+    "XOM"
+  ],
+  "known_split_continuity_checks": [
+    {
+      "symbol": "AMZN",
+      "effective_date": "2022-06-06",
+      "ratio": "20:1",
+      "maximum_absolute_close_return": 0.25
+    },
+    {
+      "symbol": "GOOGL",
+      "effective_date": "2022-07-18",
+      "ratio": "20:1",
+      "maximum_absolute_close_return": 0.25
+    },
+    {
+      "symbol": "NVDA",
+      "effective_date": "2024-06-10",
+      "ratio": "10:1",
+      "maximum_absolute_close_return": 0.25
+    }
+  ],
+  "limitations": [
+    "This is a frozen current-symbol cohort, not a point-in-time market universe.",
+    "Public documents OHLCV delivery but not its corporate-action adjustment policy.",
+    "A positive result applies only to this cohort until broader historical symbol coverage is proven."
+  ]
+}
