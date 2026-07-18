@@ -4,7 +4,7 @@ type: pattern
 area: classical-pattern semantic review
 date: 2026-07-17
 tags: [semantic-review, causality, receipts, integrity]
-refs: [src/research/classical_patterns/review.py, src/research/classical_patterns/readiness.py, tests/test_classical_pattern_review.py]
+refs: [src/research/classical_patterns/review.py, src/research/classical_patterns/source_fidelity.py:120, src/research/classical_patterns/readiness.py, tests/test_classical_pattern_review.py, 7fbef9b]
 ---
 
 # Blind Review Packets Must Cross-Check Every Trust Boundary
@@ -46,6 +46,12 @@ must revalidate any previously appended state before producing a scorecard.
   JSONL record before it writes a semantic-only scorecard.
 - A nonempty batch root is rejected. A retry receives a new root so stale cards
   cannot silently enter the receipt inventory.
+- A new response schema also needs a new public card wrapper. The first V3
+  overlay safely reused V2 chart bytes but linked to V2 Markdown that still
+  asked for `strict rectangle validity` and `trade worthiness`. A blind
+  reviewer caught the stale instruction. V3 now generates and hashes sanitized
+  wrappers, binds each to the original chart/source-card hashes, and rejects
+  historical V2 review language during verification.
 
 ## Apply It Next Time
 
@@ -60,3 +66,5 @@ economic results in a separate module and add an import-boundary test.
 - Recomputing a readiness hash but not proving that the batch uses those exact
   symbols and daily bytes.
 - Treating an append-only JSONL file as inherently trustworthy on later reads.
+- Reusing a prior review card merely because its chart remains causally valid;
+  instructions are part of the public trust surface too.
