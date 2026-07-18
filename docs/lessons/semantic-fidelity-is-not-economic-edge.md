@@ -4,7 +4,7 @@ type: pattern
 area: classical-pattern research governance
 date: 2026-07-17
 tags: [semantic-review, holdout, negative-results, backtesting]
-refs: [docs/CLASSICAL_PATTERN_PUBLIC_VALIDATION.md, src/research/classical_patterns/public_validation_analysis.py, ac66341, 4f1f9be]
+refs: [docs/CLASSICAL_PATTERN_PUBLIC_VALIDATION.md, docs/CLASSICAL_PATTERN_EXIT_EXPERIMENT_V2.md, src/research/classical_patterns/public_validation_analysis.py, ac66341, 4f1f9be, 976def4]
 ---
 
 # A Semantically Faithful Detector Can Still Have No Economic Edge
@@ -54,6 +54,21 @@ The reusable artifact chain is:
 4. validation-to-holdout replication scorecard;
 5. a verdict that forbids retuning the consumed holdout.
 
+### Version-2 exit follow-up
+
+A later bounded test confirmed that “perhaps the exit was wrong” must itself
+be handled as a new, small experiment rather than an unlimited rescue loop.
+Version 2 preserved all 85 prior representatives, added only 11 new
+80-session events, and compared four predeclared exit/stop combinations. The
+least-negative optimization variant was the original raw-LFD rectangle-height
+exit (`-0.013R` per signal), and it then returned `-0.205R` per signal with
+profit factor `0.65` OOS. All four variants were negative OOS.
+
+This provides a reusable stopping rule: when a bounded source-supported exit
+comparison also fails, do not keep adding exits against the consumed history.
+Move to a separately sourced hypothesis or collect prospective evidence for a
+different decision-maker, such as human consultation.
+
 ## Apply It Next Time
 
 When a playbook passes semantic review, do not say it has an edge. Run every
@@ -68,3 +83,5 @@ calibration and future holdout—not a repair to the failed result.
 - Promoting one favorable validation slice while its holdout reverses.
 - Calling a post-run sample-size heuristic a predeclared gate.
 - Removing losing symbols or directions after inspecting their contribution.
+- Treating each newly imagined exit as another free attempt to rescue the same
+  consumed entry history.
