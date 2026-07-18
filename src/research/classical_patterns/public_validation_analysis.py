@@ -519,14 +519,6 @@ def _write_report_artifact(
             },
         },
     ]
-    series = [
-        {
-            "field": _variant_field(variant),
-            "label": _variant_label(variant),
-            "color": color,
-        }
-        for variant, color in zip(variants, ("blue", "orange"))
-    ]
     artifact = {
         "surface": "report",
         "manifest": {
@@ -581,10 +573,17 @@ def _write_report_artifact(
                     "intent": "comparison",
                     "dataset": "direction_chart",
                     "sourceId": "analysis-source",
-                    "xField": "cell",
+                    "encodings": {
+                        "x": {"field": "cell", "type": "nominal", "label": "Split and direction"},
+                        "y": {
+                            "fields": [_variant_field(variant) for variant in variants],
+                            "type": "quantitative",
+                            "format": "number",
+                            "label": "Average net R",
+                        },
+                    },
                     "xAxisTitle": "Split and direction",
                     "yAxisTitle": "Average net R",
-                    "series": series,
                     "valueFormat": "number",
                     "layout": "full",
                     "referenceLines": [{"axis": "y", "value": 0, "label": "Break-even", "color": "neutral"}],
@@ -602,10 +601,17 @@ def _write_report_artifact(
                     "intent": "comparison",
                     "dataset": "combined_chart",
                     "sourceId": "analysis-source",
-                    "xField": "split",
+                    "encodings": {
+                        "x": {"field": "split", "type": "ordinal", "label": "Research split"},
+                        "y": {
+                            "fields": [_variant_field(variant) for variant in variants],
+                            "type": "quantitative",
+                            "format": "number",
+                            "label": "Average net R",
+                        },
+                    },
                     "xAxisTitle": "Research split",
                     "yAxisTitle": "Average net R",
-                    "series": series,
                     "valueFormat": "number",
                     "layout": "full",
                     "referenceLines": [{"axis": "y", "value": 0, "label": "Break-even", "color": "neutral"}],
