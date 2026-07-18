@@ -28,6 +28,14 @@ from .daily_bars import hash_daily_bars, normalize_daily_input
 PUBLIC_PERIOD = "FIVE_YEARS"
 PUBLIC_AGGREGATION = "ONE_DAY"
 MINIMUM_COVERAGE_FRACTION = 0.98
+FROZEN_DETECTOR_PATHS = (
+    "config/classical_patterns/rectangle_daily_v1.yaml",
+    "src/oracle/rectangle_trade_simulator.py",
+    "src/research/classical_patterns/contracts.py",
+    "src/research/classical_patterns/daily_bars.py",
+    "src/research/classical_patterns/lifecycle.py",
+    "src/research/classical_patterns/rectangle.py",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,8 +296,30 @@ def load_public_daily_dataset(output_dir: Path) -> tuple[dict[str, pl.DataFrame]
     return frames, manifest
 
 
+def verify_public_daily_dataset_against_universe(
+    *, output_dir: Path, universe_path: Path, config_hash: str
+) -> dict[str, Any]:
+    """Re-bind a retained dataset to the exact tracked universe contract."""
+
+    manifest = verify_public_daily_dataset(output_dir)
+    universe_path = universe_path.expanduser().resolve()
+    universe = load_public_validation_universe(universe_path)
+    manifest_symbols = [row["symbol"] for row in manifest["symbols"]]
+    if (
+        universe["config_hash"] != config_hash
+        or manifest["config_hash"] != config_hash
+        or manifest["universe_hash"] != _sha256_path(universe_path)
+        or manifest["universe_path"] != universe_path.name
+        or manifest["requested_start"] != universe["requested_start"]
+        or manifest["requested_end"] != universe["requested_end"]
+        or manifest_symbols != universe["symbols"]
+    ):
+        raise ValueError("Public dataset does not match the tracked frozen universe.")
+    return manifest
+
+
 def verify_semantic_freeze_for_public_run(
-    *, freeze_path: Path, config_hash: str
+    *, freeze_path: Path, config_hash: str, repo_root: Path | None = None
 ) -> dict[str, Any]:
     payload = json.loads(freeze_path.read_text(encoding="utf-8"))
     canonical = payload.pop("canonical_hash", None)
@@ -304,7 +334,37 @@ def verify_semantic_freeze_for_public_run(
         or payload.get("trade_worthiness_fields_present") is not False
     ):
         raise ValueError("Semantic freeze does not authorize a complete-population Public run.")
+    detector_commit = payload.get("detector_git_commit")
+    if not isinstance(detector_commit, str) or not detector_commit:
+        raise ValueError("Semantic freeze does not declare its detector commit.")
+    _verify_frozen_detector_paths(
+        detector_commit=detector_commit,
+        repo_root=(repo_root or Path.cwd()).expanduser().resolve(),
+    )
     return payload
+
+
+def _verify_frozen_detector_paths(*, detector_commit: str, repo_root: Path) -> None:
+    exists = subprocess.run(
+        ["git", "cat-file", "-e", f"{detector_commit}^{{commit}}"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if exists.returncode != 0:
+        raise ValueError("Semantic freeze detector commit is not available in this repository.")
+    comparison = subprocess.run(
+        ["git", "diff", "--quiet", detector_commit, "HEAD", "--", *FROZEN_DETECTOR_PATHS],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if comparison.returncode == 1:
+        raise ValueError("Frozen detector paths changed after the semantic freeze commit.")
+    if comparison.returncode != 0:
+        raise ValueError("Unable to compare frozen detector paths to the semantic freeze commit.")
 
 
 def _split_continuity_check(

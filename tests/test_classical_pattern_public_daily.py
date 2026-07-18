@@ -4,15 +4,18 @@ from datetime import date
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
 from src.research.classical_patterns.contracts import load_rectangle_config
 from src.research.classical_patterns.public_daily import (
+    _verify_frozen_detector_paths,
     acquire_public_daily_dataset,
     load_public_daily_dataset,
     load_public_validation_universe,
     verify_public_daily_dataset,
+    verify_public_daily_dataset_against_universe,
     verify_semantic_freeze_for_public_run,
 )
 from src.trading_calendar import trading_dates
@@ -110,6 +113,11 @@ def test_public_daily_acquisition_is_hash_bound_and_loadable(tmp_path: Path) -> 
         request_delay_seconds=0,
     )
     frames, manifest = load_public_daily_dataset(output_dir)
+    rebound = verify_public_daily_dataset_against_universe(
+        output_dir=output_dir,
+        universe_path=universe_path,
+        config_hash=config_hash,
+    )
 
     assert result.quality_status == "ready_for_frozen_cohort_validation"
     assert manifest["quality_checks"] == {
@@ -120,6 +128,7 @@ def test_public_daily_acquisition_is_hash_bound_and_loadable(tmp_path: Path) -> 
         "known_split_checks_pass": True,
     }
     assert set(frames) == {"AAA", "BBB"}
+    assert rebound["canonical_hash"] == manifest["canonical_hash"]
     assert client.requested == ["AAA", "BBB"]
     assert "accessToken" not in (output_dir / "dataset_manifest.json").read_text()
     assert (output_dir / "DATA_QUALITY.md").exists()
@@ -149,12 +158,19 @@ def test_public_daily_verifier_rejects_raw_payload_tampering(tmp_path: Path) -> 
 
 def test_semantic_freeze_verification_is_hash_and_policy_bound(tmp_path: Path) -> None:
     config_hash = load_rectangle_config(CONFIG_PATH).source_hash
+    detector_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     payload = {
         "schema_version": "MalaRectangleSemanticSpecFreezeV1",
         "status": "frozen",
         "config_hash": config_hash,
         "economic_filtering_allowed": False,
         "trade_worthiness_fields_present": False,
+        "detector_git_commit": detector_commit,
     }
     payload["canonical_hash"] = _hash_json(payload)
     freeze_path = tmp_path / "freeze.json"
@@ -174,4 +190,43 @@ def test_semantic_freeze_verification_is_hash_and_policy_bound(tmp_path: Path) -
         verify_semantic_freeze_for_public_run(
             freeze_path=freeze_path,
             config_hash=config_hash,
+        )
+
+
+def test_dataset_rebinding_rejects_a_changed_universe_file(tmp_path: Path) -> None:
+    config_hash = load_rectangle_config(CONFIG_PATH).source_hash
+    universe_path = tmp_path / "universe.json"
+    _write_universe(universe_path, config_hash=config_hash)
+    output_dir = tmp_path / "dataset"
+    acquire_public_daily_dataset(
+        universe_path=universe_path,
+        output_dir=output_dir,
+        client=StubPublicClient(
+            ["AAA", "BBB"], date(2024, 1, 2), date(2024, 1, 10)
+        ),
+        request_delay_seconds=0,
+    )
+    universe = json.loads(universe_path.read_text())
+    universe["limitations"].append("Changed after acquisition.")
+    universe_path.write_text(json.dumps(universe), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tracked frozen universe"):
+        verify_public_daily_dataset_against_universe(
+            output_dir=output_dir,
+            universe_path=universe_path,
+            config_hash=config_hash,
+        )
+
+
+def test_frozen_detector_path_verifier_rejects_changed_detector_commit() -> None:
+    repository_root_commit = subprocess.run(
+        ["git", "rev-list", "--max-parents=0", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()[0]
+    with pytest.raises(ValueError, match="changed after the semantic freeze"):
+        _verify_frozen_detector_paths(
+            detector_commit=repository_root_commit,
+            repo_root=Path.cwd(),
         )

@@ -34,6 +34,7 @@ from .public_daily import (
     acquire_public_daily_dataset,
     load_public_daily_dataset,
     load_public_validation_universe,
+    verify_public_daily_dataset_against_universe,
     verify_semantic_freeze_for_public_run,
 )
 from .rectangle import EnumerationResult, enumerate_rectangles
@@ -631,6 +632,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_public = subparsers.add_parser("run-public-daily")
     run_public.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    run_public.add_argument(
+        "--universe", type=Path, default=DEFAULT_PUBLIC_UNIVERSE
+    )
     run_public.add_argument("--dataset-dir", type=Path, required=True)
     run_public.add_argument("--semantic-freeze", type=Path, required=True)
     run_public.add_argument("--run-id", required=True)
@@ -857,6 +861,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "run-public-daily":
         if _git_state()["dirty"]:
             raise ValueError("Public validation requires a clean Git tree.")
+        verify_public_daily_dataset_against_universe(
+            output_dir=args.dataset_dir,
+            universe_path=args.universe,
+            config_hash=config.source_hash,
+        )
         daily, dataset = load_public_daily_dataset(args.dataset_dir)
         if dataset["config_hash"] != config.source_hash:
             raise ValueError("Public dataset uses a stale rectangle config hash.")

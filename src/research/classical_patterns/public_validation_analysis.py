@@ -584,7 +584,7 @@ def _write_report_artifact(
                     "id": "closed-card",
                     "dataset": "headline",
                     "sourceId": "run-source",
-                    "description": "Closed result rows; each signal contributes one row per stop variant.",
+                    "description": "Closed variant rows; six signal-variant results were no-trades and are excluded.",
                     "metrics": [
                         {"label": "Closed variant rows", "field": "closed_variant_rows", "format": "number"}
                     ],
