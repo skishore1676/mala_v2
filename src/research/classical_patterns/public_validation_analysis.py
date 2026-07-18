@@ -491,8 +491,10 @@ def _write_report_artifact(
             "path": "trades.csv",
             "query": {
                 "description": "Complete closed-trade population from the hash-bound Public run.",
-                "language": "python",
-                "query": "python -m src.research.classical_patterns.public_validation_analysis --run-dir <run_dir>",
+                "engine": "duckdb",
+                "language": "sql",
+                "sql": "SELECT * FROM read_csv_auto('trades.csv')",
+                "tables_used": ["trades.csv"],
                 "filters": [
                     "status = closed for expectancy metrics",
                     "all frozen cohort symbols",
@@ -510,12 +512,54 @@ def _write_report_artifact(
             "path": "validation_analysis.json",
             "query": {
                 "description": "Seeded trade-level percentile bootstrap and split replication checks.",
-                "language": "python",
-                "query": "python -m src.research.classical_patterns.public_validation_analysis --run-dir <run_dir>",
+                "engine": "duckdb",
+                "language": "sql",
+                "sql": "SELECT * FROM read_json_auto('validation_analysis.json')",
+                "tables_used": ["validation_analysis.json"],
                 "metric_definitions": [
                     "95% intervals are 2.5th and 97.5th percentiles from 10,000 seeded trade-level bootstrap means.",
                     "Replicated positive requires positive validation and holdout lower bounds plus at least 20 closed trades in each split; the sample floor is descriptive and was not an original protocol gate.",
                 ],
+            },
+        },
+        {
+            "id": "robustness-source",
+            "label": "Robustness scorecard",
+            "path": "robustness_scorecard.csv",
+            "query": {
+                "description": "Split, direction, variant, expectancy, and bootstrap uncertainty metrics.",
+                "engine": "duckdb",
+                "language": "sql",
+                "sql": "SELECT * FROM read_csv_auto('robustness_scorecard.csv')",
+                "tables_used": ["robustness_scorecard.csv"],
+                "metric_definitions": [
+                    "Average net R is the arithmetic mean of closed-trade net_r after configured costs.",
+                    "95% intervals are 2.5th and 97.5th percentiles from 10,000 seeded trade-level bootstrap means.",
+                ],
+            },
+        },
+        {
+            "id": "replication-source",
+            "label": "Replication scorecard",
+            "path": "replication_scorecard.csv",
+            "query": {
+                "description": "Validation-to-holdout directional replication comparison.",
+                "engine": "duckdb",
+                "language": "sql",
+                "sql": "SELECT * FROM read_csv_auto('replication_scorecard.csv')",
+                "tables_used": ["replication_scorecard.csv"],
+            },
+        },
+        {
+            "id": "concentration-source",
+            "label": "Symbol concentration scorecard",
+            "path": "symbol_concentration.csv",
+            "query": {
+                "description": "Absolute net-R contribution concentration by split and variant.",
+                "engine": "duckdb",
+                "language": "sql",
+                "sql": "SELECT * FROM read_csv_auto('symbol_concentration.csv')",
+                "tables_used": ["symbol_concentration.csv"],
             },
         },
     ]
@@ -557,7 +601,7 @@ def _write_report_artifact(
                 {
                     "id": "holdout-card",
                     "dataset": "headline",
-                    "sourceId": "analysis-source",
+                    "sourceId": "robustness-source",
                     "description": "Combined-direction holdout mean for the 0.00 ATR stop-buffer variant.",
                     "metrics": [
                         {"label": "Holdout average net R", "field": "holdout_average_net_r", "format": "number", "signed": True}
@@ -572,7 +616,7 @@ def _write_report_artifact(
                     "type": "bar",
                     "intent": "comparison",
                     "dataset": "direction_chart",
-                    "sourceId": "analysis-source",
+                    "sourceId": "robustness-source",
                     "encodings": {
                         "x": {"field": "cell", "type": "nominal", "label": "Split and direction"},
                         "y": {
@@ -600,7 +644,7 @@ def _write_report_artifact(
                     "type": "bar",
                     "intent": "comparison",
                     "dataset": "combined_chart",
-                    "sourceId": "analysis-source",
+                    "sourceId": "robustness-source",
                     "encodings": {
                         "x": {"field": "split", "type": "ordinal", "label": "Research split"},
                         "y": {
@@ -628,7 +672,7 @@ def _write_report_artifact(
                     "title": "Validation-to-holdout replication detail",
                     "subtitle": "Average net R and seeded 95% bootstrap intervals by direction and stop buffer",
                     "dataset": "replication",
-                    "sourceId": "analysis-source",
+                    "sourceId": "replication-source",
                     "layout": "full",
                     "density": "dense",
                     "defaultSort": {"field": "direction", "direction": "asc"},
@@ -649,7 +693,7 @@ def _write_report_artifact(
                     "title": "Symbol concentration by split and stop buffer",
                     "subtitle": "Absolute net-R contribution shares; concentration is descriptive, not a rescue filter",
                     "dataset": "concentration",
-                    "sourceId": "analysis-source",
+                    "sourceId": "concentration-source",
                     "layout": "full",
                     "density": "dense",
                     "defaultSort": {"field": "split", "direction": "asc"},
