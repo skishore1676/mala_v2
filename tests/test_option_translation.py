@@ -70,3 +70,39 @@ def test_band_returns_scenarios():
     closes = [100.0 - min(i, 15) * 0.3 for i in range(30)]
     band = score_profile_band(_frame(closes), "short", "FLASH_REVERSAL")
     assert [b["scenario"] for b in band] == ["flat", "leverage", "cheap_iv", "rich_iv"]
+
+
+def _two_day_frame(day2_close: float):
+    """One day-1 entry that never triggers an exit (flat ~100), then a single
+    day-2 bar at ``day2_close``. The scorer must EOD-flatten on day 1 and never
+    read the day-2 bar — so the result must not depend on ``day2_close``.
+    """
+    rows = []
+    base1 = dt.datetime(2025, 6, 2, 14, 0)  # 10:00 ET (June, ET = UTC-4)
+    rows.append((base1, 100.0, 100.0, 100.0, True, "long"))
+    for m in range(1, 6):
+        rows.append((base1 + dt.timedelta(minutes=m), 100.0, 100.05, 99.95, False, None))
+    base2 = dt.datetime(2025, 6, 3, 14, 0)
+    rows.append((base2, day2_close, day2_close, day2_close, False, None))
+    return pl.DataFrame({
+        "timestamp": [r[0] for r in rows],
+        "close": [r[1] for r in rows],
+        "high": [r[2] for r in rows],
+        "low": [r[3] for r in rows],
+        "signal": [r[4] for r in rows],
+        "signal_direction": [r[5] for r in rows],
+    })
+
+
+def test_eod_flatten_does_not_read_next_day_bar():
+    # Regression: the no-exit fallback used to price the exit on the FIRST bar of
+    # the next day (min(j, n-1)), a cross-day lookahead. A wild day-2 move must
+    # not change the day-1 single-session expectancy.
+    drop = score_profile_on_options(_two_day_frame(50.0), "long", "RANGE_EXPANSION", vol_beta=0.0)
+    pop = score_profile_on_options(_two_day_frame(200.0), "long", "RANGE_EXPANSION", vol_beta=0.0)
+    assert drop["n"] == 1 and pop["n"] == 1
+    # Identical results regardless of the next day's price.
+    assert drop["expectancy_pct"] == pop["expectancy_pct"]
+    # Underlying never moved on day 1 -> only mild theta decay, nowhere near the
+    # -100% / huge-gain the day-2 bar would have produced under the old bug.
+    assert -1.0 < drop["expectancy_pct"] < 0.0

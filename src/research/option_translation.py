@@ -176,8 +176,17 @@ def score_profile_on_options(
                 break
             j += 1; k += 1
         if exit_prem is None:
-            jj = min(j, n - 1)
-            T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
+            # EOD flatten on the entry day. The inner loop stops at the first bar
+            # that is out of session (next day or >= market_close) or at n; a
+            # next-day bar is NOT a valid exit. Step back to the last in-session
+            # entry-day bar so we never price the exit on a following day's price
+            # (a cross-day lookahead). Mirrors TradeSimulator's ``j = j - 1`` on
+            # the session boundary. The >= market_close stop is same-day, so it
+            # stays the flatten bar.
+            jj = j - 1 if (j >= n or dates[j] != dates[i]) else j
+            jj = min(max(jj, i), n - 1)
+            kk = jj - i
+            T = max((T0 * _YEAR_MINUTES - kk) / _YEAR_MINUTES, 1e-6)
             sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)
         pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
