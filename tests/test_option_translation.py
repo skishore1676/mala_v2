@@ -70,3 +70,38 @@ def test_band_returns_scenarios():
     closes = [100.0 - min(i, 15) * 0.3 for i in range(30)]
     band = score_profile_band(_frame(closes), "short", "FLASH_REVERSAL")
     assert [b["scenario"] for b in band] == ["flat", "leverage", "cheap_iv", "rich_iv"]
+
+
+def _flat_two_session_frame():
+    """Two trading days of 1-min bars, an entry signal on the FIRST bar of each.
+
+    Day 1 is FLAT (price never moves), so the day-1 trade hits neither target nor
+    stop and is short enough (8 bars < FLASH_REVERSAL's 15-bar no_progress) that
+    no time stop fires either -- it holds until the inner loop falls through the
+    *date boundary*. That fall-through (rather than a policy-driven exit) is the
+    exact path where the old ``i = j + 1`` cursor advance skipped index ``j`` --
+    the first bar of day 2, which carries the day-2 entry signal.
+    """
+    rows = []
+    base = dt.datetime(2026, 1, 5, 9, 30)
+    for day in range(2):
+        for minute in range(8):
+            ts = base + dt.timedelta(days=day, minutes=minute)
+            rows.append({
+                "timestamp": ts,
+                "close": 100.0,
+                "high": 100.02,
+                "low": 99.98,
+                "signal": minute == 0,            # signal on each day's first bar
+                "signal_direction": "short" if minute == 0 else None,
+            })
+    return pl.DataFrame(rows)
+
+
+def test_does_not_skip_first_signal_of_next_session():
+    # Regression: when the inner loop fell through the session/date boundary (no
+    # policy exit), the outer scan advanced ``i = j + 1`` and skipped bar ``j`` --
+    # the first bar of the next day -- dropping its entry signal. Both first-bar
+    # signals must be counted -> n == 2 (old code returned 1).
+    res = score_profile_on_options(_flat_two_session_frame(), "short", "FLASH_REVERSAL", vol_beta=0.0)
+    assert res["n"] == 2
