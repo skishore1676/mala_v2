@@ -157,6 +157,7 @@ def score_profile_on_options(
         otrade = OpenTrade(entry_idx=0, entry_time=ts[i], direction="long",
                            entry_price=entry_prem, entry_date=dates[i], entry_values={})
         exit_prem = None
+        exited_on_bar = False  # True only when a decision exit consumed bar j
         j, k = i + 1, 1
         while j < n and dates[j] == dates[i] and times[j] < market_close:
             T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
@@ -173,6 +174,7 @@ def score_profile_on_options(
             decision = pol.should_exit(otrade, bar)
             if decision is not None:
                 exit_prem = decision.exit_price if decision.exit_price is not None else pc
+                exited_on_bar = True
                 break
             j += 1; k += 1
         if exit_prem is None:
@@ -181,7 +183,12 @@ def score_profile_on_options(
             sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)
         pnls.append((exit_prem - entry_prem) / entry_prem * 100.0)
-        i = j + 1
+        # Resume scanning AFTER the bar the trade exited on. When the trade
+        # exited via a decision, bar j IS the exit bar -> resume at j + 1. When
+        # the inner loop ended naturally (EOD / day rollover / end of data),
+        # bar j was never part of this trade -> resume AT j so a signal on the
+        # first bar of the next session is not silently skipped.
+        i = j + 1 if exited_on_bar else j
 
     if not pnls:
         return {"profile": profile_name, "iv_premium_factor": iv_premium_factor,
