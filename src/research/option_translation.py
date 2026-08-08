@@ -176,7 +176,16 @@ def score_profile_on_options(
                 break
             j += 1; k += 1
         if exit_prem is None:
-            jj = min(j, n - 1)
+            # No policy exit fired: flatten at the entry day's EOD. The inner loop
+            # stops either ON the same-day close bar (times[j] >= market_close) or
+            # AFTER stepping onto the next day / past the end of the frame. In those
+            # latter two cases the entry day's last bar is j-1, not j -- pricing on
+            # j would value the option on a *different session's* (often gapped)
+            # bar, producing wildly wrong EOD P&L. Pick the last bar that is still
+            # the entry day and recompute the theta step k so decay isn't mis-timed.
+            jj = j if (j < n and dates[j] == dates[i]) else j - 1
+            jj = min(max(jj, i), n - 1)
+            k = jj - i
             T = max((T0 * _YEAR_MINUTES - k) / _YEAR_MINUTES, 1e-6)
             sigma = _iv(entry_iv, (float(close[jj]) - S0) / S0, vol_beta)
             exit_prem = bs.price(float(close[jj]), K, T, sigma, kind, r=r)

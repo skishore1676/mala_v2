@@ -70,3 +70,47 @@ def test_band_returns_scenarios():
     closes = [100.0 - min(i, 15) * 0.3 for i in range(30)]
     band = score_profile_band(_frame(closes), "short", "FLASH_REVERSAL")
     assert [b["scenario"] for b in band] == ["flat", "leverage", "cheap_iv", "rich_iv"]
+
+
+def _two_day_frame(day1_closes, day2_closes):
+    """Day-1 bars carry the single long signal at bar 0; day-2 bars are a separate
+    session (used to prove the EOD exit never prices on the wrong day)."""
+    n1, n2 = len(day1_closes), len(day2_closes)
+    ts = [dt.datetime(2025, 3, 3, 9, 30) + dt.timedelta(minutes=i) for i in range(n1)]
+    ts += [dt.datetime(2025, 3, 4, 9, 30) + dt.timedelta(minutes=i) for i in range(n2)]
+    closes = list(day1_closes) + list(day2_closes)
+    return pl.DataFrame({
+        "timestamp": ts,
+        "close": closes,
+        "high": [c + 0.01 for c in closes],
+        "low": [c - 0.01 for c in closes],
+        "signal": [i == 0 for i in range(n1 + n2)],
+        "signal_direction": ["long"] + [None] * (n1 + n2 - 1),
+    })
+
+
+def test_eod_exit_does_not_leak_next_day_gap():
+    """A trade that rides to the entry day's EOD must be flattened on that day's
+    last bar, not on the next session's (gapped) open. Regression for the
+    multi-day EOD fallback that priced the option on dates[j] (the next day)."""
+    day1 = [100.0 + 0.01 * i for i in range(30)]  # slow drift up; no profile exit fires
+    gap_up_day2 = [130.0 + i for i in range(5)]    # huge overnight gap
+    flat_day2 = [100.30 + 0.001 * i for i in range(5)]  # benign next day
+
+    single = score_profile_on_options(
+        _two_day_frame(day1, []), "long", "TREND_CONTINUATION", vol_beta=0.0
+    )
+    gapped = score_profile_on_options(
+        _two_day_frame(day1, gap_up_day2), "long", "TREND_CONTINUATION", vol_beta=0.0
+    )
+    benign = score_profile_on_options(
+        _two_day_frame(day1, flat_day2), "long", "TREND_CONTINUATION", vol_beta=0.0
+    )
+
+    assert single["n"] == gapped["n"] == 1
+    # The day-2 bars must not influence the entry-day EOD exit at all.
+    assert gapped["expectancy_pct"] == single["expectancy_pct"]
+    assert benign["expectancy_pct"] == single["expectancy_pct"]
+    # And the (correct) EOD value reflects only the small day-1 underlying drift,
+    # nowhere near the absurd >1000% the next-day gap would have produced.
+    assert gapped["expectancy_pct"] < 100.0
